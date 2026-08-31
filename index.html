@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Control de Producción Naval</title>
+
+    <style>
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, Helvetica, sans-serif;
+            background: #e9edf2;
+            color: #20252b;
+        }
+
+        /* =========================
+           CABECERA
+           ========================= */
+
+        header {
+            height: 60px;
+            background: #17212b;
+            color: white;
+
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+
+            padding: 0 20px;
+        }
+
+        .logo {
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .user {
+            font-size: 14px;
+        }
+
+
+        /* =========================
+           CONTENEDOR PRINCIPAL
+           ========================= */
+
+        .layout {
+            display: grid;
+
+            grid-template-columns: 320px 1fr;
+
+            height: calc(100vh - 60px);
+        }
+
+
+        /* =========================
+           PANEL IZQUIERDO
+           ========================= */
+
+        .sidebar {
+
+            background: #f7f8fa;
+
+            border-right: 1px solid #cbd0d6;
+
+            overflow-y: auto;
+
+            padding: 15px;
+        }
+
+        .sidebar-title {
+
+            font-size: 13px;
+
+            text-transform: uppercase;
+
+            color: #6b7280;
+
+            margin-bottom: 12px;
+        }
+
+
+        /* =========================
+           ÁRBOL
+           ========================= */
+
+        .tree {
+            font-size: 14px;
+        }
+
+        .tree-node {
+
+            padding: 6px 4px;
+
+            border-radius: 4px;
+
+            cursor: pointer;
+        }
+
+        .tree-node:hover {
+
+            background: #e1e5ea;
+        }
+
+        .tree-level-1 {
+            margin-left: 15px;
+        }
+
+        .tree-level-2 {
+            margin-left: 30px;
+        }
+
+        .tree-level-3 {
+            margin-left: 45px;
+        }
+
+        .tree-level-4 {
+            margin-left: 60px;
+        }
+
+
+        /* =========================
+           ESTADOS
+           ========================= */
+
+        .status {
+
+            display: inline-block;
+
+            width: 13px;
+            height: 13px;
+
+            border-radius: 50%;
+
+            margin-left: 5px;
+
+            vertical-align: middle;
+        }
+
+        .gray {
+            background: #9ca3af;
+        }
+
+        .yellow {
+            background: #facc15;
+        }
+
+        .red {
+            background: #ef4444;
+        }
+
+        .green {
+            background: #22c55e;
+        }
+
+
+        /* =========================
+           CONTENIDO
+           ========================= */
+
+        .main {
+
+            display: grid;
+
+            grid-template-rows:
+                55px
+                1fr
+                190px;
+
+            min-width: 0;
+        }
+
+
+        /* =========================
+           RUTA
+           ========================= */
+
+        .breadcrumb {
+
+            background: white;
+
+            border-bottom: 1px solid #cbd0d6;
+
+            display: flex;
+
+            align-items: center;
+
+            padding: 0 20px;
+
+            font-size: 14px;
+        }
+
+
+        /* =========================
+           TRIVIEW
+           ========================= */
+
+        .triview {
+
+            display: grid;
+
+            grid-template-columns: 1fr 1fr;
+
+            grid-template-rows: 1fr 1fr;
+
+            gap: 5px;
+
+            padding: 5px;
+
+            background: #cbd0d6;
+        }
+
+        .view {
+
+            background: white;
+
+            position: relative;
+
+            display: flex;
+
+            align-items: center;
+
+            justify-content: center;
+
+            overflow: hidden;
+        }
+
+        .view-title {
+
+            position: absolute;
+
+            top: 10px;
+            left: 12px;
+
+            font-size: 12px;
+
+            font-weight: bold;
+
+            color: #6b7280;
+        }
+
+        .drawing {
+
+            width: 65%;
+
+            height: 45%;
+
+            border: 2px solid #333;
+
+            position: relative;
+        }
+
+        .drawing::before {
+
+            content: "";
+
+            position: absolute;
+
+            left: 20%;
+
+            top: 20%;
+
+            width: 60%;
+
+            height: 60%;
+
+            border: 1px dashed #777;
+        }
+
+
+        /* =========================
+           INFORMACIÓN
+           ========================= */
+
+        .info-view {
+
+            padding: 35px 20px 20px;
+
+            font-size: 13px;
+
+            color: #444;
+        }
+
+
+        /* =========================
+           PANEL INFERIOR
+           ========================= */
+
+        .properties {
+
+            background: #f7f8fa;
+
+            border-top: 1px solid #cbd0d6;
+
+            padding: 15px 20px;
+
+            display: grid;
+
+            grid-template-columns: 1fr 1fr 1fr;
+
+            gap: 20px;
+        }
+
+        .property-group {
+
+            font-size: 13px;
+        }
+
+        .property-group h3 {
+
+            margin: 0 0 8px;
+
+            font-size: 13px;
+
+            text-transform: uppercase;
+
+            color: #6b7280;
+        }
+
+        .property {
+
+            margin-bottom: 5px;
+        }
+
+
+        /* =========================
+           BOTONES
+           ========================= */
+
+        button {
+
+            border: 1px solid #aeb4bb;
+
+            background: white;
+
+            border-radius: 4px;
+
+            padding: 7px 12px;
+
+            cursor: pointer;
+        }
+
+        button:hover {
+
+            background: #e9edf2;
+        }
+
+        .danger {
+
+            border-color: #ef4444;
+
+            color: #b91c1c;
+        }
+
+        .success {
+
+            border-color: #22c55e;
+
+            color: #15803d;
+        }
+
+        .warning {
+
+            border-color: #eab308;
+
+            color: #a16207;
+        }
+
+    </style>
+
+</head>
+
+
+<body>
+
+
+<!-- =====================================
+     CABECERA
+     ===================================== -->
+
+<header>
+
+    <div class="logo">
+        CONTROL DE PRODUCCIÓN NAVAL
+    </div>
+
+    <div class="user">
+        👤 Antonio López
+        &nbsp; | &nbsp;
+        JEFE
+    </div>
+
+</header>
+
+
+<!-- =====================================
+     LAYOUT
+     ===================================== -->
+
+<div class="layout">
+
+
+    <!-- =================================
+         ÁRBOL
+         ================================= -->
+
+    <aside class="sidebar">
+
+        <div class="sidebar-title">
+            Estructura del buque
+        </div>
+
+
+        <div class="tree">
+
+
+            <div class="tree-node">
+                ▼ 🚢 BUQUE-001
+            </div>
+
+
+            <div class="tree-node tree-level-1">
+                ▼ BLOQUE-120
+            </div>
+
+
+            <div class="tree-node tree-level-2">
+                ▼ SUBBLOQUE-03
+            </div>
+
+
+            <!-- UL -->
+
+            <div class="tree-node tree-level-3">
+
+                ▼ 🔧 UL-001
+
+            </div>
+
+
+            <div class="tree-node tree-level-4">
+
+                ▼ GRUPO-01
+
+            </div>
+
+
+            <div class="tree-node tree-level-4">
+
+                ▼ GRUPO-02
+
+            </div>
+
+
+            <div class="tree-node tree-level-4">
+
+                └─ PREVIA-001
+
+                <span class="status green"></span>
+
+            </div>
+
+
+            <div class="tree-node tree-level-4">
+
+                └─ PL-001
+
+                <span class="status yellow"></span>
+
+            </div>
+
+
+            <div class="tree-node tree-level-4">
+
+                └─ PL-002
+
+                <span class="status red"></span>
+
+            </div>
+
+
+            <div class="tree-node tree-level-4">
+
+                └─ PF-001
+
+                <span class="status green"></span>
+
+            </div>
+
+
+            <!-- UA -->
+
+            <div class="tree-node tree-level-3">
+
+                ▼ 🔧 UA-002
+
+            </div>
+
+
+            <div class="tree-node tree-level-4">
+
+                ▼ GRUPO-03
+
+            </div>
+
+
+            <div class="tree-node tree-level-4">
+
+                └─ PL-021
+
+                <span class="status gray"></span>
+
+            </div>
+
+
+            <br>
+
+
+            <button>
+                + Añadir elemento
+            </button>
+
+
+        </div>
+
+    </aside>
+
+
+
+    <!-- =================================
+         CONTENIDO PRINCIPAL
+         ================================= -->
+
+    <main class="main">
+
+
+        <!-- RUTA -->
+
+        <div class="breadcrumb">
+
+            🚢 BUQUE-001
+
+            &nbsp;›&nbsp;
+
+            BLOQUE-120
+
+            &nbsp;›&nbsp;
+
+            SUBBLOQUE-03
+
+            &nbsp;›&nbsp;
+
+            UL-001
+
+            &nbsp;›&nbsp;
+
+            GRUPO-02
+
+            &nbsp;›&nbsp;
+
+            <strong>PL-002</strong>
+
+        </div>
+
+
+
+        <!-- =================================
+             TRIVIEW
+             ================================= -->
+
+        <section class="triview">
+
+
+            <!-- ALZADO -->
+
+            <div class="view">
+
+                <div class="view-title">
+                    ALZADO
+                </div>
+
+                <div class="drawing"></div>
+
+            </div>
+
+
+            <!-- PERFIL -->
+
+            <div class="view">
+
+                <div class="view-title">
+                    PERFIL
+                </div>
+
+                <div class="drawing"></div>
+
+            </div>
+
+
+            <!-- PLANTA -->
+
+            <div class="view">
+
+                <div class="view-title">
+                    PLANTA
+                </div>
+
+                <div class="drawing"></div>
+
+            </div>
+
+
+            <!-- INFORMACIÓN -->
+
+            <div class="view">
+
+                <div class="view-title">
+                    INFORMACIÓN
+                </div>
+
+                <div class="info-view">
+
+                    <strong>PL-002</strong>
+
+                    <p>
+                        Tipo: Plancha
+                    </p>
+
+                    <p>
+                        Trabajador: Juan García
+                    </p>
+
+                    <p>
+                        Trabajo:
+                        FINALIZADO
+                        <span class="status yellow"></span>
+                    </p>
+
+                    <p>
+                        Revisión:
+                        PENDIENTE
+                    </p>
+
+                </div>
+
+            </div>
+
+
+        </section>
+
+
+
+        <!-- =================================
+             PROPIEDADES
+             ================================= -->
+
+        <section class="properties">
+
+
+            <div class="property-group">
+
+                <h3>Componente</h3>
+
+                <div class="property">
+                    <strong>ID:</strong>
+                    PL-002
+                </div>
+
+                <div class="property">
+                    <strong>Tipo:</strong>
+                    Plancha
+                </div>
+
+                <div class="property">
+                    <strong>Nombre:</strong>
+                    Plancha fondo 02
+                </div>
+
+            </div>
+
+
+
+            <div class="property-group">
+
+                <h3>Producción</h3>
+
+                <div class="property">
+                    <strong>Trabajador:</strong>
+                    Juan García
+                </div>
+
+                <div class="property">
+                    <strong>Estado:</strong>
+
+                    PENDIENTE REVISIÓN
+
+                    <span class="status yellow"></span>
+
+                </div>
+
+            </div>
+
+
+
+            <div class="property-group">
+
+                <h3>Acciones</h3>
+
+                <button class="warning">
+                    Finalizar trabajo
+                </button>
+
+                <button class="success">
+                    ✓ Aprobar
+                </button>
+
+                <button class="danger">
+                    ✕ Rechazar
+                </button>
+
+                <br><br>
+
+                <button>
+                    ✏️ Editar
+                </button>
+
+                <button class="danger">
+                    🗑️ Eliminar
+                </button>
+
+            </div>
+
+
+        </section>
+
+
+    </main>
+
+</div>
+
+
+</body>
+
+</html>
