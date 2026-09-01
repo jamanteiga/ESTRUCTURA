@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESTRUCTURA - Gestión de Usuarios</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #333; }
+    h1 { font-size: 22px; }
+    h2 { font-size: 16px; margin-top: 30px; }
+    .card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 20px; }
+    label { display: block; font-weight: bold; font-size: 12px; margin-bottom: 4px; margin-top: 10px; }
+    input, select { padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 14px; }
+    input[type="text"], input[type="password"] { width: 100%; }
+    button { padding: 7px 14px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; }
+    button:hover { background: #0069d9; }
+    button:disabled { background: #999; cursor: not-allowed; }
+    .btn-guardar-fila { background: #28a745; }
+    .btn-guardar-fila:hover { background: #218838; }
+    .btn-resetear { background: #fd7e14; }
+    .btn-resetear:hover { background: #e8590c; }
+    .estado { font-size: 13px; margin-top: 8px; }
+    .ok { color: #218838; }
+    .error { color: #dc3545; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; background: white; }
+    th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; font-size: 13px; }
+    th { background: #1c6e8c; color: white; }
+    tr.inactivo { opacity: 0.5; }
+    #panel-admin { display: none; }
+    #sin-permiso { display: none; color: #dc3545; font-weight: bold; }
+
+    .overlay {
+      display: none;
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.6); align-items: center; justify-content: center; z-index: 1000;
+    }
+    .overlay-caja {
+      background: white; border-radius: 8px; padding: 24px; max-width: 400px; width: 90%; text-align: center;
+    }
+    .overlay-caja code {
+      display: block; background: #1e1e1e; color: #7fffa0; padding: 12px; border-radius: 6px;
+      font-size: 18px; margin: 14px 0; word-break: break-all; user-select: all;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>👤 Gestión de Usuarios — ESTRUCTURA</h1>
+
+  <script>
+    const SUPABASE_URL = 'https://wuarkraddnndmgvfnkmm.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <div id="sin-permiso">
+    No tienes permisos de ADMIN para ver esta página.
+    <button onclick="cerrarSesion()" style="margin-left:10px;">Cerrar sesión</button>
+  </div>
+
+  <!-- PANEL ADMIN -->
+  <div id="panel-admin">
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span id="texto-sesion-activa" class="estado ok"></span>
+        <button onclick="cerrarSesion()">Cerrar sesión</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;">Añadir usuario</h2>
+      <label for="username-nuevo">Usuario (para iniciar sesión)</label>
+      <input type="text" id="username-nuevo" placeholder="jperez">
+
+      <label for="nombre-nuevo">Nombre completo</label>
+      <input type="text" id="nombre-nuevo" placeholder="Nombre Apellidos">
+
+      <label for="rol-nuevo">Rol</label>
+      <select id="rol-nuevo">
+        <option value="TRABAJADOR">TRABAJADOR</option>
+        <option value="REVISOR">REVISOR</option>
+        <option value="ADMIN">ADMIN</option>
+      </select>
+
+      <label for="password-nuevo">Contraseña inicial (déjalo en blanco para que se genere una)</label>
+      <input type="text" id="password-nuevo" placeholder="Opcional">
+
+      <button id="btn-crear" onclick="crearUsuario()" style="margin-top:14px;">Crear usuario</button>
+      <div id="estado-crear" class="estado"></div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;">Usuarios existentes</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Usuario</th>
+            <th>Nombre completo</th>
+            <th>Rol</th>
+            <th>Activo</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="tabla-usuarios-body">
+          <tr><td colspan="5">Cargando...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Ventana emergente para mostrar una contraseña UNA sola vez -->
+  <div class="overlay" id="overlay-password">
+    <div class="overlay-caja">
+      <strong id="overlay-titulo">Contraseña generada</strong>
+      <p style="font-size:13px; color:#666;">Cópiala o apúntala ahora. No se volverá a mostrar en ningún sitio.</p>
+      <code id="overlay-password-valor"></code>
+      <button onclick="cerrarOverlayPassword()">Ya la he copiado</button>
+    </div>
+  </div>
+
+  <script>
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    let miPerfil = null;
+
+    async function comprobarSesionYPermisos() {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+
+      if (!session) {
+        window.location.href = 'login.html?next=usuarios.html';
+        return;
+      }
+
+      const { data: perfil, error } = await supabaseClient
+        .from('profiles')
+        .select('*')
+        .eq('id', session.user.id)
+        .single();
+
+      if (error || !perfil || perfil.rol !== 'ADMIN' || !perfil.activo) {
+        document.getElementById('sin-permiso').style.display = 'block';
+        document.getElementById('panel-admin').style.display = 'none';
+        return;
+      }
+
+      miPerfil = perfil;
+      document.getElementById('sin-permiso').style.display = 'none';
+      document.getElementById('panel-admin').style.display = 'block';
+      document.getElementById('texto-sesion-activa').textContent =
+        `Conectado como ${perfil.nombre_completo} (${perfil.username}) — ADMIN`;
+
+      cargarUsuarios();
+    }
+
+    async function cerrarSesion() {
+      await supabaseClient.auth.signOut();
+      window.location.href = 'login.html';
+    }
+
+    function mostrarOverlayPassword(password, titulo) {
+      document.getElementById('overlay-titulo').textContent = titulo;
+      document.getElementById('overlay-password-valor').textContent = password;
+      document.getElementById('overlay-password').style.display = 'flex';
+    }
+
+    function cerrarOverlayPassword() {
+      document.getElementById('overlay-password').style.display = 'none';
+      document.getElementById('overlay-password-valor').textContent = '';
+    }
+
+    async function crearUsuario() {
+      const username = document.getElementById('username-nuevo').value.trim().toLowerCase();
+      const nombre_completo = document.getElementById('nombre-nuevo').value.trim();
+      const rol = document.getElementById('rol-nuevo').value;
+      const passwordInput = document.getElementById('password-nuevo').value.trim();
+      const estadoEl = document.getElementById('estado-crear');
+      const btn = document.getElementById('btn-crear');
+
+      if (!username || !nombre_completo) {
+        alert('Rellena usuario y nombre completo');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Creando...';
+      estadoEl.textContent = '';
+      estadoEl.className = 'estado';
+
+      const body = { username, nombre_completo, rol };
+      if (passwordInput) body.password = passwordInput;
+
+      const { data, error } = await supabaseClient.functions.invoke('admin-create-user', { body });
+
+      btn.disabled = false;
+      btn.textContent = 'Crear usuario';
+
+      if (error) {
+        estadoEl.textContent = 'Error: ' + (error.message || JSON.stringify(error));
+        estadoEl.className = 'estado error';
+        return;
+      }
+      if (data && data.error) {
+        estadoEl.textContent = 'Error: ' + data.error;
+        estadoEl.className = 'estado error';
+        return;
+      }
+
+      estadoEl.textContent = `Usuario "${username}" creado correctamente.`;
+      estadoEl.className = 'estado ok';
+      document.getElementById('username-nuevo').value = '';
+      document.getElementById('nombre-nuevo').value = '';
+      document.getElementById('rol-nuevo').value = 'TRABAJADOR';
+      document.getElementById('password-nuevo').value = '';
+
+      mostrarOverlayPassword(data.password, `Contraseña inicial de "${username}"`);
+      cargarUsuarios();
+    }
+
+    async function cargarUsuarios() {
+      const tbody = document.getElementById('tabla-usuarios-body');
+      tbody.innerHTML = '<tr><td colspan="5">Cargando...</td></tr>';
+
+      const { data, error } = await supabaseClient
+        .from('profiles')
+        .select('*')
+        .order('nombre_completo', { ascending: true });
+
+      if (error) {
+        tbody.innerHTML = `<tr><td colspan="5" style="color:red;">Error: ${error.message}</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = data.map(perfil => `
+        <tr class="${perfil.activo ? '' : 'inactivo'}" id="fila-${perfil.id}">
+          <td>${perfil.username || '(sin usuario)'}</td>
+          <td><input type="text" id="nombre-${perfil.id}" value="${(perfil.nombre_completo || '').replace(/"/g, '&quot;')}"></td>
+          <td>
+            <select id="rol-${perfil.id}">
+              <option value="TRABAJADOR" ${perfil.rol === 'TRABAJADOR' ? 'selected' : ''}>TRABAJADOR</option>
+              <option value="REVISOR" ${perfil.rol === 'REVISOR' ? 'selected' : ''}>REVISOR</option>
+              <option value="ADMIN" ${perfil.rol === 'ADMIN' ? 'selected' : ''}>ADMIN</option>
+            </select>
+          </td>
+          <td style="text-align:center;">
+            <input type="checkbox" id="activo-${perfil.id}" ${perfil.activo ? 'checked' : ''}>
+          </td>
+          <td style="white-space:nowrap;">
+            <button class="btn-guardar-fila" onclick="guardarUsuario('${perfil.id}')">Guardar</button>
+            <button class="btn-resetear" onclick="resetearPassword('${perfil.id}', '${(perfil.username || '').replace(/'/g, "\\'")}')">Resetear contraseña</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    async function guardarUsuario(id) {
+      const nombre_completo = document.getElementById(`nombre-${id}`).value.trim();
+      const rol = document.getElementById(`rol-${id}`).value;
+      const activo = document.getElementById(`activo-${id}`).checked;
+
+      if (!nombre_completo) {
+        alert('El nombre no puede quedar vacío');
+        return;
+      }
+
+      if (id === miPerfil.id && (!activo || rol !== 'ADMIN')) {
+        if (!confirm('Estás a punto de quitarte a ti mismo el rol ADMIN o desactivar tu propia cuenta. ¿Continuar?')) {
+          return;
+        }
+      }
+
+      const { error } = await supabaseClient
+        .from('profiles')
+        .update({ nombre_completo, rol, activo })
+        .eq('id', id);
+
+      if (error) {
+        alert('Error al guardar: ' + error.message);
+        return;
+      }
+
+      cargarUsuarios();
+    }
+
+    async function resetearPassword(id, username) {
+      if (!confirm(`¿Resetear la contraseña de "${username}"? Se generará una nueva y tendrá que cambiarla al entrar.`)) {
+        return;
+      }
+
+      const { data, error } = await supabaseClient.functions.invoke('admin-reset-password', {
+        body: { user_id: id }
+      });
+
+      if (error) {
+        alert('Error: ' + (error.message || JSON.stringify(error)));
+        return;
+      }
+      if (data && data.error) {
+        alert('Error: ' + data.error);
+        return;
+      }
+
+      mostrarOverlayPassword(data.password, `Nueva contraseña de "${username}"`);
+    }
+
+    comprobarSesionYPermisos();
+  </script>
+</body>
+</html>
