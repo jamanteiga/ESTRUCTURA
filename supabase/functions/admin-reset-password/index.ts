@@ -1,17 +1,19 @@
-// supabase/functions/admin-reset-password/index.ts
+// supabase/functions/admin-create-user/index.ts
 //
-// Resetea la contraseña de un usuario existente. Solo puede invocarla
-// un ADMIN activo. No "recupera" la contraseña anterior (es imposible:
-// no se guarda en texto plano) — genera o fija una nueva, y obliga a
-// cambiarla en el próximo inicio de sesión.
+// Crea un usuario nuevo (auth.users + profiles) con username + contraseña,
+// sin usar email real. Solo puede invocarla un ADMIN activo.
 //
 // Body esperado (JSON):
 //   {
-//     "user_id": "uuid-del-usuario",   (obligatorio)
-//     "password": "..."                (opcional; si se omite, se genera una aleatoria)
+//     "username": "jperez",                 (obligatorio, 3-32 car., minúsculas/números/./_/-)
+//     "nombre_completo": "Juan Pérez",       (obligatorio)
+//     "rol": "TRABAJADOR" | "REVISOR" | "ADMIN",  (obligatorio)
+//     "password": "..."                     (opcional; si se omite, se genera una aleatoria)
 //   }
 //
-// Respuesta 200: { "password": "...", "password_generada": true|false }
+// Respuesta 200: { "perfil": {...}, "password": "...", "password_generada": true|false }
+// La contraseña se devuelve UNA sola vez, en esta respuesta: no vuelve a
+// recuperarse en ningún otro sitio, ni siquiera el ADMIN puede verla después.
 
 import { serve } from "https://deno.land/std@0.203.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -19,6 +21,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+const ROLES_VALIDOS = ["TRABAJADOR", "REVISOR", "ADMIN"];
+// .invalid es el TLD reservado (RFC 2606) para direcciones garantizado que
+// nunca serán reales ni entregables: exactamente lo que necesitamos aquí.
+const DOMINIO_SINTETICO = "estructura.app.invalid";
+const REGEX_USERNAME = /^[a-z0-9._-]{3,32}$/;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -34,6 +42,7 @@ function jsonResponse(body: unknown, status: number): Response {
 }
 
 function generarPasswordAleatoria(longitud = 12): string {
+  // Sin 0/O ni 1/l/I, para que se pueda copiar/leer a mano sin confusiones.
   const charset = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%";
   const bytes = new Uint8Array(longitud);
   crypto.getRandomValues(bytes);
@@ -75,15 +84,35 @@ serve(async (req: Request) => {
       perfilLlamador.rol !== "ADMIN" ||
       !perfilLlamador.activo
     ) {
-      return jsonResponse({ error: "Solo un ADMIN activo puede resetear contraseñas" }, 403);
+      return jsonResponse({ error: "Solo un ADMIN activo puede crear usuarios" }, 403);
     }
 
     const body = await req.json().catch(() => null);
-    const userId: string | undefined = body?.user_id;
+    const usernameRaw: string | undefined = body?.username?.trim().toLowerCase();
+    const nombreCompleto: string | undefined = body?.nombre_completo?.trim();
+    const rol: string | undefined = body?.rol;
     let password: string | undefined = body?.password?.trim();
 
-    if (!userId) {
-      return jsonResponse({ error: "Falta el campo user_id" }, 400);
+    if (!usernameRaw || !nombreCompleto || !rol) {
+      return jsonResponse(
+        { error: "Faltan campos obligatorios: username, nombre_completo, rol" },
+        400
+      );
+    }
+    if (!REGEX_USERNAME.test(usernameRaw)) {
+      return jsonResponse(
+        {
+          error:
+            "Usuario inválido: solo minúsculas, números, punto, guion y guion bajo (3-32 caracteres)",
+        },
+        400
+      );
+    }
+    if (!ROLES_VALIDOS.includes(rol)) {
+      return jsonResponse(
+        { error: `Rol inválido. Debe ser uno de: ${ROLES_VALIDOS.join(", ")}` },
+        400
+      );
     }
 
     let passwordGenerada = false;
@@ -94,26 +123,47 @@ serve(async (req: Request) => {
       return jsonResponse({ error: "La contraseña debe tener al menos 8 caracteres" }, 400);
     }
 
+    const emailSintetico = `${usernameRaw}@${DOMINIO_SINTETICO}`;
+
     const adminClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-    const { error: updateAuthError } = await adminClient.auth.admin.updateUserById(userId, {
+    const { data: nuevoUsuario, error: crearError } = await adminClient.auth.admin.createUser({
+      email: emailSintetico,
       password,
+      email_confirm: true,
     });
 
-    if (updateAuthError) {
-      return jsonResponse({ error: updateAuthError.message }, 400);
+    if (crearError || !nuevoUsuario?.user) {
+      return jsonResponse(
+        { error: crearError?.message ?? "No se pudo crear el usuario en Auth" },
+        400
+      );
     }
 
-    const { error: updatePerfilError } = await adminClient
+    const { data: nuevoPerfil, error: perfilInsertError } = await adminClient
       .from("profiles")
-      .update({ debe_cambiar_password: true })
-      .eq("id", userId);
+      .insert({
+        id: nuevoUsuario.user.id,
+        username: usernameRaw,
+        email: emailSintetico,
+        nombre_completo: nombreCompleto,
+        rol,
+        activo: true,
+        debe_cambiar_password: true,
+      })
+      .select()
+      .single();
 
-    if (updatePerfilError) {
-      return jsonResponse({ error: updatePerfilError.message }, 400);
+    if (perfilInsertError) {
+      // Revertimos el usuario de Auth para no dejar una cuenta huérfana.
+      await adminClient.auth.admin.deleteUser(nuevoUsuario.user.id);
+      return jsonResponse({ error: perfilInsertError.message }, 400);
     }
 
-    return jsonResponse({ password, password_generada: passwordGenerada }, 200);
+    return jsonResponse(
+      { perfil: nuevoPerfil, password, password_generada: passwordGenerada },
+      200
+    );
   } catch (err) {
     return jsonResponse({ error: String(err) }, 500);
   }
