@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESTRUCTURA - Árbol</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 1000px; margin: 30px auto; padding: 0 20px; color: #333; }
+    h1 { font-size: 22px; }
+    .card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 14px; margin-bottom: 16px; }
+    .header-bar { display: flex; justify-content: space-between; align-items: center; }
+    button { padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; }
+    button:hover { background: #0069d9; }
+    button.secundario { background: #6c757d; }
+    button.secundario:hover { background: #5a6268; }
+    button.peligro { background: #dc3545; }
+    button.peligro:hover { background: #bd2130; }
+    button.exito { background: #28a745; }
+    button.exito:hover { background: #218838; }
+    button.pequeno { padding: 3px 8px; font-size: 11px; }
+
+    .leyenda { display: flex; gap: 14px; font-size: 12px; align-items: center; flex-wrap: wrap; }
+    .punto { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+    .p-gris { background: #adb5bd; }
+    .p-azul { background: #007bff; }
+    .p-amarillo { background: #ffc107; }
+    .p-verde { background: #28a745; }
+    .p-rojo { background: #dc3545; }
+    .p-mezcla { background: white; border: 2px solid #ccc; }
+
+    ul.arbol { list-style: none; padding-left: 18px; margin: 0; }
+    ul.arbol.raiz { padding-left: 0; }
+    li.nodo { margin: 2px 0; }
+    .fila-nodo { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 4px; }
+    .fila-nodo:hover { background: rgba(0,123,255,0.06); }
+    .toggle { width: 16px; cursor: pointer; text-align: center; user-select: none; color: #666; font-size: 11px; }
+    .toggle.vacio { visibility: hidden; }
+    .codigo { font-weight: bold; }
+    .tipo-tag { font-size: 10px; background: #e9ecef; padding: 1px 6px; border-radius: 10px; color: #555; }
+    .asignados { font-size: 11px; color: #888; }
+    .acciones { display: flex; gap: 4px; margin-left: auto; }
+    .hijos { display: none; }
+    .hijos.abierto { display: block; }
+
+    .overlay {
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.55); align-items: center; justify-content: center; z-index: 1000;
+    }
+    .overlay-caja { background: white; border-radius: 8px; padding: 22px; max-width: 420px; width: 90%; }
+    .overlay-caja h3 { margin-top: 0; font-size: 16px; }
+    .overlay-caja label { display: block; font-weight: bold; font-size: 12px; margin: 10px 0 4px; }
+    .overlay-caja input, .overlay-caja select, .overlay-caja textarea {
+      width: 100%; padding: 7px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 13px;
+    }
+    .overlay-botones { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+    .estado-msg { font-size: 12px; margin-top: 8px; }
+    .error { color: #dc3545; }
+    .ok { color: #218838; }
+  </style>
+</head>
+<body>
+
+  <div class="header-bar">
+    <h1>🌳 Estructura</h1>
+    <div>
+      <span id="texto-usuario" class="estado-msg"></span>
+      <button class="secundario" onclick="location.href='usuarios.html'">👤 Usuarios</button>
+      <button class="secundario" onclick="cerrarSesion()">Cerrar sesión</button>
+    </div>
+  </div>
+
+  <div class="card leyenda">
+    <span><span class="punto p-gris"></span>Sin iniciar</span>
+    <span><span class="punto p-azul"></span>En trabajo</span>
+    <span><span class="punto p-amarillo"></span>Pendiente revisión</span>
+    <span><span class="punto p-verde"></span>Aprobado</span>
+    <span><span class="punto p-rojo"></span>Rechazado</span>
+    <span><span class="punto p-mezcla"></span>Estados mezclados</span>
+  </div>
+
+  <div class="card" id="panel-crear-buque" style="display:none;">
+    <button onclick="abrirModalCrear(null, 'BUQUE')">+ Añadir Buque</button>
+  </div>
+
+  <div class="card">
+    <ul class="arbol raiz" id="arbol-raiz">
+      <li>Cargando...</li>
+    </ul>
+  </div>
+
+  <!-- Modal crear/editar nodo -->
+  <div class="overlay" id="modal-nodo">
+    <div class="overlay-caja">
+      <h3 id="modal-nodo-titulo">Nuevo nodo</h3>
+      <div id="modal-nodo-tipo-wrap">
+        <label>Tipo</label>
+        <select id="modal-nodo-tipo"></select>
+      </div>
+      <label>Código</label>
+      <input type="text" id="modal-nodo-codigo" placeholder="Ej: SB3, UA1, NL801...">
+      <label>Nombre</label>
+      <input type="text" id="modal-nodo-nombre">
+      <label>Descripción (opcional)</label>
+      <textarea id="modal-nodo-descripcion" rows="2"></textarea>
+      <label>Orden</label>
+      <input type="number" id="modal-nodo-orden" value="0">
+      <div class="estado-msg" id="modal-nodo-estado"></div>
+      <div class="overlay-botones">
+        <button class="secundario" onclick="cerrarModalNodo()">Cancelar</button>
+        <button id="modal-nodo-guardar" onclick="guardarNodo()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal asignar trabajador/revisor -->
+  <div class="overlay" id="modal-asignar">
+    <div class="overlay-caja">
+      <h3>Asignar trabajador / revisor</h3>
+      <label>Trabajador</label>
+      <select id="modal-asignar-trabajador"><option value="">— Sin asignar —</option></select>
+      <label>Revisor</label>
+      <select id="modal-asignar-revisor"><option value="">— Sin asignar —</option></select>
+      <div class="estado-msg" id="modal-asignar-estado"></div>
+      <div class="overlay-botones">
+        <button class="secundario" onclick="cerrarModalAsignar()">Cancelar</button>
+        <button id="modal-asignar-guardar" onclick="guardarAsignacion()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const SUPABASE_URL = 'https://wuarkraddnndmgvfnkmm.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let miPerfil = null;
+    let todosLosNodos = [];       // filas planas de v_nodes_with_workflow
+    let mapaHijosPorPadre = {};   // parent_id -> [nodos]
+    let mapaNodoPorId = {};
+    let nodosAbiertos = new Set();
+    let perfilesCache = [];       // para los desplegables de asignación
+    let nodoAsignarActual = null;
+    let nodoCrearPadre = null;    // {id, tipo} del padre al crear, o null para Buque raíz
+
+    // -------------------- Sesión y arranque --------------------
+
+    async function iniciar() {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (!session) {
+        window.location.href = 'login.html?next=arbol.html';
+        return;
+      }
+
+      const { data: perfil, error } = await supabaseClient
+        .from('profiles')
+        .select('*')
+        .eq('id', session.user.id)
+        .single();
+
+      if (error || !perfil || !perfil.activo) {
+        document.body.innerHTML = '<p style="color:red; font-weight:bold; margin-top:60px; text-align:center;">No tienes acceso.</p>';
+        return;
+      }
+
+      miPerfil = perfil;
+      document.getElementById('texto-usuario').textContent =
+        `${perfil.nombre_completo} (${perfil.username}) — ${perfil.rol}`;
+
+      if (esGestor()) {
+        document.getElementById('panel-crear-buque').style.display = 'block';
+      }
+      if (perfil.rol !== 'ADMIN') {
+        document.querySelector('button[onclick*="usuarios.html"]').style.display = 'none';
+      }
+
+      await cargarPerfiles();
+      await cargarArbol();
+    }
+
+    function esGestor() {
+      return miPerfil.rol === 'ADMIN' || miPerfil.rol === 'REVISOR';
+    }
+
+    async function cerrarSesion() {
+      await supabaseClient.auth.signOut();
+      window.location.href = 'login.html';
+    }
+
+    async function cargarPerfiles() {
+      const { data } = await supabaseClient.from('profiles').select('*').eq('activo', true);
+      perfilesCache = data || [];
+    }
+
+    // -------------------- Carga y construcción del árbol --------------------
+
+    async function cargarArbol() {
+      const { data, error } = await supabaseClient
+        .from('v_nodes_with_workflow')
+        .select('*')
+        .eq('activo', true)
+        .order('orden', { ascending: true });
+
+      const raiz = document.getElementById('arbol-raiz');
+
+      if (error) {
+        raiz.innerHTML = `<li style="color:red;">Error al cargar: ${error.message}</li>`;
+        return;
+      }
+
+      todosLosNodos = data || [];
+      mapaHijosPorPadre = {};
+      mapaNodoPorId = {};
+
+      todosLosNodos.forEach(n => {
+        mapaNodoPorId[n.id] = n;
+        const clave = n.parent_id || '__raiz__';
+        if (!mapaHijosPorPadre[clave]) mapaHijosPorPadre[clave] = [];
+        mapaHijosPorPadre[clave].push(n);
+      });
+
+      const nodosRaiz = mapaHijosPorPadre['__raiz__'] || [];
+
+      if (nodosRaiz.length === 0) {
+        raiz.innerHTML = '<li>No hay ningún Buque todavía.</li>';
+        return;
+      }
+
+      raiz.innerHTML = nodosRaiz.map(n => renderizarNodo(n)).join('');
+    }
+
+    // -------------------- Cálculo de color por consenso --------------------
+
+    function calcularEstadoPropio(nodo) {
+      if (nodo.revision_estado === 'APROBADO') return 'verde';
+      if (nodo.revision_estado === 'RECHAZADO') return 'rojo';
+      if (nodo.revision_estado === 'PENDIENTE' || nodo.revision_estado === 'EN_REVISION') return 'amarillo';
+      if (nodo.trabajo_estado === 'EN_TRABAJO') return 'azul';
+      if (nodo.trabajo_estado === 'REQUIERE_CORRECCION') return 'amarillo';
+      return 'gris';
+    }
+
+    function calcularEstadoConsenso(nodo) {
+      const hijos = mapaHijosPorPadre[nodo.id] || [];
+      if (hijos.length === 0) {
+        return calcularEstadoPropio(nodo);
+      }
+      const estadosHijos = hijos.map(h => calcularEstadoConsenso(h));
+      const primero = estadosHijos[0];
+      const todosIguales = estadosHijos.every(e => e === primero);
+      return todosIguales ? primero : null; // null = mezcla, sin color
+    }
+
+    // -------------------- Renderizado --------------------
+
+    function renderizarNodo(nodo) {
+      const hijos = mapaHijosPorPadre[nodo.id] || [];
+      const tieneHijos = hijos.length > 0;
+      const abierto = nodosAbiertos.has(nodo.id);
+      const estado = calcularEstadoConsenso(nodo);
+      const claseColor = estado ? `p-${estado}` : 'p-mezcla';
+
+      const asignadosTexto = [
+        nodo.trabajador_nombre ? `👷 ${nodo.trabajador_nombre}` : null,
+        nodo.revisor_nombre ? `🔍 ${nodo.revisor_nombre}` : null
+      ].filter(Boolean).join(' · ');
+
+      let acciones = '';
+      if (esGestor()) {
+        acciones += `<button class="pequeno" onclick="abrirModalCrear('${nodo.id}', '${nodo.tipo}')" title="Añadir hijo">+</button>`;
+        acciones += `<button class="pequeno secundario" onclick="abrirModalEditar('${nodo.id}')" title="Editar">✎</button>`;
+        acciones += `<button class="pequeno secundario" onclick="abrirModalAsignar('${nodo.id}')" title="Asignar">👤</button>`;
+        acciones += `<button class="pequeno peligro" onclick="desactivarNodo('${nodo.id}')" title="Desactivar">🗑️</button>`;
+      }
+      if (miPerfil.rol === 'TRABAJADOR' && nodo.trabajador_id === miPerfil.id) {
+        if (nodo.trabajo_estado === 'SIN_INICIAR' || nodo.trabajo_estado === 'REQUIERE_CORRECCION') {
+          acciones += `<button class="pequeno" onclick="accionMarcarEnTrabajo('${nodo.id}')">▶ Empezar</button>`;
+        } else if (nodo.trabajo_estado === 'EN_TRABAJO') {
+          acciones += `<button class="pequeno exito" onclick="accionMarcarTerminado('${nodo.id}')">✔ Terminar</button>`;
+        }
+      }
+      if ((miPerfil.rol === 'REVISOR' || miPerfil.rol === 'ADMIN') &&
+          (nodo.revisor_id === miPerfil.id || miPerfil.rol === 'ADMIN') &&
+          nodo.trabajo_estado === 'TERMINADO') {
+        acciones += `<button class="pequeno exito" onclick="accionRevisar('${nodo.id}', true)">✔ Aprobar</button>`;
+        acciones += `<button class="pequeno peligro" onclick="accionRevisar('${nodo.id}', false)">✘ Rechazar</button>`;
+      }
+
+      const html = `
+        <li class="nodo" id="li-${nodo.id}">
+          <div class="fila-nodo">
+            <span class="toggle ${tieneHijos ? '' : 'vacio'}" onclick="toggleNodo('${nodo.id}')">${abierto ? '▼' : '▶'}</span>
+            <span class="punto ${claseColor}" title="${estado || 'estados mezclados'}"></span>
+            <span class="codigo">${nodo.codigo}</span>
+            <span>${nodo.nombre}</span>
+            <span class="tipo-tag">${nodo.tipo}</span>
+            ${asignadosTexto ? `<span class="asignados">${asignadosTexto}</span>` : ''}
+            <span class="acciones">${acciones}</span>
+          </div>
+          <ul class="arbol hijos ${abierto ? 'abierto' : ''}" id="hijos-${nodo.id}">
+            ${tieneHijos ? hijos.map(h => renderizarNodo(h)).join('') : ''}
+          </ul>
+        </li>
+      `;
+      return html;
+    }
+
+    function toggleNodo(id) {
+      if (nodosAbiertos.has(id)) nodosAbiertos.delete(id);
+      else nodosAbiertos.add(id);
+
+      const ul = document.getElementById(`hijos-${id}`);
+      const toggle = document.querySelector(`#li-${id} > .fila-nodo > .toggle`);
+      if (ul) ul.classList.toggle('abierto');
+      if (toggle) toggle.textContent = nodosAbiertos.has(id) ? '▼' : '▶';
+    }
+
+    // -------------------- Crear / editar nodo --------------------
+
+    async function abrirModalCrear(parentId, parentTipo) {
+      nodoCrearPadre = parentId ? { id: parentId, tipo: parentTipo } : null;
+      document.getElementById('modal-nodo-titulo').textContent = parentId ? 'Añadir nodo hijo' : 'Añadir Buque';
+      document.getElementById('modal-nodo-codigo').value = '';
+      document.getElementById('modal-nodo-nombre').value = '';
+      document.getElementById('modal-nodo-descripcion').value = '';
+      document.getElementById('modal-nodo-orden').value = '0';
+      document.getElementById('modal-nodo-estado').textContent = '';
+      document.getElementById('modal-nodo-guardar').onclick = () => guardarNodoNuevo();
+
+      const selectTipo = document.getElementById('modal-nodo-tipo');
+      const wrapTipo = document.getElementById('modal-nodo-tipo-wrap');
+
+      if (!parentId) {
+        selectTipo.innerHTML = '<option value="BUQUE">BUQUE</option>';
+        wrapTipo.style.display = 'none';
+      } else {
+        wrapTipo.style.display = 'block';
+        const { data } = await supabaseClient
+          .from('node_type_rules')
+          .select('child_type')
+          .eq('parent_type', parentTipo);
+
+        const tipos = (data || []).map(r => r.child_type);
+        if (tipos.length === 0) {
+          selectTipo.innerHTML = '<option value="">(este tipo no admite hijos)</option>';
+        } else {
+          selectTipo.innerHTML = tipos.map(t => `<option value="${t}">${t}</option>`).join('');
+        }
+      }
+
+      document.getElementById('modal-nodo').style.display = 'flex';
+    }
+
+    async function abrirModalEditar(nodeId) {
+      const nodo = mapaNodoPorId[nodeId];
+      nodoCrearPadre = null;
+
+      document.getElementById('modal-nodo-titulo').textContent = 'Editar nodo';
+      document.getElementById('modal-nodo-tipo-wrap').style.display = 'none';
+      document.getElementById('modal-nodo-codigo').value = nodo.codigo;
+      document.getElementById('modal-nodo-nombre').value = nodo.nombre;
+      document.getElementById('modal-nodo-descripcion').value = nodo.descripcion || '';
+      document.getElementById('modal-nodo-orden').value = nodo.orden || 0;
+      document.getElementById('modal-nodo-estado').textContent = '';
+      document.getElementById('modal-nodo-guardar').onclick = () => guardarNodoEditado(nodeId);
+
+      document.getElementById('modal-nodo').style.display = 'flex';
+    }
+
+    function cerrarModalNodo() {
+      document.getElementById('modal-nodo').style.display = 'none';
+    }
+
+    async function guardarNodoNuevo() {
+      const estadoEl = document.getElementById('modal-nodo-estado');
+      const tipo = document.getElementById('modal-nodo-tipo').value;
+      const codigo = document.getElementById('modal-nodo-codigo').value.trim();
+      const nombre = document.getElementById('modal-nodo-nombre').value.trim();
+      const descripcion = document.getElementById('modal-nodo-descripcion').value.trim();
+      const orden = parseInt(document.getElementById('modal-nodo-orden').value, 10) || 0;
+
+      if (!tipo || !codigo || !nombre) {
+        estadoEl.textContent = 'Rellena tipo, código y nombre.';
+        estadoEl.className = 'estado-msg error';
+        return;
+      }
+
+      const { error } = await supabaseClient.from('nodes').insert({
+        parent_id: nodoCrearPadre ? nodoCrearPadre.id : null,
+        tipo,
+        codigo,
+        nombre,
+        descripcion: descripcion || null,
+        orden
+      });
+
+      if (error) {
+        estadoEl.textContent = 'Error: ' + error.message;
+        estadoEl.className = 'estado-msg error';
+        return;
+      }
+
+      cerrarModalNodo();
+      if (nodoCrearPadre) nodosAbiertos.add(nodoCrearPadre.id);
+      await cargarArbol();
+    }
+
+    async function guardarNodoEditado(nodeId) {
+      const estadoEl = document.getElementById('modal-nodo-estado');
+      const codigo = document.getElementById('modal-nodo-codigo').value.trim();
+      const nombre = document.getElementById('modal-nodo-nombre').value.trim();
+      const descripcion = document.getElementById('modal-nodo-descripcion').value.trim();
+      const orden = parseInt(document.getElementById('modal-nodo-orden').value, 10) || 0;
+
+      if (!codigo || !nombre) {
+        estadoEl.textContent = 'Rellena código y nombre.';
+        estadoEl.className = 'estado-msg error';
+        return;
+      }
+
+      const { error } = await supabaseClient
+        .from('nodes')
+        .update({ codigo, nombre, descripcion: descripcion || null, orden })
+        .eq('id', nodeId);
+
+      if (error) {
+        estadoEl.textContent = 'Error: ' + error.message;
+        estadoEl.className = 'estado-msg error';
+        return;
+      }
+
+      cerrarModalNodo();
+      await cargarArbol();
+    }
+
+    async function desactivarNodo(nodeId) {
+      const nodo = mapaNodoPorId[nodeId];
+      const tieneHijos = (mapaHijosPorPadre[nodeId] || []).length > 0;
+
+      if (tieneHijos) {
+        alert('Este nodo tiene hijos. Desactívalos primero (no se puede desactivar un nodo con hijos activos).');
+        return;
+      }
+      if (!confirm(`¿Desactivar "${nodo.codigo} - ${nodo.nombre}"? No se borra, solo deja de aparecer en el árbol.`)) {
+        return;
+      }
+
+      const { error } = await supabaseClient.from('nodes').update({ activo: false }).eq('id', nodeId);
+      if (error) {
+        alert('Error: ' + error.message);
+        return;
+      }
+      await cargarArbol();
+    }
+
+    // -------------------- Asignar trabajador / revisor --------------------
+
+    function abrirModalAsignar(nodeId) {
+      nodoAsignarActual = nodeId;
+      const nodo = mapaNodoPorId[nodeId];
+
+      const selTrab = document.getElementById('modal-asignar-trabajador');
+      const selRev = document.getElementById('modal-asignar-revisor');
+
+      selTrab.innerHTML = '<option value="">— Sin asignar —</option>' +
+        perfilesCache.map(p => `<option value="${p.id}" ${p.id === nodo.trabajador_id ? 'selected' : ''}>${p.nombre_completo} (${p.rol})</option>`).join('');
+
+      const revisores = perfilesCache.filter(p => p.rol === 'REVISOR' || p.rol === 'ADMIN');
+      selRev.innerHTML = '<option value="">— Sin asignar —</option>' +
+        revisores.map(p => `<option value="${p.id}" ${p.id === nodo.revisor_id ? 'selected' : ''}>${p.nombre_completo} (${p.rol})</option>`).join('');
+
+      document.getElementById('modal-asignar-estado').textContent = '';
+      document.getElementById('modal-asignar').style.display = 'flex';
+    }
+
+    function cerrarModalAsignar() {
+      document.getElementById('modal-asignar').style.display = 'none';
+    }
+
+    async function guardarAsignacion() {
+      const estadoEl = document.getElementById('modal-asignar-estado');
+      const trabajadorId = document.getElementById('modal-asignar-trabajador').value || null;
+      const revisorId = document.getElementById('modal-asignar-revisor').value || null;
+
+      const { error } = await supabaseClient.rpc('asignar_trabajo', {
+        p_node_id: nodoAsignarActual,
+        p_trabajador_id: trabajadorId,
+        p_revisor_id: revisorId
+      });
+
+      if (error) {
+        estadoEl.textContent = 'Error: ' + error.message;
+        estadoEl.className = 'estado-msg error';
+        return;
+      }
+
+      cerrarModalAsignar();
+      await cargarArbol();
+    }
+
+    // -------------------- Acciones de workflow --------------------
+
+    async function accionMarcarEnTrabajo(nodeId) {
+      const { error } = await supabaseClient.rpc('marcar_en_trabajo', { p_node_id: nodeId });
+      if (error) { alert('Error: ' + error.message); return; }
+      await cargarArbol();
+    }
+
+    async function accionMarcarTerminado(nodeId) {
+      if (!confirm('¿Marcar este trabajo como terminado y enviarlo a revisión?')) return;
+      const { error } = await supabaseClient.rpc('marcar_terminado', { p_node_id: nodeId });
+      if (error) { alert('Error: ' + error.message); return; }
+      await cargarArbol();
+    }
+
+    async function accionRevisar(nodeId, aprobado) {
+      let comentario = null;
+      if (!aprobado) {
+        comentario = prompt('Motivo del rechazo (obligatorio):');
+        if (!comentario || !comentario.trim()) { return; }
+      }
+      const { error } = await supabaseClient.rpc('revisar_nodo', {
+        p_node_id: nodeId,
+        p_aprobado: aprobado,
+        p_comentario: comentario
+      });
+      if (error) { alert('Error: ' + error.message); return; }
+      await cargarArbol();
+    }
+
+    iniciar();
+  </script>
+</body>
+</html>
