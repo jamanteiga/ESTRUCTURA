@@ -42,7 +42,7 @@
 
     function obtenerParametroNext() {
       const params = new URLSearchParams(window.location.search);
-      return params.get('next') || 'usuarios.html';
+      return params.get('next') || 'index.html';
     }
 
     document.getElementById('form-login').addEventListener('submit', async (e) => {

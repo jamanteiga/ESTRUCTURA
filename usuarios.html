@@ -64,7 +64,10 @@
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <span id="texto-sesion-activa" class="estado ok"></span>
-        <button onclick="cerrarSesion()">Cerrar sesión</button>
+        <div>
+          <button onclick="location.href='index.html'" style="background:#6c757d;">🏠 Inicio</button>
+          <button onclick="cerrarSesion()">Cerrar sesión</button>
+        </div>
       </div>
     </div>
 
@@ -195,7 +198,14 @@
       btn.textContent = 'Crear usuario';
 
       if (error) {
-        estadoEl.textContent = 'Error: ' + (error.message || JSON.stringify(error));
+        let mensaje = error.message || JSON.stringify(error);
+        if (error.context && typeof error.context.json === 'function') {
+          try {
+            const cuerpo = await error.context.json();
+            if (cuerpo && cuerpo.error) mensaje = cuerpo.error;
+          } catch (e) { /* si no se puede leer el cuerpo, nos quedamos con el mensaje genérico */ }
+        }
+        estadoEl.textContent = 'Error: ' + mensaje;
         estadoEl.className = 'estado error';
         return;
       }
@@ -291,7 +301,14 @@
       });
 
       if (error) {
-        alert('Error: ' + (error.message || JSON.stringify(error)));
+        let mensaje = error.message || JSON.stringify(error);
+        if (error.context && typeof error.context.json === 'function') {
+          try {
+            const cuerpo = await error.context.json();
+            if (cuerpo && cuerpo.error) mensaje = cuerpo.error;
+          } catch (e) { /* nos quedamos con el mensaje genérico */ }
+        }
+        alert('Error: ' + mensaje);
         return;
       }
       if (data && data.error) {
