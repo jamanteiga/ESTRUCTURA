@@ -31,13 +31,15 @@
     ul.arbol { list-style: none; padding-left: 18px; margin: 0; }
     ul.arbol.raiz { padding-left: 0; }
     li.nodo { margin: 2px 0; }
-    .fila-nodo { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 4px; }
+    .fila-nodo { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 4px; flex-wrap: wrap; }
     .fila-nodo:hover { background: rgba(0,123,255,0.06); }
     .toggle { width: 16px; cursor: pointer; text-align: center; user-select: none; color: #666; font-size: 11px; }
     .toggle.vacio { visibility: hidden; }
     .codigo { font-weight: bold; }
     .tipo-tag { font-size: 10px; background: #e9ecef; padding: 1px 6px; border-radius: 10px; color: #555; }
     .asignados { font-size: 11px; color: #888; }
+    .asignados .fecha { color: #aaa; font-size: 10px; }
+    .motivo-rechazo { font-size: 11px; color: #dc3545; font-style: italic; width: 100%; padding-left: 26px; }
     .acciones { display: flex; gap: 4px; margin-left: auto; }
     .hijos { display: none; }
     .hijos.abierto { display: block; }
@@ -46,7 +48,7 @@
       display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0,0,0,0.55); align-items: center; justify-content: center; z-index: 1000;
     }
-    .overlay-caja { background: white; border-radius: 8px; padding: 22px; max-width: 420px; width: 90%; }
+    .overlay-caja { background: white; border-radius: 8px; padding: 22px; max-width: 440px; width: 90%; }
     .overlay-caja h3 { margin-top: 0; font-size: 16px; }
     .overlay-caja label { display: block; font-weight: bold; font-size: 12px; margin: 10px 0 4px; }
     .overlay-caja input, .overlay-caja select, .overlay-caja textarea {
@@ -56,6 +58,24 @@
     .estado-msg { font-size: 12px; margin-top: 8px; }
     .error { color: #dc3545; }
     .ok { color: #218838; }
+
+    .lista-mover { max-height: 260px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; margin-top: 6px; }
+    .opcion-mover { padding: 6px 10px; font-size: 12px; cursor: pointer; border-bottom: 1px solid #eee; }
+    .opcion-mover:hover { background: #eef3ff; }
+    .opcion-mover.seleccionada { background: #007bff; color: white; }
+
+    .aviso {
+      position: fixed; top: 16px; right: 16px; max-width: 340px; z-index: 2000;
+      background: #fff; border-left: 5px solid #007bff; box-shadow: 0 4px 14px rgba(0,0,0,0.2);
+      border-radius: 6px; padding: 12px 14px; font-size: 13px; animation: entrada 0.2s ease-out;
+    }
+    .aviso.rechazo { border-left-color: #dc3545; }
+    .aviso.aprobado { border-left-color: #28a745; }
+    .aviso.pendiente { border-left-color: #ffc107; }
+    .aviso strong { display: block; margin-bottom: 4px; }
+    .aviso .ruta { color: #666; font-size: 11px; margin-top: 4px; }
+    .aviso .cerrar-aviso { float: right; cursor: pointer; color: #999; font-weight: bold; }
+    @keyframes entrada { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
   </style>
 </head>
 <body>
@@ -89,7 +109,6 @@
     </ul>
   </div>
 
-  <!-- Modal crear/editar nodo -->
   <div class="overlay" id="modal-nodo">
     <div class="overlay-caja">
       <h3 id="modal-nodo-titulo">Nuevo nodo</h3>
@@ -108,12 +127,11 @@
       <div class="estado-msg" id="modal-nodo-estado"></div>
       <div class="overlay-botones">
         <button class="secundario" onclick="cerrarModalNodo()">Cancelar</button>
-        <button id="modal-nodo-guardar" onclick="guardarNodo()">Guardar</button>
+        <button id="modal-nodo-guardar">Guardar</button>
       </div>
     </div>
   </div>
 
-  <!-- Modal asignar trabajador/revisor -->
   <div class="overlay" id="modal-asignar">
     <div class="overlay-caja">
       <h3>Asignar trabajador / revisor</h3>
@@ -124,10 +142,26 @@
       <div class="estado-msg" id="modal-asignar-estado"></div>
       <div class="overlay-botones">
         <button class="secundario" onclick="cerrarModalAsignar()">Cancelar</button>
-        <button id="modal-asignar-guardar" onclick="guardarAsignacion()">Guardar</button>
+        <button onclick="guardarAsignacion()">Guardar</button>
       </div>
     </div>
   </div>
+
+  <div class="overlay" id="modal-mover">
+    <div class="overlay-caja">
+      <h3>Mover nodo</h3>
+      <p style="font-size:12px; color:#666;">Elige el nuevo nodo padre. Solo se listan los sitios donde este tipo de nodo puede colocarse.</p>
+      <input type="text" id="modal-mover-buscar" placeholder="Buscar por código o nombre...">
+      <div class="lista-mover" id="modal-mover-lista"></div>
+      <div class="estado-msg" id="modal-mover-estado"></div>
+      <div class="overlay-botones">
+        <button class="secundario" onclick="cerrarModalMover()">Cancelar</button>
+        <button onclick="confirmarMover()">Mover aquí</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="contenedor-avisos"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
@@ -136,28 +170,43 @@
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     let miPerfil = null;
-    let todosLosNodos = [];       // filas planas de v_nodes_with_workflow
-    let mapaHijosPorPadre = {};   // parent_id -> [nodos]
+    let todosLosNodos = [];
+    let mapaHijosPorPadre = {};
     let mapaNodoPorId = {};
     let nodosAbiertos = new Set();
-    let perfilesCache = [];       // para los desplegables de asignación
+    let perfilesCache = [];
     let nodoAsignarActual = null;
-    let nodoCrearPadre = null;    // {id, tipo} del padre al crear, o null para Buque raíz
+    let nodoCrearPadre = null;
+    let nodoMoverActual = null;
+    let parentIdSeleccionadoParaMover = null;
 
-    // -------------------- Sesión y arranque --------------------
+    function formatearFechaHora(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      const mes = String(d.getMonth() + 1).padStart(2, '0');
+      const aaaa = d.getFullYear();
+      return `${hh}:${mm} ${dd}/${mes}/${aaaa}`;
+    }
+
+    function rutaCompleta(nodo) {
+      const partes = [];
+      let actual = nodo;
+      while (actual) {
+        partes.unshift(`${actual.tipo} ${actual.codigo}`);
+        actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
+      }
+      return partes.join(' › ');
+    }
 
     async function iniciar() {
       const { data: { session } } = await supabaseClient.auth.getSession();
-      if (!session) {
-        window.location.href = 'login.html?next=arbol.html';
-        return;
-      }
+      if (!session) { window.location.href = 'login.html?next=arbol.html'; return; }
 
       const { data: perfil, error } = await supabaseClient
-        .from('profiles')
-        .select('*')
-        .eq('id', session.user.id)
-        .single();
+        .from('profiles').select('*').eq('id', session.user.id).single();
 
       if (error || !perfil || !perfil.activo) {
         document.body.innerHTML = '<p style="color:red; font-weight:bold; margin-top:60px; text-align:center;">No tienes acceso.</p>';
@@ -168,20 +217,15 @@
       document.getElementById('texto-usuario').textContent =
         `${perfil.nombre_completo} (${perfil.username}) — ${perfil.rol}`;
 
-      if (esGestor()) {
-        document.getElementById('panel-crear-buque').style.display = 'block';
-      }
-      if (perfil.rol !== 'ADMIN') {
-        document.querySelector('button[onclick*="usuarios.html"]').style.display = 'none';
-      }
+      if (esGestor()) document.getElementById('panel-crear-buque').style.display = 'block';
+      if (perfil.rol !== 'ADMIN') document.querySelector('button[onclick*="usuarios.html"]').style.display = 'none';
 
       await cargarPerfiles();
       await cargarArbol();
+      suscribirseARealtime();
     }
 
-    function esGestor() {
-      return miPerfil.rol === 'ADMIN' || miPerfil.rol === 'REVISOR';
-    }
+    function esGestor() { return miPerfil.rol === 'ADMIN' || miPerfil.rol === 'REVISOR'; }
 
     async function cerrarSesion() {
       await supabaseClient.auth.signOut();
@@ -193,21 +237,12 @@
       perfilesCache = data || [];
     }
 
-    // -------------------- Carga y construcción del árbol --------------------
-
     async function cargarArbol() {
       const { data, error } = await supabaseClient
-        .from('v_nodes_with_workflow')
-        .select('*')
-        .eq('activo', true)
-        .order('orden', { ascending: true });
+        .from('v_nodes_with_workflow').select('*').eq('activo', true).order('orden', { ascending: true });
 
       const raiz = document.getElementById('arbol-raiz');
-
-      if (error) {
-        raiz.innerHTML = `<li style="color:red;">Error al cargar: ${error.message}</li>`;
-        return;
-      }
+      if (error) { raiz.innerHTML = `<li style="color:red;">Error al cargar: ${error.message}</li>`; return; }
 
       todosLosNodos = data || [];
       mapaHijosPorPadre = {};
@@ -221,16 +256,10 @@
       });
 
       const nodosRaiz = mapaHijosPorPadre['__raiz__'] || [];
-
-      if (nodosRaiz.length === 0) {
-        raiz.innerHTML = '<li>No hay ningún Buque todavía.</li>';
-        return;
-      }
-
-      raiz.innerHTML = nodosRaiz.map(n => renderizarNodo(n)).join('');
+      raiz.innerHTML = nodosRaiz.length === 0
+        ? '<li>No hay ningún Buque todavía.</li>'
+        : nodosRaiz.map(n => renderizarNodo(n)).join('');
     }
-
-    // -------------------- Cálculo de color por consenso --------------------
 
     function calcularEstadoPropio(nodo) {
       if (nodo.revision_estado === 'APROBADO') return 'verde';
@@ -243,16 +272,11 @@
 
     function calcularEstadoConsenso(nodo) {
       const hijos = mapaHijosPorPadre[nodo.id] || [];
-      if (hijos.length === 0) {
-        return calcularEstadoPropio(nodo);
-      }
+      if (hijos.length === 0) return calcularEstadoPropio(nodo);
       const estadosHijos = hijos.map(h => calcularEstadoConsenso(h));
       const primero = estadosHijos[0];
-      const todosIguales = estadosHijos.every(e => e === primero);
-      return todosIguales ? primero : null; // null = mezcla, sin color
+      return estadosHijos.every(e => e === primero) ? primero : null;
     }
-
-    // -------------------- Renderizado --------------------
 
     function renderizarNodo(nodo) {
       const hijos = mapaHijosPorPadre[nodo.id] || [];
@@ -261,15 +285,25 @@
       const estado = calcularEstadoConsenso(nodo);
       const claseColor = estado ? `p-${estado}` : 'p-mezcla';
 
-      const asignadosTexto = [
-        nodo.trabajador_nombre ? `👷 ${nodo.trabajador_nombre}` : null,
-        nodo.revisor_nombre ? `🔍 ${nodo.revisor_nombre}` : null
-      ].filter(Boolean).join(' · ');
+      const fechaTrabajador = nodo.trabajo_terminado_en
+        ? formatearFechaHora(nodo.trabajo_terminado_en)
+        : (nodo.trabajo_iniciado_en ? formatearFechaHora(nodo.trabajo_iniciado_en) : '');
+      const fechaRevisor = nodo.revisado_en ? formatearFechaHora(nodo.revisado_en) : '';
+
+      const asignadosPartes = [];
+      if (nodo.trabajador_nombre) {
+        asignadosPartes.push(`👷 ${nodo.trabajador_nombre}${fechaTrabajador ? ` <span class="fecha">(${fechaTrabajador})</span>` : ''}`);
+      }
+      if (nodo.revisor_nombre) {
+        asignadosPartes.push(`🔍 ${nodo.revisor_nombre}${fechaRevisor ? ` <span class="fecha">(${fechaRevisor})</span>` : ''}`);
+      }
+      const asignadosTexto = asignadosPartes.join(' · ');
 
       let acciones = '';
       if (esGestor()) {
         acciones += `<button class="pequeno" onclick="abrirModalCrear('${nodo.id}', '${nodo.tipo}')" title="Añadir hijo">+</button>`;
         acciones += `<button class="pequeno secundario" onclick="abrirModalEditar('${nodo.id}')" title="Editar">✎</button>`;
+        acciones += `<button class="pequeno secundario" onclick="abrirModalMover('${nodo.id}')" title="Mover">↔️</button>`;
         acciones += `<button class="pequeno secundario" onclick="abrirModalAsignar('${nodo.id}')" title="Asignar">👤</button>`;
         acciones += `<button class="pequeno peligro" onclick="desactivarNodo('${nodo.id}')" title="Desactivar">🗑️</button>`;
       }
@@ -280,14 +314,15 @@
           acciones += `<button class="pequeno exito" onclick="accionMarcarTerminado('${nodo.id}')">✔ Terminar</button>`;
         }
       }
-      if ((miPerfil.rol === 'REVISOR' || miPerfil.rol === 'ADMIN') &&
-          (nodo.revisor_id === miPerfil.id || miPerfil.rol === 'ADMIN') &&
-          nodo.trabajo_estado === 'TERMINADO') {
+      if ((nodo.revisor_id === miPerfil.id || miPerfil.rol === 'ADMIN') && nodo.trabajo_estado === 'TERMINADO') {
         acciones += `<button class="pequeno exito" onclick="accionRevisar('${nodo.id}', true)">✔ Aprobar</button>`;
         acciones += `<button class="pequeno peligro" onclick="accionRevisar('${nodo.id}', false)">✘ Rechazar</button>`;
       }
 
-      const html = `
+      const motivoRechazo = (nodo.revision_estado === 'RECHAZADO' && nodo.comentario_revision)
+        ? `<div class="motivo-rechazo">✘ Motivo: ${nodo.comentario_revision}</div>` : '';
+
+      return `
         <li class="nodo" id="li-${nodo.id}">
           <div class="fila-nodo">
             <span class="toggle ${tieneHijos ? '' : 'vacio'}" onclick="toggleNodo('${nodo.id}')">${abierto ? '▼' : '▶'}</span>
@@ -297,26 +332,22 @@
             <span class="tipo-tag">${nodo.tipo}</span>
             ${asignadosTexto ? `<span class="asignados">${asignadosTexto}</span>` : ''}
             <span class="acciones">${acciones}</span>
+            ${motivoRechazo}
           </div>
           <ul class="arbol hijos ${abierto ? 'abierto' : ''}" id="hijos-${nodo.id}">
             ${tieneHijos ? hijos.map(h => renderizarNodo(h)).join('') : ''}
           </ul>
         </li>
       `;
-      return html;
     }
 
     function toggleNodo(id) {
-      if (nodosAbiertos.has(id)) nodosAbiertos.delete(id);
-      else nodosAbiertos.add(id);
-
+      if (nodosAbiertos.has(id)) nodosAbiertos.delete(id); else nodosAbiertos.add(id);
       const ul = document.getElementById(`hijos-${id}`);
       const toggle = document.querySelector(`#li-${id} > .fila-nodo > .toggle`);
       if (ul) ul.classList.toggle('abierto');
       if (toggle) toggle.textContent = nodosAbiertos.has(id) ? '▼' : '▶';
     }
-
-    // -------------------- Crear / editar nodo --------------------
 
     async function abrirModalCrear(parentId, parentTipo) {
       nodoCrearPadre = parentId ? { id: parentId, tipo: parentTipo } : null;
@@ -336,26 +367,17 @@
         wrapTipo.style.display = 'none';
       } else {
         wrapTipo.style.display = 'block';
-        const { data } = await supabaseClient
-          .from('node_type_rules')
-          .select('child_type')
-          .eq('parent_type', parentTipo);
-
+        const { data } = await supabaseClient.from('node_type_rules').select('child_type').eq('parent_type', parentTipo);
         const tipos = (data || []).map(r => r.child_type);
-        if (tipos.length === 0) {
-          selectTipo.innerHTML = '<option value="">(este tipo no admite hijos)</option>';
-        } else {
-          selectTipo.innerHTML = tipos.map(t => `<option value="${t}">${t}</option>`).join('');
-        }
+        selectTipo.innerHTML = tipos.length === 0
+          ? '<option value="">(este tipo no admite hijos)</option>'
+          : tipos.map(t => `<option value="${t}">${t}</option>`).join('');
       }
-
       document.getElementById('modal-nodo').style.display = 'flex';
     }
 
     async function abrirModalEditar(nodeId) {
       const nodo = mapaNodoPorId[nodeId];
-      nodoCrearPadre = null;
-
       document.getElementById('modal-nodo-titulo').textContent = 'Editar nodo';
       document.getElementById('modal-nodo-tipo-wrap').style.display = 'none';
       document.getElementById('modal-nodo-codigo').value = nodo.codigo;
@@ -364,13 +386,10 @@
       document.getElementById('modal-nodo-orden').value = nodo.orden || 0;
       document.getElementById('modal-nodo-estado').textContent = '';
       document.getElementById('modal-nodo-guardar').onclick = () => guardarNodoEditado(nodeId);
-
       document.getElementById('modal-nodo').style.display = 'flex';
     }
 
-    function cerrarModalNodo() {
-      document.getElementById('modal-nodo').style.display = 'none';
-    }
+    function cerrarModalNodo() { document.getElementById('modal-nodo').style.display = 'none'; }
 
     async function guardarNodoNuevo() {
       const estadoEl = document.getElementById('modal-nodo-estado');
@@ -381,25 +400,14 @@
       const orden = parseInt(document.getElementById('modal-nodo-orden').value, 10) || 0;
 
       if (!tipo || !codigo || !nombre) {
-        estadoEl.textContent = 'Rellena tipo, código y nombre.';
-        estadoEl.className = 'estado-msg error';
-        return;
+        estadoEl.textContent = 'Rellena tipo, código y nombre.'; estadoEl.className = 'estado-msg error'; return;
       }
 
       const { error } = await supabaseClient.from('nodes').insert({
-        parent_id: nodoCrearPadre ? nodoCrearPadre.id : null,
-        tipo,
-        codigo,
-        nombre,
-        descripcion: descripcion || null,
-        orden
+        parent_id: nodoCrearPadre ? nodoCrearPadre.id : null, tipo, codigo, nombre, descripcion: descripcion || null, orden
       });
 
-      if (error) {
-        estadoEl.textContent = 'Error: ' + error.message;
-        estadoEl.className = 'estado-msg error';
-        return;
-      }
+      if (error) { estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado-msg error'; return; }
 
       cerrarModalNodo();
       if (nodoCrearPadre) nodosAbiertos.add(nodoCrearPadre.id);
@@ -413,22 +421,12 @@
       const descripcion = document.getElementById('modal-nodo-descripcion').value.trim();
       const orden = parseInt(document.getElementById('modal-nodo-orden').value, 10) || 0;
 
-      if (!codigo || !nombre) {
-        estadoEl.textContent = 'Rellena código y nombre.';
-        estadoEl.className = 'estado-msg error';
-        return;
-      }
+      if (!codigo || !nombre) { estadoEl.textContent = 'Rellena código y nombre.'; estadoEl.className = 'estado-msg error'; return; }
 
-      const { error } = await supabaseClient
-        .from('nodes')
-        .update({ codigo, nombre, descripcion: descripcion || null, orden })
-        .eq('id', nodeId);
+      const { error } = await supabaseClient.from('nodes')
+        .update({ codigo, nombre, descripcion: descripcion || null, orden }).eq('id', nodeId);
 
-      if (error) {
-        estadoEl.textContent = 'Error: ' + error.message;
-        estadoEl.className = 'estado-msg error';
-        return;
-      }
+      if (error) { estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado-msg error'; return; }
 
       cerrarModalNodo();
       await cargarArbol();
@@ -436,30 +434,95 @@
 
     async function desactivarNodo(nodeId) {
       const nodo = mapaNodoPorId[nodeId];
-      const tieneHijos = (mapaHijosPorPadre[nodeId] || []).length > 0;
-
-      if (tieneHijos) {
-        alert('Este nodo tiene hijos. Desactívalos primero (no se puede desactivar un nodo con hijos activos).');
-        return;
+      if ((mapaHijosPorPadre[nodeId] || []).length > 0) {
+        alert('Este nodo tiene hijos. Desactívalos primero.'); return;
       }
-      if (!confirm(`¿Desactivar "${nodo.codigo} - ${nodo.nombre}"? No se borra, solo deja de aparecer en el árbol.`)) {
-        return;
-      }
+      if (!confirm(`¿Desactivar "${nodo.codigo} - ${nodo.nombre}"? No se borra, solo deja de aparecer.`)) return;
 
       const { error } = await supabaseClient.from('nodes').update({ activo: false }).eq('id', nodeId);
-      if (error) {
-        alert('Error: ' + error.message);
-        return;
-      }
+      if (error) { alert('Error: ' + error.message); return; }
       await cargarArbol();
     }
 
-    // -------------------- Asignar trabajador / revisor --------------------
+    async function abrirModalMover(nodeId) {
+      nodoMoverActual = mapaNodoPorId[nodeId];
+      parentIdSeleccionadoParaMover = null;
+      document.getElementById('modal-mover-estado').textContent = '';
+      document.getElementById('modal-mover-buscar').value = '';
+
+      const { data: reglas } = await supabaseClient
+        .from('node_type_rules').select('parent_type').eq('child_type', nodoMoverActual.tipo);
+      const tiposPadreValidos = new Set((reglas || []).map(r => r.parent_type));
+
+      const candidatos = todosLosNodos.filter(n =>
+        tiposPadreValidos.has(n.tipo) &&
+        n.id !== nodoMoverActual.id &&
+        n.id !== nodoMoverActual.parent_id &&
+        !esDescendiente(n.id, nodoMoverActual.id)
+      );
+
+      renderizarListaMover(candidatos);
+      document.getElementById('modal-mover-buscar').oninput = (e) => {
+        const q = e.target.value.trim().toLowerCase();
+        const filtrados = candidatos.filter(n =>
+          n.codigo.toLowerCase().includes(q) || n.nombre.toLowerCase().includes(q)
+        );
+        renderizarListaMover(filtrados);
+      };
+
+      document.getElementById('modal-mover').style.display = 'flex';
+    }
+
+    function esDescendiente(posibleDescendienteId, deId) {
+      let actual = mapaNodoPorId[posibleDescendienteId];
+      while (actual && actual.parent_id) {
+        if (actual.parent_id === deId) return true;
+        actual = mapaNodoPorId[actual.parent_id];
+      }
+      return false;
+    }
+
+    function renderizarListaMover(lista) {
+      const cont = document.getElementById('modal-mover-lista');
+      if (lista.length === 0) {
+        cont.innerHTML = '<div class="opcion-mover">No hay ningún sitio válido para mover este nodo.</div>';
+        return;
+      }
+      cont.innerHTML = lista.map(n => `
+        <div class="opcion-mover" data-id="${n.id}" onclick="seleccionarDestinoMover('${n.id}')">
+          ${rutaCompleta(n)}
+        </div>
+      `).join('');
+    }
+
+    function seleccionarDestinoMover(id) {
+      parentIdSeleccionadoParaMover = id;
+      document.querySelectorAll('.opcion-mover').forEach(el => el.classList.remove('seleccionada'));
+      const el = document.querySelector(`.opcion-mover[data-id="${id}"]`);
+      if (el) el.classList.add('seleccionada');
+    }
+
+    function cerrarModalMover() { document.getElementById('modal-mover').style.display = 'none'; }
+
+    async function confirmarMover() {
+      const estadoEl = document.getElementById('modal-mover-estado');
+      if (!parentIdSeleccionadoParaMover) {
+        estadoEl.textContent = 'Elige un destino de la lista.'; estadoEl.className = 'estado-msg error'; return;
+      }
+
+      const { error } = await supabaseClient.from('nodes')
+        .update({ parent_id: parentIdSeleccionadoParaMover }).eq('id', nodoMoverActual.id);
+
+      if (error) { estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado-msg error'; return; }
+
+      cerrarModalMover();
+      nodosAbiertos.add(parentIdSeleccionadoParaMover);
+      await cargarArbol();
+    }
 
     function abrirModalAsignar(nodeId) {
       nodoAsignarActual = nodeId;
       const nodo = mapaNodoPorId[nodeId];
-
       const selTrab = document.getElementById('modal-asignar-trabajador');
       const selRev = document.getElementById('modal-asignar-revisor');
 
@@ -474,9 +537,7 @@
       document.getElementById('modal-asignar').style.display = 'flex';
     }
 
-    function cerrarModalAsignar() {
-      document.getElementById('modal-asignar').style.display = 'none';
-    }
+    function cerrarModalAsignar() { document.getElementById('modal-asignar').style.display = 'none'; }
 
     async function guardarAsignacion() {
       const estadoEl = document.getElementById('modal-asignar-estado');
@@ -484,22 +545,14 @@
       const revisorId = document.getElementById('modal-asignar-revisor').value || null;
 
       const { error } = await supabaseClient.rpc('asignar_trabajo', {
-        p_node_id: nodoAsignarActual,
-        p_trabajador_id: trabajadorId,
-        p_revisor_id: revisorId
+        p_node_id: nodoAsignarActual, p_trabajador_id: trabajadorId, p_revisor_id: revisorId
       });
 
-      if (error) {
-        estadoEl.textContent = 'Error: ' + error.message;
-        estadoEl.className = 'estado-msg error';
-        return;
-      }
+      if (error) { estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado-msg error'; return; }
 
       cerrarModalAsignar();
       await cargarArbol();
     }
-
-    // -------------------- Acciones de workflow --------------------
 
     async function accionMarcarEnTrabajo(nodeId) {
       const { error } = await supabaseClient.rpc('marcar_en_trabajo', { p_node_id: nodeId });
@@ -518,14 +571,71 @@
       let comentario = null;
       if (!aprobado) {
         comentario = prompt('Motivo del rechazo (obligatorio):');
-        if (!comentario || !comentario.trim()) { return; }
+        if (!comentario || !comentario.trim()) return;
       }
-      const { error } = await supabaseClient.rpc('revisar_nodo', {
-        p_node_id: nodeId,
-        p_aprobado: aprobado,
-        p_comentario: comentario
-      });
+      const { error } = await supabaseClient.rpc('revisar_nodo', { p_node_id: nodeId, p_aprobado: aprobado, p_comentario: comentario });
       if (error) { alert('Error: ' + error.message); return; }
+      await cargarArbol();
+    }
+
+    function mostrarAviso(tipo, titulo, detalle, ruta) {
+      const cont = document.getElementById('contenedor-avisos');
+      const id = 'aviso-' + Date.now() + Math.random().toString(36).slice(2);
+      const div = document.createElement('div');
+      div.className = `aviso ${tipo}`;
+      div.id = id;
+      div.innerHTML = `
+        <span class="cerrar-aviso" onclick="document.getElementById('${id}').remove()">✕</span>
+        <strong>${titulo}</strong>
+        ${detalle}
+        ${ruta ? `<div class="ruta">${ruta}</div>` : ''}
+      `;
+      cont.appendChild(div);
+      setTimeout(() => { const el = document.getElementById(id); if (el) el.remove(); }, 15000);
+    }
+
+    function suscribirseARealtime() {
+      supabaseClient
+        .channel('node_workflow_cambios')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'node_workflow' }, async (payload) => {
+          await procesarEventoRealtime(payload);
+        })
+        .subscribe();
+    }
+
+    async function procesarEventoRealtime(payload) {
+      const fila = payload.new;
+      const filaAnterior = payload.old || {};
+      if (!fila || !fila.node_id) return;
+
+      if (!mapaNodoPorId[fila.node_id]) {
+        await cargarArbol();
+      }
+      const nodo = mapaNodoPorId[fila.node_id];
+      if (!nodo) return;
+      const ruta = rutaCompleta(nodo);
+
+      if (fila.trabajador_id === miPerfil.id && filaAnterior.trabajador_id !== miPerfil.id) {
+        mostrarAviso('pendiente', '📋 Nueva tarea asignada', 'Te han asignado esta tarea para trabajar en ella.', ruta);
+      }
+
+      if (fila.revisor_id === miPerfil.id && filaAnterior.revisor_id !== miPerfil.id) {
+        mostrarAviso('pendiente', '🔍 Nueva asignación de revisión', 'Te han asignado como revisor de este nodo.', ruta);
+      }
+
+      if (fila.trabajador_id === miPerfil.id && fila.revision_estado === 'RECHAZADO' && filaAnterior.revision_estado !== 'RECHAZADO') {
+        mostrarAviso('rechazo', '✘ Tarea rechazada', fila.comentario_revision ? `Motivo: ${fila.comentario_revision}` : 'Revisa los comentarios.', ruta);
+      }
+
+      if (fila.trabajador_id === miPerfil.id && fila.revision_estado === 'APROBADO' && filaAnterior.revision_estado !== 'APROBADO') {
+        mostrarAviso('aprobado', '✔ Tarea aprobada', '¡Bien hecho!', ruta);
+      }
+
+      if ((fila.revisor_id === miPerfil.id || miPerfil.rol === 'ADMIN') &&
+          fila.trabajo_estado === 'TERMINADO' && filaAnterior.trabajo_estado !== 'TERMINADO') {
+        mostrarAviso('pendiente', '📥 Pendiente de revisión', 'Un trabajador ha terminado una tarea asignada a ti.', ruta);
+      }
+
       await cargarArbol();
     }
 
