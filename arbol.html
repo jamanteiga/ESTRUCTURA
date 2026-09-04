@@ -84,19 +84,58 @@
     .aviso .ruta { color: #666; font-size: 11px; margin-top: 4px; }
     .aviso .cerrar-aviso { float: right; cursor: pointer; color: #999; font-weight: bold; }
     @keyframes entrada { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+
+    /* ---- Menú hamburguesa ---- */
+    .btn-hamburguesa {
+      background: #fff; border: 2px solid #007bff; width: 42px; height: 42px; border-radius: 8px;
+      cursor: pointer; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4px;
+      padding: 0;
+    }
+    .btn-hamburguesa span { display: block; width: 22px; height: 3px; background: #007bff; border-radius: 2px; }
+
+    .menu-overlay-fondo {
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.4); z-index: 3000;
+    }
+    .menu-panel {
+      position: fixed; top: 0; left: 0; width: 320px; max-width: 90%; height: 100%;
+      background: #fff; box-shadow: 2px 0 16px rgba(0,0,0,0.25); overflow-y: auto;
+      transform: translateX(-100%); transition: transform 0.2s ease-out;
+    }
+    .menu-overlay-fondo.abierto { display: block; }
+    .menu-overlay-fondo.abierto .menu-panel { transform: translateX(0); }
+
+    .menu-buscador-wrap { padding: 16px; border-bottom: 1px solid #eee; }
+    .menu-buscador-wrap input {
+      width: 100%; padding: 10px 12px; border: 1px solid #007bff; border-radius: 20px; font-size: 14px; box-sizing: border-box;
+    }
+
+    .menu-cerrar { position: absolute; top: 12px; right: 14px; font-size: 20px; color: #999; cursor: pointer; background:none; border:none; }
+
+    .menu-seccion-titulo {
+      display: flex; justify-content: space-between; align-items: center; padding: 14px 16px;
+      font-weight: bold; color: #003399; font-size: 13px; letter-spacing: 0.5px; cursor: pointer;
+      border-top: 1px solid #ddd; text-transform: uppercase;
+    }
+    .menu-seccion-titulo .flecha { transition: transform 0.15s; color: #007bff; }
+    .menu-seccion-titulo.abierta .flecha { transform: rotate(90deg); }
+    .menu-seccion-contenido { display: none; }
+    .menu-seccion-contenido.abierta { display: block; }
+    .menu-item {
+      display: flex; align-items: center; gap: 8px; padding: 10px 16px; font-size: 13px; color: #333;
+      border-bottom: 1px solid #f0f0f0; cursor: pointer; text-decoration: none;
+    }
+    .menu-item:hover { background: #f5f8ff; }
+    .menu-item input[type="checkbox"] { width: auto; }
+    .menu-item select { flex: 1; padding: 5px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; }
   </style>
 </head>
 <body>
 
   <div class="header-bar">
-    <h1>🌳 Estructura</h1>
-    <div>
-      <span id="texto-usuario" class="estado-msg"></span>
-      <button class="secundario" onclick="location.href='index.html'">🏠 Inicio</button>
-      <button class="secundario" onclick="location.href='resumen.html'">📊 Resumen</button>
-      <button class="secundario" onclick="location.href='usuarios.html'">👤 Usuarios</button>
-      <button class="secundario" onclick="cerrarSesion()">Cerrar sesión</button>
-    </div>
+    <button class="btn-hamburguesa" onclick="abrirMenu()"><span></span><span></span><span></span></button>
+    <h1 style="margin:0 auto 0 12px; flex:1;">🌳 Estructura</h1>
+    <span id="texto-usuario" class="estado-msg"></span>
   </div>
 
   <div class="card leyenda">
@@ -108,24 +147,42 @@
     <span><span class="punto p-mezcla"></span>Estados mezclados</span>
   </div>
 
-  <div class="card barra-global">
-    <button class="secundario" onclick="expandirTodo()">⏬ Expandir todo</button>
-    <button class="secundario" onclick="encogerTodo()">⏫ Encoger todo</button>
-    <button id="btn-crear-buque" onclick="abrirModalCrear(null, 'BUQUE')" style="display:none;">+ Añadir Buque</button>
-  </div>
+  <!-- Menú hamburguesa -->
+  <div class="menu-overlay-fondo" id="menu-overlay" onclick="cerrarMenuSiFondo(event)">
+    <div class="menu-panel">
+      <button class="menu-cerrar" onclick="cerrarMenu()">✕</button>
 
-  <div class="card">
-    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-      <input type="text" id="buscador" placeholder="🔍 Buscar por código o nombre..." style="flex:1; min-width:220px; padding:7px; border:1px solid #ccc; border-radius:4px; font-size:13px;">
-      <label id="wrap-mis-tareas" style="display:none; font-size:13px; align-items:center; gap:4px;">
-        <input type="checkbox" id="chk-mis-tareas" style="width:auto;"> Ver solo mis tareas
-      </label>
-      <select id="sel-filtro-usuario" style="display:none; padding:7px; border:1px solid #ccc; border-radius:4px; font-size:13px;">
-        <option value="">Ver tareas de: Todos</option>
-      </select>
-      <label id="wrap-desactivados" style="display:none; font-size:13px; align-items:center; gap:4px;">
-        <input type="checkbox" id="chk-desactivados" style="width:auto;"> Mostrar desactivados
-      </label>
+      <div class="menu-buscador-wrap">
+        <input type="text" id="buscador" placeholder="🔍 ¿Qué estás buscando?">
+      </div>
+
+      <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Navegación <span class="flecha">›</span></div>
+      <div class="menu-seccion-contenido">
+        <a class="menu-item" href="index.html">🏠 Inicio</a>
+        <a class="menu-item" href="resumen.html">📊 Resumen</a>
+        <a class="menu-item" id="menu-link-usuarios" href="usuarios.html" style="display:none;">👤 Usuarios</a>
+        <span class="menu-item" onclick="cerrarSesion()">🚪 Cerrar sesión</span>
+      </div>
+
+      <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Vista del árbol <span class="flecha">›</span></div>
+      <div class="menu-seccion-contenido">
+        <span class="menu-item" onclick="expandirTodo()">⏬ Expandir todo</span>
+        <span class="menu-item" onclick="encogerTodo()">⏫ Encoger todo</span>
+        <span class="menu-item" id="menu-item-buque" onclick="abrirModalCrear(null, 'BUQUE')" style="display:none;">+ Añadir Buque</span>
+      </div>
+
+      <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Filtros <span class="flecha">›</span></div>
+      <div class="menu-seccion-contenido">
+        <label class="menu-item" id="wrap-mis-tareas" style="display:none;">
+          <input type="checkbox" id="chk-mis-tareas"> Ver solo mis tareas
+        </label>
+        <label class="menu-item" id="wrap-filtro-usuario" style="display:none;">
+          <select id="sel-filtro-usuario"><option value="">Ver tareas de: Todos</option></select>
+        </label>
+        <label class="menu-item" id="wrap-desactivados" style="display:none;">
+          <input type="checkbox" id="chk-desactivados"> Mostrar desactivados
+        </label>
+      </div>
     </div>
   </div>
 
@@ -295,14 +352,14 @@
       document.getElementById('texto-usuario').textContent =
         `${perfil.nombre_completo} (${perfil.username}) — ${perfil.rol === 'TRABAJADOR' ? 'USUARIO' : perfil.rol}`;
 
-      if (esGestor()) document.getElementById('btn-crear-buque').style.display = 'inline-block';
-      if (perfil.rol !== 'ADMIN') document.querySelector('button[onclick*="usuarios.html"]').style.display = 'none';
+      if (esGestor()) document.getElementById('menu-item-buque').style.display = 'flex';
+      if (perfil.rol === 'ADMIN') document.getElementById('menu-link-usuarios').style.display = 'flex';
 
       if (miPerfil.rol === 'TRABAJADOR') {
-        document.getElementById('wrap-mis-tareas').classList.add('visible');
+        document.getElementById('wrap-mis-tareas').style.display = 'flex';
       }
       if (esGestor()) {
-        document.getElementById('wrap-desactivados').classList.add('visible');
+        document.getElementById('wrap-desactivados').style.display = 'flex';
       }
 
       document.getElementById('buscador').addEventListener('input', (e) => {
@@ -326,7 +383,7 @@
 
       if (esGestor()) {
         const selUsuario = document.getElementById('sel-filtro-usuario');
-        selUsuario.style.display = 'inline-block';
+        document.getElementById('wrap-filtro-usuario').style.display = 'flex';
         selUsuario.innerHTML = '<option value="">Ver tareas de: Todos</option>' +
           perfilesCache.map(p => `<option value="${p.id}">Ver tareas de: ${p.nombre_completo}</option>`).join('');
       }
@@ -336,6 +393,14 @@
     }
 
     function esGestor() { return miPerfil.rol === 'ADMIN' || miPerfil.rol === 'REVISOR'; }
+
+    function abrirMenu() { document.getElementById('menu-overlay').classList.add('abierto'); }
+    function cerrarMenu() { document.getElementById('menu-overlay').classList.remove('abierto'); }
+    function cerrarMenuSiFondo(e) { if (e.target.id === 'menu-overlay') cerrarMenu(); }
+    function toggleSeccionMenu(titulo) {
+      titulo.classList.toggle('abierta');
+      titulo.nextElementSibling.classList.toggle('abierta');
+    }
 
     async function cerrarSesion() {
       await supabaseClient.auth.signOut();
@@ -420,8 +485,13 @@
     }
 
     function calcularEstadoConsenso(nodo) {
+      const propioEstado = calcularEstadoPropio(nodo);
+      const tieneTrabajoPropio = !!nodo.trabajador_id || !!nodo.revisor_id || propioEstado !== 'gris';
+
       const hijos = mapaHijosPorPadre[nodo.id] || [];
-      if (hijos.length === 0) return calcularEstadoPropio(nodo);
+      if (hijos.length === 0) return propioEstado;
+      if (tieneTrabajoPropio) return propioEstado;
+
       const estadosHijos = hijos.map(h => calcularEstadoConsenso(h));
       const primero = estadosHijos[0];
       return estadosHijos.every(e => e === primero) ? primero : null;

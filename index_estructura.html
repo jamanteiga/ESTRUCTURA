@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESTRUCTURA</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 640px; margin: 60px auto; padding: 0 20px; color: #333; }
+    h1 { font-size: 26px; text-align: center; margin-bottom: 4px; }
+    .subtitulo { text-align: center; color: #666; font-size: 14px; margin-bottom: 30px; }
+    .tarjetas { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .tarjeta {
+      background: #f8f9fa; border: 1px solid #ddd; border-radius: 10px; padding: 20px;
+      text-align: center; text-decoration: none; color: #333; font-weight: bold;
+      transition: transform 0.1s, box-shadow 0.1s;
+    }
+    .tarjeta:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.1); background: #eef3ff; }
+    .tarjeta .icono { font-size: 28px; display: block; margin-bottom: 8px; }
+    .pie { text-align: center; margin-top: 30px; }
+    button { padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; }
+    button:hover { background: #5a6268; }
+    .estado-msg { text-align: center; color: #888; font-size: 13px; }
+  </style>
+</head>
+<body>
+
+  <div id="contenido" style="display:none;">
+    <h1>🔧 ESTRUCTURA</h1>
+    <div class="subtitulo" id="texto-usuario"></div>
+
+    <div class="tarjetas">
+      <a class="tarjeta" href="arbol.html">
+        <span class="icono">🌳</span>Árbol de estructura
+      </a>
+      <a class="tarjeta" href="resumen.html">
+        <span class="icono">📊</span>Resumen
+      </a>
+      <a class="tarjeta" id="tarjeta-usuarios" href="usuarios.html" style="display:none;">
+        <span class="icono">👤</span>Gestión de usuarios
+      </a>
+      <a class="tarjeta" href="cambiar-password.html">
+        <span class="icono">🔑</span>Cambiar mi contraseña
+      </a>
+    </div>
+
+    <div class="pie">
+      <button onclick="cerrarSesion()">Cerrar sesión</button>
+    </div>
+  </div>
+
+  <p class="estado-msg" id="estado-carga">Comprobando sesión...</p>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const SUPABASE_URL = 'https://wuarkraddnndmgvfnkmm.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    async function iniciar() {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+
+      if (!session) {
+        window.location.href = 'login.html?next=index.html';
+        return;
+      }
+
+      const { data: perfil, error } = await supabaseClient
+        .from('profiles')
+        .select('*')
+        .eq('id', session.user.id)
+        .single();
+
+      if (error || !perfil || !perfil.activo) {
+        document.getElementById('estado-carga').textContent = 'No tienes acceso.';
+        return;
+      }
+
+      if (perfil.debe_cambiar_password) {
+        window.location.href = 'cambiar-password.html';
+        return;
+      }
+
+      document.getElementById('texto-usuario').textContent =
+        `${perfil.nombre_completo} (${perfil.username}) — ${perfil.rol}`;
+
+      if (perfil.rol === 'ADMIN') {
+        document.getElementById('tarjeta-usuarios').style.display = 'block';
+      }
+
+      document.getElementById('estado-carga').style.display = 'none';
+      document.getElementById('contenido').style.display = 'block';
+    }
+
+    async function cerrarSesion() {
+      await supabaseClient.auth.signOut();
+      window.location.href = 'login.html';
+    }
+
+    iniciar();
+  </script>
+</body>
+</html>
