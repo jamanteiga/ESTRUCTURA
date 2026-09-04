@@ -365,7 +365,7 @@
       }
 
       let acciones = '';
-      if (nodo.tipo === 'BUQUE' || nodo.tipo === 'BLOQUE') {
+      if (nodo.tipo === 'BUQUE' || nodo.tipo === 'BLOQUE' || nodo.tipo === 'SUBBLOQUE') {
         acciones += `<button class="pequeno secundario" onclick="expandirRama('${nodo.id}')" title="Expandir esta rama">⏬</button>`;
         acciones += `<button class="pequeno secundario" onclick="encogerRama('${nodo.id}')" title="Encoger esta rama">⏫</button>`;
       }
