@@ -365,6 +365,10 @@
       }
 
       let acciones = '';
+      if (nodo.tipo === 'BUQUE' || nodo.tipo === 'BLOQUE') {
+        acciones += `<button class="pequeno secundario" onclick="expandirRama('${nodo.id}')" title="Expandir esta rama">⏬</button>`;
+        acciones += `<button class="pequeno secundario" onclick="encogerRama('${nodo.id}')" title="Encoger esta rama">⏫</button>`;
+      }
       if (esGestor()) {
         acciones += `<button class="pequeno" onclick="abrirModalCrear('${nodo.id}', '${nodo.tipo}')" title="Añadir hijo">+</button>`;
         acciones += `<button class="pequeno secundario" onclick="abrirModalLote('${nodo.id}', '${nodo.tipo}')" title="Crear varios">+N</button>`;
@@ -374,8 +378,6 @@
         acciones += `<button class="pequeno secundario" onclick="reordenar('${nodo.id}', 1)" title="Bajar">▼</button>`;
         if (nodo.tipo === 'BLOQUE') {
           acciones += `<button class="pequeno secundario" onclick="abrirModalDuplicar('${nodo.id}')" title="Duplicar bloque">⧉</button>`;
-          acciones += `<button class="pequeno secundario" onclick="expandirRama('${nodo.id}')" title="Expandir este bloque">⏬</button>`;
-          acciones += `<button class="pequeno secundario" onclick="encogerRama('${nodo.id}')" title="Encoger este bloque">⏫</button>`;
         }
         if (!sinAsignacion) {
           acciones += `<button class="pequeno secundario" onclick="abrirModalAsignar('${nodo.id}')" title="Asignar">👤</button>`;
