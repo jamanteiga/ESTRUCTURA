@@ -46,6 +46,9 @@
     .acciones { display: flex; gap: 3px; margin-left: auto; flex-wrap: wrap; }
     .hijos { display: none; }
     .hijos.abierto { display: block; }
+    .fila-nodo.inactivo { opacity: 0.45; }
+    #wrap-mis-tareas.visible, #wrap-desactivados.visible { display: flex !important; }
+    mark { background: #fff3a3; padding: 0 1px; }
 
     .overlay {
       display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -90,6 +93,7 @@
     <div>
       <span id="texto-usuario" class="estado-msg"></span>
       <button class="secundario" onclick="location.href='index.html'">🏠 Inicio</button>
+      <button class="secundario" onclick="location.href='resumen.html'">📊 Resumen</button>
       <button class="secundario" onclick="location.href='usuarios.html'">👤 Usuarios</button>
       <button class="secundario" onclick="cerrarSesion()">Cerrar sesión</button>
     </div>
@@ -108,6 +112,21 @@
     <button class="secundario" onclick="expandirTodo()">⏬ Expandir todo</button>
     <button class="secundario" onclick="encogerTodo()">⏫ Encoger todo</button>
     <button id="btn-crear-buque" onclick="abrirModalCrear(null, 'BUQUE')" style="display:none;">+ Añadir Buque</button>
+  </div>
+
+  <div class="card">
+    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+      <input type="text" id="buscador" placeholder="🔍 Buscar por código o nombre..." style="flex:1; min-width:220px; padding:7px; border:1px solid #ccc; border-radius:4px; font-size:13px;">
+      <label id="wrap-mis-tareas" style="display:none; font-size:13px; align-items:center; gap:4px;">
+        <input type="checkbox" id="chk-mis-tareas" style="width:auto;"> Ver solo mis tareas
+      </label>
+      <select id="sel-filtro-usuario" style="display:none; padding:7px; border:1px solid #ccc; border-radius:4px; font-size:13px;">
+        <option value="">Ver tareas de: Todos</option>
+      </select>
+      <label id="wrap-desactivados" style="display:none; font-size:13px; align-items:center; gap:4px;">
+        <input type="checkbox" id="chk-desactivados" style="width:auto;"> Mostrar desactivados
+      </label>
+    </div>
   </div>
 
   <div class="card">
@@ -234,6 +253,10 @@
     let parentIdSeleccionadoParaMover = null;
     let nodoLotePadre = null;
     let nodoDuplicarActual = null;
+    let filtroTexto = '';
+    let filtroUsuarioId = '';
+    let mostrarDesactivados = false;
+    let nodosVisiblesActual = null;
 
     function formatearFechaHora(iso) {
       if (!iso) return '';
@@ -275,7 +298,39 @@
       if (esGestor()) document.getElementById('btn-crear-buque').style.display = 'inline-block';
       if (perfil.rol !== 'ADMIN') document.querySelector('button[onclick*="usuarios.html"]').style.display = 'none';
 
+      if (miPerfil.rol === 'TRABAJADOR') {
+        document.getElementById('wrap-mis-tareas').classList.add('visible');
+      }
+      if (esGestor()) {
+        document.getElementById('wrap-desactivados').classList.add('visible');
+      }
+
+      document.getElementById('buscador').addEventListener('input', (e) => {
+        filtroTexto = e.target.value.trim();
+        renderizarArbolCompleto();
+      });
+      document.getElementById('chk-mis-tareas').addEventListener('change', (e) => {
+        filtroUsuarioId = e.target.checked ? miPerfil.id : '';
+        renderizarArbolCompleto();
+      });
+      document.getElementById('sel-filtro-usuario').addEventListener('change', (e) => {
+        filtroUsuarioId = e.target.value;
+        renderizarArbolCompleto();
+      });
+      document.getElementById('chk-desactivados').addEventListener('change', (e) => {
+        mostrarDesactivados = e.target.checked;
+        cargarArbol();
+      });
+
       await cargarPerfiles();
+
+      if (esGestor()) {
+        const selUsuario = document.getElementById('sel-filtro-usuario');
+        selUsuario.style.display = 'inline-block';
+        selUsuario.innerHTML = '<option value="">Ver tareas de: Todos</option>' +
+          perfilesCache.map(p => `<option value="${p.id}">Ver tareas de: ${p.nombre_completo}</option>`).join('');
+      }
+
       await cargarArbol();
       suscribirseARealtime();
     }
@@ -289,12 +344,15 @@
 
     async function cargarPerfiles() {
       const { data } = await supabaseClient.from('profiles').select('*').eq('activo', true);
-      perfilesCache = data || [];
+      perfilesCache = (data || []).sort((a, b) =>
+        (a.nombre_completo || '').localeCompare(b.nombre_completo || '', 'es', { sensitivity: 'base' })
+      );
     }
 
     async function cargarArbol() {
-      const { data, error } = await supabaseClient
-        .from('v_nodes_with_workflow').select('*').eq('activo', true).order('orden', { ascending: true });
+      let query = supabaseClient.from('v_nodes_with_workflow').select('*').order('orden', { ascending: true });
+      if (!mostrarDesactivados) query = query.eq('activo', true);
+      const { data, error } = await query;
 
       const raiz = document.getElementById('arbol-raiz');
       if (error) { raiz.innerHTML = `<li style="color:red;">Error al cargar: ${error.message}</li>`; return; }
@@ -310,9 +368,45 @@
         mapaHijosPorPadre[clave].push(n);
       });
 
-      const nodosRaiz = mapaHijosPorPadre['__raiz__'] || [];
+      renderizarArbolCompleto();
+    }
+
+    function coincideFiltro(nodo) {
+      let ok = true;
+      if (filtroTexto) {
+        const t = filtroTexto.toLowerCase();
+        ok = ok && (nodo.codigo.toLowerCase().includes(t) || nodo.nombre.toLowerCase().includes(t));
+      }
+      if (filtroUsuarioId) {
+        ok = ok && (nodo.trabajador_id === filtroUsuarioId || nodo.revisor_id === filtroUsuarioId);
+      }
+      return ok;
+    }
+
+    function calcularNodosVisibles() {
+      if (!filtroTexto && !filtroUsuarioId) return null;
+      const visibles = new Set();
+      todosLosNodos.forEach(n => {
+        if (coincideFiltro(n)) {
+          let actual = n;
+          while (actual) {
+            visibles.add(actual.id);
+            actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
+          }
+        }
+      });
+      return visibles;
+    }
+
+    function renderizarArbolCompleto() {
+      nodosVisiblesActual = calcularNodosVisibles();
+      if (nodosVisiblesActual) nodosVisiblesActual.forEach(id => nodosAbiertos.add(id));
+
+      const raiz = document.getElementById('arbol-raiz');
+      const nodosRaiz = (mapaHijosPorPadre['__raiz__'] || []).filter(n => !nodosVisiblesActual || nodosVisiblesActual.has(n.id));
+
       raiz.innerHTML = nodosRaiz.length === 0
-        ? '<li>No hay ningún Buque todavía.</li>'
+        ? '<li>No hay ningún Buque que coincida.</li>'
         : nodosRaiz.map(n => renderizarNodo(n)).join('');
     }
 
@@ -343,13 +437,43 @@
       return resultado;
     }
 
+    function resaltarCoincidencia(texto) {
+      if (!filtroTexto) return texto;
+      const idx = texto.toLowerCase().indexOf(filtroTexto.toLowerCase());
+      if (idx === -1) return texto;
+      return texto.slice(0, idx) + '<mark>' + texto.slice(idx, idx + filtroTexto.length) + '</mark>' + texto.slice(idx + filtroTexto.length);
+    }
+
     function renderizarNodo(nodo) {
-      const hijos = mapaHijosPorPadre[nodo.id] || [];
+      const hijosTodos = mapaHijosPorPadre[nodo.id] || [];
+      const hijos = nodosVisiblesActual ? hijosTodos.filter(h => nodosVisiblesActual.has(h.id)) : hijosTodos;
       const tieneHijos = hijos.length > 0;
       const abierto = nodosAbiertos.has(nodo.id);
       const estado = calcularEstadoConsenso(nodo);
       const claseColor = estado ? `p-${estado}` : 'p-mezcla';
       const sinAsignacion = TIPOS_SIN_ASIGNACION.has(nodo.tipo);
+      const inactivo = !nodo.activo;
+
+      if (inactivo && esGestor()) {
+        const acciones = `<button class="pequeno exito" onclick="reactivarNodo('${nodo.id}')" title="Reactivar">♻️ Reactivar</button>`;
+        return `
+          <li class="nodo" id="li-${nodo.id}">
+            <div class="fila-nodo inactivo">
+              <span class="toggle ${tieneHijos ? '' : 'vacio'}" onclick="toggleNodo('${nodo.id}')">${abierto ? '▼' : '▶'}</span>
+              <span class="punto p-gris"></span>
+              <span class="codigo">${resaltarCoincidencia(nodo.codigo)}</span>
+              <span>${resaltarCoincidencia(nodo.nombre)}</span>
+              <span class="tipo-tag">${nodo.tipo}</span>
+              <span style="font-size:11px; color:#dc3545;">(desactivado)</span>
+              <span class="acciones">${acciones}</span>
+            </div>
+            <ul class="arbol hijos ${abierto ? 'abierto' : ''}" id="hijos-${nodo.id}">
+              ${tieneHijos ? hijos.map(h => renderizarNodo(h)).join('') : ''}
+            </ul>
+          </li>
+        `;
+      }
+      if (inactivo) return '';
 
       const fechaTrabajador = nodo.trabajo_terminado_en
         ? formatearFechaHora(nodo.trabajo_terminado_en)
@@ -408,8 +532,8 @@
           <div class="fila-nodo">
             <span class="toggle ${tieneHijos ? '' : 'vacio'}" onclick="toggleNodo('${nodo.id}')">${abierto ? '▼' : '▶'}</span>
             <span class="punto ${claseColor}" title="${estado || 'estados mezclados'}"></span>
-            <span class="codigo">${nodo.codigo}</span>
-            <span>${nodo.nombre}</span>
+            <span class="codigo">${resaltarCoincidencia(nodo.codigo)}</span>
+            <span>${resaltarCoincidencia(nodo.nombre)}</span>
             <span class="tipo-tag">${nodo.tipo}</span>
             ${asignadosTexto ? `<span class="asignados">${asignadosTexto}</span>` : ''}
             <span class="acciones">${acciones}</span>
@@ -562,6 +686,12 @@
       if (!confirm(`¿Desactivar "${nodo.codigo} - ${nodo.nombre}"? No se borra, solo deja de aparecer.`)) return;
 
       const { error } = await supabaseClient.from('nodes').update({ activo: false }).eq('id', nodeId);
+      if (error) { alert('Error: ' + error.message); return; }
+      await cargarArbol();
+    }
+
+    async function reactivarNodo(nodeId) {
+      const { error } = await supabaseClient.from('nodes').update({ activo: true }).eq('id', nodeId);
       if (error) { alert('Error: ' + error.message); return; }
       await cargarArbol();
     }
