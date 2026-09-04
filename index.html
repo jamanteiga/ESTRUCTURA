@@ -16,6 +16,9 @@
     }
     .tarjeta:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.1); background: #eef3ff; }
     .tarjeta .icono { font-size: 28px; display: block; margin-bottom: 8px; }
+    .tarjeta .icono-img { width: 56px; height: 56px; object-fit: contain; display: block; margin: 0 auto 8px; }
+    .titulo-con-foto { display: flex; align-items: center; justify-content: center; gap: 12px; }
+    .titulo-con-foto img { width: 52px; height: 52px; object-fit: contain; border-radius: 6px; }
     .pie { text-align: center; margin-top: 30px; }
     button { padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; }
     button:hover { background: #5a6268; }
@@ -25,18 +28,21 @@
 <body>
 
   <div id="contenido" style="display:none;">
-    <h1>🔧 ESTRUCTURA</h1>
+    <h1 class="titulo-con-foto"><img src="imagenes/bloque_buque.jpg" alt=""> Gestión de bloques</h1>
     <div class="subtitulo" id="texto-usuario"></div>
 
     <div class="tarjetas">
       <a class="tarjeta" href="arbol.html">
-        <span class="icono">🌳</span>Árbol de estructura
+        <img class="icono-img" src="imagenes/buque01.jpg" alt="">Árbol de estructura
+      </a>
+      <a class="tarjeta" href="resumen.html">
+        <span class="icono">📊</span>Resumen
       </a>
       <a class="tarjeta" id="tarjeta-usuarios" href="usuarios.html" style="display:none;">
-        <span class="icono">👤</span>Gestión de usuarios
+        <img class="icono-img" src="imagenes/gestion_de_usuarios.jpg" alt="">Gestión de usuarios
       </a>
       <a class="tarjeta" href="cambiar-password.html">
-        <span class="icono">🔑</span>Cambiar mi contraseña
+        <img class="icono-img" src="imagenes/contrasena.jpg" alt="">Cambiar mi contraseña
       </a>
     </div>
 

@@ -21,13 +21,16 @@
     button:disabled { background: #ccc; cursor: not-allowed; }
 
     .leyenda { display: flex; gap: 14px; font-size: 12px; align-items: center; flex-wrap: wrap; }
-    .punto { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
-    .p-gris { background: #adb5bd; }
-    .p-azul { background: #007bff; }
-    .p-amarillo { background: #ffc107; }
-    .p-verde { background: #28a745; }
-    .p-rojo { background: #dc3545; }
-    .p-mezcla { background: white; border: 2px solid #ccc; }
+    .flecha { font-size: 16px; display: inline-block; width: 16px; text-align: center; line-height: 1; }
+    .f-sin_asignar { color: rgb(191,191,191); }
+    .f-asignada_sin_empezar { color: #555; }
+    .f-en_proceso { color: rgb(209,239,251); filter: drop-shadow(0 0 1px #7bb6c9) drop-shadow(0 0 1px #7bb6c9); }
+    .f-pendiente_revision { color: rgb(255,255,0); filter: drop-shadow(0 0 1px #b3b300) drop-shadow(0 0 1px #b3b300); }
+    .f-pendiente_dudas { color: rgb(0,176,240); }
+    .f-pendiente_cambios_modelo { color: rgb(255,192,0); }
+    .f-aprobado { color: rgb(146,208,80); }
+    .f-rechazado { color: rgb(255,0,0); }
+    .f-mezcla { color: rgb(228,158,221); }
 
     .barra-global { display: flex; gap: 6px; flex-wrap: wrap; }
 
@@ -117,8 +120,8 @@
       font-weight: bold; color: #003399; font-size: 13px; letter-spacing: 0.5px; cursor: pointer;
       border-top: 1px solid #ddd; text-transform: uppercase;
     }
-    .menu-seccion-titulo .flecha { transition: transform 0.15s; color: #007bff; }
-    .menu-seccion-titulo.abierta .flecha { transform: rotate(90deg); }
+    .menu-seccion-titulo .flecha-menu { transition: transform 0.15s; color: #007bff; }
+    .menu-seccion-titulo.abierta .flecha-menu { transform: rotate(90deg); }
     .menu-seccion-contenido { display: none; }
     .menu-seccion-contenido.abierta { display: block; }
     .menu-item {
@@ -128,23 +131,38 @@
     .menu-item:hover { background: #f5f8ff; }
     .menu-item input[type="checkbox"] { width: auto; }
     .menu-item select { flex: 1; padding: 5px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; }
+
+    body.modo-menu-fijo { padding-left: 320px; }
+    body.modo-menu-fijo .btn-hamburguesa { display: none; }
+    body.modo-menu-fijo .menu-overlay-fondo {
+      display: block; position: fixed; top: 0; left: 0; width: 320px; height: 100%;
+      background: none; z-index: 500;
+    }
+    body.modo-menu-fijo .menu-panel { transform: translateX(0); box-shadow: 2px 0 8px rgba(0,0,0,0.15); }
+    body.modo-menu-fijo .menu-cerrar { display: none; }
   </style>
 </head>
 <body>
 
   <div class="header-bar">
     <button class="btn-hamburguesa" onclick="abrirMenu()"><span></span><span></span><span></span></button>
-    <h1 style="margin:0 auto 0 12px; flex:1;">🌳 Estructura</h1>
+    <h1 style="margin:0 12px; flex:1; display:flex; align-items:center; gap:10px;">
+      <img src="imagenes/bloque_buque02.jpg" alt="" style="width:40px; height:40px; object-fit:contain; border-radius:6px;"> Gestión de bloques
+    </h1>
     <span id="texto-usuario" class="estado-msg"></span>
+    <button class="secundario" onclick="location.href='index.html'">🏠 Inicio</button>
   </div>
 
   <div class="card leyenda">
-    <span><span class="punto p-gris"></span>Sin iniciar</span>
-    <span><span class="punto p-azul"></span>En trabajo</span>
-    <span><span class="punto p-amarillo"></span>Pendiente revisión</span>
-    <span><span class="punto p-verde"></span>Aprobado</span>
-    <span><span class="punto p-rojo"></span>Rechazado</span>
-    <span><span class="punto p-mezcla"></span>Estados mezclados</span>
+    <span><span class="flecha f-sin_asignar">▶</span>Sin asignar</span>
+    <span><span class="flecha f-asignada_sin_empezar">▷</span>Pendiente de hacer</span>
+    <span><span class="flecha f-en_proceso">▶</span>En proceso</span>
+    <span><span class="flecha f-pendiente_revision">▶</span>Pendiente de revisión</span>
+    <span><span class="flecha f-pendiente_dudas">▶</span>Pendiente de dudas</span>
+    <span><span class="flecha f-pendiente_cambios_modelo">▶</span>Pendiente de cambios de modelo</span>
+    <span><span class="flecha f-aprobado">▶</span>Aprobado</span>
+    <span><span class="flecha f-rechazado">▶</span>Rechazado</span>
+    <span><span class="flecha f-mezcla">▶</span>Estados mezclados</span>
   </div>
 
   <!-- Menú hamburguesa -->
@@ -156,7 +174,7 @@
         <input type="text" id="buscador" placeholder="🔍 ¿Qué estás buscando?">
       </div>
 
-      <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Navegación <span class="flecha">›</span></div>
+      <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Navegación <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
         <a class="menu-item" href="index.html">🏠 Inicio</a>
         <a class="menu-item" href="resumen.html">📊 Resumen</a>
@@ -164,20 +182,43 @@
         <span class="menu-item" onclick="cerrarSesion()">🚪 Cerrar sesión</span>
       </div>
 
-      <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Vista del árbol <span class="flecha">›</span></div>
+      <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Bloques <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
-        <span class="menu-item" onclick="expandirTodo()">⏬ Expandir todo</span>
-        <span class="menu-item" onclick="encogerTodo()">⏫ Encoger todo</span>
+        <span class="menu-item" onclick="expandirTodo()">⏬ Expandir</span>
+        <span class="menu-item" onclick="encogerTodo()">⏫ Replegar</span>
         <span class="menu-item" id="menu-item-buque" onclick="abrirModalCrear(null, 'BUQUE')" style="display:none;">+ Añadir Buque</span>
       </div>
 
-      <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Filtros <span class="flecha">›</span></div>
+      <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Apariencia del menú <span class="flecha-menu">›</span></div>
+      <div class="menu-seccion-contenido">
+        <label class="menu-item">
+          <input type="radio" name="modo-menu" value="desplegable" id="radio-desplegable" checked> Desplegable
+        </label>
+        <label class="menu-item">
+          <input type="radio" name="modo-menu" value="fijo" id="radio-fijo"> Fijo en la izquierda
+        </label>
+      </div>
+
+      <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Filtros <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
         <label class="menu-item" id="wrap-mis-tareas" style="display:none;">
           <input type="checkbox" id="chk-mis-tareas"> Ver solo mis tareas
         </label>
         <label class="menu-item" id="wrap-filtro-usuario" style="display:none;">
           <select id="sel-filtro-usuario"><option value="">Ver tareas de: Todos</option></select>
+        </label>
+        <label class="menu-item" id="wrap-filtro-estado" style="display:none;">
+          <select id="sel-filtro-estado">
+            <option value="">Por estado: Todos</option>
+            <option value="sin_asignar">Sin asignar</option>
+            <option value="asignada_sin_empezar">Pendiente de hacer</option>
+            <option value="en_proceso">En proceso</option>
+            <option value="pendiente_revision">Pendiente de revisión</option>
+            <option value="pendiente_dudas">Pendiente de dudas</option>
+            <option value="pendiente_cambios_modelo">Pendiente de cambios de modelo</option>
+            <option value="aprobado">Aprobado</option>
+            <option value="rechazado">Rechazado</option>
+          </select>
         </label>
         <label class="menu-item" id="wrap-desactivados" style="display:none;">
           <input type="checkbox" id="chk-desactivados"> Mostrar desactivados
@@ -312,6 +353,7 @@
     let nodoDuplicarActual = null;
     let filtroTexto = '';
     let filtroUsuarioId = '';
+    let filtroEstado = '';
     let mostrarDesactivados = false;
     let nodosVisiblesActual = null;
 
@@ -374,6 +416,10 @@
         filtroUsuarioId = e.target.value;
         renderizarArbolCompleto();
       });
+      document.getElementById('sel-filtro-estado').addEventListener('change', (e) => {
+        filtroEstado = e.target.value;
+        renderizarArbolCompleto();
+      });
       document.getElementById('chk-desactivados').addEventListener('change', (e) => {
         mostrarDesactivados = e.target.checked;
         cargarArbol();
@@ -384,12 +430,16 @@
       if (esGestor()) {
         const selUsuario = document.getElementById('sel-filtro-usuario');
         document.getElementById('wrap-filtro-usuario').style.display = 'flex';
+        const soloUsuarios = perfilesCache.filter(p => p.rol === 'TRABAJADOR');
         selUsuario.innerHTML = '<option value="">Ver tareas de: Todos</option>' +
-          perfilesCache.map(p => `<option value="${p.id}">Ver tareas de: ${p.nombre_completo}</option>`).join('');
+          soloUsuarios.map(p => `<option value="${p.id}">Ver tareas de: ${p.nombre_completo}</option>`).join('');
+
+        document.getElementById('wrap-filtro-estado').style.display = 'flex';
       }
 
       await cargarArbol();
       suscribirseARealtime();
+      inicializarModoMenu();
     }
 
     function esGestor() { return miPerfil.rol === 'ADMIN' || miPerfil.rol === 'REVISOR'; }
@@ -400,6 +450,20 @@
     function toggleSeccionMenu(titulo) {
       titulo.classList.toggle('abierta');
       titulo.nextElementSibling.classList.toggle('abierta');
+    }
+
+    function aplicarModoMenu(modo) {
+      document.body.classList.toggle('modo-menu-fijo', modo === 'fijo');
+      localStorage.setItem('estructura_modo_menu', modo);
+    }
+
+    function inicializarModoMenu() {
+      const guardado = localStorage.getItem('estructura_modo_menu') || 'desplegable';
+      document.getElementById(guardado === 'fijo' ? 'radio-fijo' : 'radio-desplegable').checked = true;
+      aplicarModoMenu(guardado);
+
+      document.getElementById('radio-fijo').addEventListener('change', () => aplicarModoMenu('fijo'));
+      document.getElementById('radio-desplegable').addEventListener('change', () => aplicarModoMenu('desplegable'));
     }
 
     async function cerrarSesion() {
@@ -445,11 +509,14 @@
       if (filtroUsuarioId) {
         ok = ok && (nodo.trabajador_id === filtroUsuarioId || nodo.revisor_id === filtroUsuarioId);
       }
+      if (filtroEstado) {
+        ok = ok && calcularEstadoPropio(nodo) === filtroEstado;
+      }
       return ok;
     }
 
     function calcularNodosVisibles() {
-      if (!filtroTexto && !filtroUsuarioId) return null;
+      if (!filtroTexto && !filtroUsuarioId && !filtroEstado) return null;
       const visibles = new Set();
       todosLosNodos.forEach(n => {
         if (coincideFiltro(n)) {
@@ -476,17 +543,19 @@
     }
 
     function calcularEstadoPropio(nodo) {
-      if (nodo.revision_estado === 'APROBADO') return 'verde';
-      if (nodo.revision_estado === 'RECHAZADO') return 'rojo';
-      if (nodo.revision_estado === 'PENDIENTE' || nodo.revision_estado === 'EN_REVISION') return 'amarillo';
-      if (nodo.trabajo_estado === 'EN_TRABAJO') return 'azul';
-      if (nodo.trabajo_estado === 'REQUIERE_CORRECCION') return 'amarillo';
-      return 'gris';
+      if (nodo.revision_estado === 'APROBADO') return 'aprobado';
+      if (nodo.revision_estado === 'RECHAZADO') return 'rechazado';
+      if (nodo.revision_estado === 'PENDIENTE' || nodo.revision_estado === 'EN_REVISION') return 'pendiente_revision';
+      if (nodo.trabajo_estado === 'EN_TRABAJO') return 'en_proceso';
+      if (nodo.trabajo_estado === 'PENDIENTE_DUDAS') return 'pendiente_dudas';
+      if (nodo.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO') return 'pendiente_cambios_modelo';
+      if (nodo.trabajador_id) return 'asignada_sin_empezar';
+      return 'sin_asignar';
     }
 
     function calcularEstadoConsenso(nodo) {
       const propioEstado = calcularEstadoPropio(nodo);
-      const tieneTrabajoPropio = !!nodo.trabajador_id || !!nodo.revisor_id || propioEstado !== 'gris';
+      const tieneTrabajoPropio = propioEstado !== 'sin_asignar';
 
       const hijos = mapaHijosPorPadre[nodo.id] || [];
       if (hijos.length === 0) return propioEstado;
@@ -494,7 +563,7 @@
 
       const estadosHijos = hijos.map(h => calcularEstadoConsenso(h));
       const primero = estadosHijos[0];
-      return estadosHijos.every(e => e === primero) ? primero : null;
+      return estadosHijos.every(e => e === primero) ? primero : 'mezcla';
     }
 
     function obtenerDescendientesIds(nodeId) {
@@ -520,7 +589,8 @@
       const tieneHijos = hijos.length > 0;
       const abierto = nodosAbiertos.has(nodo.id);
       const estado = calcularEstadoConsenso(nodo);
-      const claseColor = estado ? `p-${estado}` : 'p-mezcla';
+      const simboloFlecha = estado === 'asignada_sin_empezar' ? '▷' : '▶';
+      const claseColor = `f-${estado}`;
       const sinAsignacion = TIPOS_SIN_ASIGNACION.has(nodo.tipo);
       const inactivo = !nodo.activo;
 
@@ -530,7 +600,7 @@
           <li class="nodo" id="li-${nodo.id}">
             <div class="fila-nodo inactivo">
               <span class="toggle ${tieneHijos ? '' : 'vacio'}" onclick="toggleNodo('${nodo.id}')">${abierto ? '▼' : '▶'}</span>
-              <span class="punto p-gris"></span>
+              <span class="flecha f-sin_asignar">▶</span>
               <span class="codigo">${resaltarCoincidencia(nodo.codigo)}</span>
               <span>${resaltarCoincidencia(nodo.nombre)}</span>
               <span class="tipo-tag">${nodo.tipo}</span>
@@ -584,8 +654,16 @@
         if (puedeEmpezarTerminar) {
           if (nodo.trabajo_estado === 'SIN_INICIAR' || nodo.trabajo_estado === 'REQUIERE_CORRECCION') {
             acciones += `<button class="pequeno" onclick="accionMarcarEnTrabajo('${nodo.id}')">▶ Empezar</button>`;
-          } else if (nodo.trabajo_estado === 'EN_TRABAJO') {
+          } else if (nodo.trabajo_estado === 'EN_TRABAJO' || nodo.trabajo_estado === 'PENDIENTE_DUDAS' || nodo.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO') {
             acciones += `<button class="pequeno exito" onclick="accionMarcarTerminado('${nodo.id}')">✔ Terminar</button>`;
+          }
+          if (nodo.trabajo_estado !== 'TERMINADO' && nodo.revision_estado !== 'APROBADO') {
+            if (nodo.trabajo_estado !== 'PENDIENTE_DUDAS') {
+              acciones += `<button class="pequeno secundario" onclick="accionMarcarPendienteDudas('${nodo.id}')" title="Pendiente de dudas">❓ Dudas</button>`;
+            }
+            if (nodo.trabajo_estado !== 'PENDIENTE_CAMBIOS_MODELO') {
+              acciones += `<button class="pequeno secundario" onclick="accionMarcarPendienteCambiosModelo('${nodo.id}')" title="Pendiente de cambios de modelo">🔧 Cambios</button>`;
+            }
           }
         }
         if (esGestor() && nodo.trabajo_estado === 'TERMINADO') {
@@ -594,6 +672,9 @@
         }
       }
 
+      const notaDudas = (!sinAsignacion && nodo.trabajo_estado === 'PENDIENTE_DUDAS')
+        ? `<div class="motivo-rechazo" style="color:rgb(0,176,240);">❓ Pendiente de dudas</div>` : '';
+
       const motivoRechazo = (!sinAsignacion && nodo.revision_estado === 'RECHAZADO' && nodo.comentario_revision)
         ? `<div class="motivo-rechazo">✘ Motivo: ${nodo.comentario_revision}</div>` : '';
 
@@ -601,13 +682,14 @@
         <li class="nodo" id="li-${nodo.id}">
           <div class="fila-nodo">
             <span class="toggle ${tieneHijos ? '' : 'vacio'}" onclick="toggleNodo('${nodo.id}')">${abierto ? '▼' : '▶'}</span>
-            <span class="punto ${claseColor}" title="${estado || 'estados mezclados'}"></span>
+            <span class="flecha ${claseColor}" title="${estado}">${simboloFlecha}</span>
             <span class="codigo">${resaltarCoincidencia(nodo.codigo)}</span>
             <span>${resaltarCoincidencia(nodo.nombre)}</span>
             <span class="tipo-tag">${nodo.tipo}</span>
             ${asignadosTexto ? `<span class="asignados">${asignadosTexto}</span>` : ''}
             <span class="acciones">${acciones}</span>
             ${motivoRechazo}
+            ${notaDudas}
           </div>
           <ul class="arbol hijos ${abierto ? 'abierto' : ''}" id="hijos-${nodo.id}">
             ${tieneHijos ? hijos.map(h => renderizarNodo(h)).join('') : ''}
@@ -1010,6 +1092,18 @@
 
     async function accionMarcarEnTrabajo(nodeId) {
       const { error } = await supabaseClient.rpc('marcar_en_trabajo', { p_node_id: nodeId });
+      if (error) { alert('Error: ' + error.message); return; }
+      await cargarArbol();
+    }
+
+    async function accionMarcarPendienteDudas(nodeId) {
+      const { error } = await supabaseClient.rpc('marcar_pendiente_dudas', { p_node_id: nodeId });
+      if (error) { alert('Error: ' + error.message); return; }
+      await cargarArbol();
+    }
+
+    async function accionMarcarPendienteCambiosModelo(nodeId) {
+      const { error } = await supabaseClient.rpc('marcar_pendiente_cambios_modelo', { p_node_id: nodeId });
       if (error) { alert('Error: ' + error.message); return; }
       await cargarArbol();
     }
