@@ -260,11 +260,13 @@
       tbody.innerHTML = '<tr><td colspan="6">Cargando...</td></tr>';
 
       const { data, error } = await supabaseClient
-        .from('profiles').select('*').order('nombre_completo', { ascending: true });
+        .from('profiles').select('*');
 
       if (error) { tbody.innerHTML = `<tr><td colspan="6" style="color:red;">Error: ${error.message}</td></tr>`; return; }
 
-      perfilesCache = data || [];
+      perfilesCache = (data || []).sort((a, b) =>
+        (a.nombre_completo || '').localeCompare(b.nombre_completo || '', 'es', { sensitivity: 'base' })
+      );
 
       tbody.innerHTML = perfilesCache.map(perfil => `
         <tr class="${perfil.activo ? '' : 'inactivo'}">
