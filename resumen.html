@@ -170,6 +170,11 @@
         `${perfil.nombre_completo} (${perfil.username}) — ${perfil.rol === 'TRABAJADOR' ? 'USUARIO' : perfil.rol}`;
       if (perfil.rol === 'ADMIN') document.getElementById('btn-usuarios').style.display = 'inline-block';
 
+      await recargarDatos();
+      suscribirseARealtime();
+    }
+
+    async function recargarDatos() {
       const { data: nodos, error: errorNodos } = await supabaseClient
         .from('v_nodes_with_workflow').select('*').eq('activo', true);
 
@@ -178,6 +183,7 @@
         return;
       }
 
+      mapaNodoPorId = {};
       nodos.forEach(n => { mapaNodoPorId[n.id] = n; });
 
       const nodosRelevantes = nodos.filter(n => !TIPOS_SIN_ASIGNACION.has(n.tipo));
@@ -187,6 +193,24 @@
       } else {
         renderVistaUsuario(nodosRelevantes);
       }
+    }
+
+    let debounceRecargaResumen = null;
+    function recargarConDebounce() {
+      clearTimeout(debounceRecargaResumen);
+      debounceRecargaResumen = setTimeout(() => recargarDatos(), 400);
+    }
+
+    function suscribirseARealtime() {
+      supabaseClient
+        .channel('resumen_node_workflow')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'node_workflow' }, () => recargarConDebounce())
+        .subscribe();
+
+      supabaseClient
+        .channel('resumen_nodes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'nodes' }, () => recargarConDebounce())
+        .subscribe();
     }
 
     function renderVistaUsuario(nodos) {

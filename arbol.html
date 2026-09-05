@@ -1364,11 +1364,27 @@
       setTimeout(() => { const el = document.getElementById(id); if (el) el.remove(); }, 15000);
     }
 
+    let debounceRecargaArbol = null;
+    function recargarArbolConDebounce() {
+      clearTimeout(debounceRecargaArbol);
+      debounceRecargaArbol = setTimeout(() => cargarArbol(), 400);
+    }
+
     function suscribirseARealtime() {
       supabaseClient
         .channel('node_workflow_cambios')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'node_workflow' }, async (payload) => {
           await procesarEventoRealtime(payload);
+        })
+        .subscribe();
+
+      // Cambios estructurales: crear, editar, mover, reordenar,
+      // desactivar/reactivar un nodo. No hace falta procesar el
+      // detalle, basta con recargar el árbol para verlo al momento.
+      supabaseClient
+        .channel('nodes_cambios')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'nodes' }, () => {
+          recargarArbolConDebounce();
         })
         .subscribe();
     }
