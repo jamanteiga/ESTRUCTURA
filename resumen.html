@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ESTRUCTURA - Resumen</title>
   <style>
-    body { font-family: Arial, sans-serif; max-width: 1000px; margin: 30px auto; padding: 0 20px; color: #333; }
+    body { font-family: Arial, sans-serif; max-width: 1050px; margin: 30px auto; padding: 0 20px; color: #333; }
     h1 { font-size: 22px; }
     h2 { font-size: 15px; margin-top: 0; }
     .card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
@@ -15,28 +15,38 @@
     button.secundario:hover { background: #5a6268; }
     .estado-msg { font-size: 13px; }
 
-    .contadores { display: flex; gap: 12px; flex-wrap: wrap; }
+    .contadores { display: flex; gap: 10px; flex-wrap: wrap; }
     .contador {
-      flex: 1; min-width: 110px; text-align: center; padding: 14px 8px; border-radius: 8px; color: white; font-weight: bold;
+      flex: 1; min-width: 118px; text-align: center; padding: 12px 6px; border-radius: 8px; font-weight: bold;
+      border: 1px solid rgba(0,0,0,0.1);
     }
-    .contador .numero { font-size: 26px; display: block; }
-    .contador .etiqueta { font-size: 12px; }
-    .c-gris { background: #adb5bd; }
-    .c-azul { background: #007bff; }
-    .c-amarillo { background: #e0a800; }
-    .c-verde { background: #28a745; }
-    .c-rojo { background: #dc3545; }
+    .contador .numero { font-size: 24px; display: block; }
+    .contador .etiqueta { font-size: 11px; }
+    .c-sin_asignar { background: rgb(191,191,191); color: #222; }
+    .c-asignada_sin_empezar { background: #fff; color: #333; border: 1px solid #999; }
+    .c-en_proceso { background: rgb(209,239,251); color: #222; }
+    .c-pendiente_revision { background: rgb(255,255,0); color: #222; }
+    .c-pendiente_dudas { background: rgb(0,176,240); color: #fff; }
+    .c-pendiente_cambios_modelo { background: rgb(255,192,0); color: #222; }
+    .c-aprobado { background: rgb(146,208,80); color: #fff; }
+    .c-rechazado { background: rgb(255,0,0); color: #fff; }
 
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; background: white; }
-    th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; font-size: 13px; }
-    th { background: #1c6e8c; color: white; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; background: white; font-size: 12px; }
+    th, td { padding: 6px; text-align: left; border-bottom: 1px solid #ddd; }
+    th { background: #1c6e8c; color: white; font-size: 11px; }
     td.num { text-align: center; }
 
     ul.lista-nodos { list-style: none; padding: 0; margin: 10px 0 0; }
     ul.lista-nodos li { padding: 8px; border-bottom: 1px solid #eee; font-size: 13px; display: flex; align-items: center; gap: 8px; }
-    .punto { display: inline-block; width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
-    .p-gris { background: #adb5bd; } .p-azul { background: #007bff; } .p-amarillo { background: #ffc107; }
-    .p-verde { background: #28a745; } .p-rojo { background: #dc3545; }
+    .flecha { font-size: 15px; flex-shrink: 0; width: 16px; text-align: center; }
+    .f-sin_asignar { color: rgb(191,191,191); }
+    .f-asignada_sin_empezar { color: #555; }
+    .f-en_proceso { color: rgb(209,239,251); filter: drop-shadow(0 0 1px #7bb6c9) drop-shadow(0 0 1px #7bb6c9); }
+    .f-pendiente_revision { color: rgb(255,255,0); filter: drop-shadow(0 0 1px #b3b300) drop-shadow(0 0 1px #b3b300); }
+    .f-pendiente_dudas { color: rgb(0,176,240); }
+    .f-pendiente_cambios_modelo { color: rgb(255,192,0); }
+    .f-aprobado { color: rgb(146,208,80); }
+    .f-rechazado { color: rgb(255,0,0); }
     .ruta-nodo { color: #666; font-size: 11px; }
   </style>
 </head>
@@ -64,7 +74,18 @@
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     const TIPOS_SIN_ASIGNACION = new Set(['BUQUE']);
-    const ETIQUETAS_ESTADO = { gris: 'Sin iniciar', azul: 'En trabajo', amarillo: 'Pendiente revisión', verde: 'Aprobado', rojo: 'Rechazado' };
+
+    const ESTADOS_ORDEN = ['sin_asignar', 'asignada_sin_empezar', 'en_proceso', 'pendiente_revision', 'pendiente_dudas', 'pendiente_cambios_modelo', 'aprobado', 'rechazado'];
+    const ETIQUETAS_ESTADO = {
+      sin_asignar: 'Sin asignar',
+      asignada_sin_empezar: 'Pendiente de hacer',
+      en_proceso: 'En proceso',
+      pendiente_revision: 'Pendiente de revisión',
+      pendiente_dudas: 'Pendiente de dudas',
+      pendiente_cambios_modelo: 'Pendiente de cambios de modelo',
+      aprobado: 'Aprobado',
+      rechazado: 'Rechazado'
+    };
 
     let miPerfil = null;
     let mapaNodoPorId = {};
@@ -80,12 +101,14 @@
     }
 
     function calcularEstadoPropio(nodo) {
-      if (nodo.revision_estado === 'APROBADO') return 'verde';
-      if (nodo.revision_estado === 'RECHAZADO') return 'rojo';
-      if (nodo.revision_estado === 'PENDIENTE' || nodo.revision_estado === 'EN_REVISION') return 'amarillo';
-      if (nodo.trabajo_estado === 'EN_TRABAJO') return 'azul';
-      if (nodo.trabajo_estado === 'REQUIERE_CORRECCION') return 'amarillo';
-      return 'gris';
+      if (nodo.revision_estado === 'APROBADO') return 'aprobado';
+      if (nodo.revision_estado === 'RECHAZADO') return 'rechazado';
+      if (nodo.revision_estado === 'PENDIENTE' || nodo.revision_estado === 'EN_REVISION') return 'pendiente_revision';
+      if (nodo.trabajo_estado === 'EN_TRABAJO') return 'en_proceso';
+      if (nodo.trabajo_estado === 'PENDIENTE_DUDAS') return 'pendiente_dudas';
+      if (nodo.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO') return 'pendiente_cambios_modelo';
+      if (nodo.trabajador_id) return 'asignada_sin_empezar';
+      return 'sin_asignar';
     }
 
     async function cerrarSesion() {
@@ -98,13 +121,30 @@
     function renderContadores(conteo) {
       return `
         <div class="contadores">
-          <div class="contador c-gris"><span class="numero">${conteo.gris || 0}</span><span class="etiqueta">Sin iniciar</span></div>
-          <div class="contador c-azul"><span class="numero">${conteo.azul || 0}</span><span class="etiqueta">En trabajo</span></div>
-          <div class="contador c-amarillo"><span class="numero">${conteo.amarillo || 0}</span><span class="etiqueta">Pendiente revisión</span></div>
-          <div class="contador c-verde"><span class="numero">${conteo.verde || 0}</span><span class="etiqueta">Aprobado</span></div>
-          <div class="contador c-rojo"><span class="numero">${conteo.rojo || 0}</span><span class="etiqueta">Rechazado</span></div>
+          ${ESTADOS_ORDEN.map(e => `
+            <div class="contador c-${e}">
+              <span class="numero">${conteo[e] || 0}</span>
+              <span class="etiqueta">${ETIQUETAS_ESTADO[e]}</span>
+            </div>
+          `).join('')}
         </div>
       `;
+    }
+
+    function renderListaNodos(nodos, vacio) {
+      if (nodos.length === 0) return `<li>${vacio}</li>`;
+      return nodos.map(n => {
+        const estado = calcularEstadoPropio(n);
+        return `
+          <li>
+            <span class="flecha f-${estado}">▶</span>
+            <div>
+              <div><strong>${n.codigo}</strong> ${n.nombre} ${n.trabajador_nombre ? `— 👷 ${n.trabajador_nombre}` : ''}</div>
+              <div class="ruta-nodo">${rutaCompleta(n)}${n.comentario_revision ? ' · ' + n.comentario_revision : ''}</div>
+            </div>
+          </li>
+        `;
+      }).join('');
     }
 
     async function iniciar() {
@@ -137,7 +177,7 @@
       const nodosRelevantes = nodos.filter(n => !TIPOS_SIN_ASIGNACION.has(n.tipo));
 
       if (esGestor()) {
-        renderVistaGestor(nodosRelevantes);
+        await renderVistaGestor(nodosRelevantes);
       } else {
         renderVistaUsuario(nodosRelevantes);
       }
@@ -152,19 +192,6 @@
         conteo[e] = (conteo[e] || 0) + 1;
       });
 
-      const filas = misNodos.map(n => {
-        const estado = calcularEstadoPropio(n);
-        return `
-          <li>
-            <span class="punto p-${estado}" title="${ETIQUETAS_ESTADO[estado]}"></span>
-            <div>
-              <div><strong>${n.codigo}</strong> ${n.nombre}</div>
-              <div class="ruta-nodo">${rutaCompleta(n)}</div>
-            </div>
-          </li>
-        `;
-      }).join('');
-
       document.getElementById('contenido').innerHTML = `
         <div class="card">
           <h2>Tus tareas asignadas (${misNodos.length})</h2>
@@ -172,67 +199,93 @@
         </div>
         <div class="card">
           <h2>Detalle</h2>
-          <ul class="lista-nodos">
-            ${misNodos.length === 0 ? '<li>No tienes tareas asignadas todavía.</li>' : filas}
-          </ul>
+          <ul class="lista-nodos">${renderListaNodos(misNodos, 'No tienes tareas asignadas todavía.')}</ul>
         </div>
       `;
     }
 
-    function renderVistaGestor(nodos) {
+    async function renderVistaGestor(nodos) {
       const conteoGeneral = {};
       nodos.forEach(n => {
         const e = calcularEstadoPropio(n);
         conteoGeneral[e] = (conteoGeneral[e] || 0) + 1;
       });
 
+      // Averiguar qué trabajador_id corresponden a rol TRABAJADOR (para
+      // excluir a ADMIN/REVISOR del desglose por persona, aunque tengan
+      // alguna tarea de prueba asignada).
+      const idsConTarea = [...new Set(nodos.filter(n => n.trabajador_id).map(n => n.trabajador_id))];
+      let idsUsuarios = new Set();
+      if (idsConTarea.length > 0) {
+        const { data: perfiles } = await supabaseClient
+          .from('profiles').select('id, rol').in('id', idsConTarea);
+        idsUsuarios = new Set((perfiles || []).filter(p => p.rol === 'TRABAJADOR').map(p => p.id));
+      }
+
       const conteoPorUsuario = {};
       nodos.forEach(n => {
-        if (n.trabajador_id) {
-          if (!conteoPorUsuario[n.trabajador_id]) conteoPorUsuario[n.trabajador_id] = { nombre: n.trabajador_nombre, gris: 0, azul: 0, amarillo: 0, verde: 0, rojo: 0 };
+        if (n.trabajador_id && idsUsuarios.has(n.trabajador_id)) {
+          if (!conteoPorUsuario[n.trabajador_id]) {
+            conteoPorUsuario[n.trabajador_id] = { nombre: n.trabajador_nombre };
+            ESTADOS_ORDEN.forEach(e => conteoPorUsuario[n.trabajador_id][e] = 0);
+          }
           conteoPorUsuario[n.trabajador_id][calcularEstadoPropio(n)]++;
         }
       });
 
-      const filasUsuario = Object.values(conteoPorUsuario).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')).map(u => `
-        <tr>
-          <td>${u.nombre}</td>
-          <td class="num">${u.gris}</td>
-          <td class="num">${u.azul}</td>
-          <td class="num">${u.amarillo}</td>
-          <td class="num">${u.verde}</td>
-          <td class="num">${u.rojo}</td>
-        </tr>
-      `).join('');
+      const columnasUsuario = ESTADOS_ORDEN.filter(e => e !== 'sin_asignar');
+
+      const filasUsuario = Object.values(conteoPorUsuario)
+        .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+        .map(u => `
+          <tr>
+            <td>${u.nombre}</td>
+            ${columnasUsuario.map(e => `<td class="num">${u[e]}</td>`).join('')}
+          </tr>
+        `).join('');
 
       const rechazados = nodos.filter(n => n.revision_estado === 'RECHAZADO');
-      const filasRechazados = rechazados.map(n => `
-        <li>
-          <span class="punto p-rojo"></span>
-          <div>
-            <div><strong>${n.codigo}</strong> ${n.nombre} — 👷 ${n.trabajador_nombre || '(sin asignar)'}</div>
-            <div class="ruta-nodo">${rutaCompleta(n)}${n.comentario_revision ? ' · ' + n.comentario_revision : ''}</div>
-          </div>
-        </li>
-      `).join('');
+      const dudas = nodos.filter(n => n.trabajo_estado === 'PENDIENTE_DUDAS');
+      const cambiosModelo = nodos.filter(n => n.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO');
+      const sinAsignar = nodos.filter(n => calcularEstadoPropio(n) === 'sin_asignar');
 
       document.getElementById('contenido').innerHTML = `
         <div class="card">
-          <h2>Estado general (${nodos.length} nodos con asignación posible)</h2>
+          <h2>Estado general (${nodos.length} nodos)</h2>
           ${renderContadores(conteoGeneral)}
         </div>
+
         <div class="card">
           <h2>Por usuario</h2>
           <table>
             <thead>
-              <tr><th>Usuario</th><th class="num">Sin iniciar</th><th class="num">En trabajo</th><th class="num">Pend. revisión</th><th class="num">Aprobado</th><th class="num">Rechazado</th></tr>
+              <tr>
+                <th>Usuario</th>
+                ${columnasUsuario.map(e => `<th>${ETIQUETAS_ESTADO[e]}</th>`).join('')}
+              </tr>
             </thead>
-            <tbody>${filasUsuario || '<tr><td colspan="6">Nadie tiene tareas asignadas todavía.</td></tr>'}</tbody>
+            <tbody>${filasUsuario || `<tr><td colspan="${columnasUsuario.length + 1}">Nadie tiene tareas asignadas todavía.</td></tr>`}</tbody>
           </table>
         </div>
+
         <div class="card">
-          <h2>Rechazados pendientes de corrección (${rechazados.length})</h2>
-          <ul class="lista-nodos">${rechazados.length === 0 ? '<li>Ninguno ahora mismo.</li>' : filasRechazados}</ul>
+          <h2>❓ Pendientes de dudas (${dudas.length})</h2>
+          <ul class="lista-nodos">${renderListaNodos(dudas, 'Ninguna ahora mismo.')}</ul>
+        </div>
+
+        <div class="card">
+          <h2>🔧 Pendientes de cambios de modelo (${cambiosModelo.length})</h2>
+          <ul class="lista-nodos">${renderListaNodos(cambiosModelo, 'Ninguna ahora mismo.')}</ul>
+        </div>
+
+        <div class="card">
+          <h2>✘ Rechazados pendientes de corrección (${rechazados.length})</h2>
+          <ul class="lista-nodos">${renderListaNodos(rechazados, 'Ninguno ahora mismo.')}</ul>
+        </div>
+
+        <div class="card">
+          <h2>Sin asignar (${sinAsignar.length})</h2>
+          <ul class="lista-nodos">${renderListaNodos(sinAsignar, 'Todo tiene usuario asignado.')}</ul>
         </div>
       `;
     }
