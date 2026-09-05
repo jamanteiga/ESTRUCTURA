@@ -38,7 +38,7 @@
     ul.arbol.raiz { padding-left: 0; }
     li.nodo { margin: 2px 0; }
     .fila-nodo { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 4px; flex-wrap: wrap; }
-    .fila-nodo:hover { background: rgba(0,123,255,0.06); }
+    .fila-nodo:hover { background: rgba(0,123,255,0.14); }
     .toggle { width: 16px; cursor: pointer; text-align: center; user-select: none; color: #666; font-size: 11px; }
     .toggle.vacio { visibility: hidden; }
     .codigo { font-weight: bold; }
@@ -140,6 +140,24 @@
     }
     body.modo-menu-fijo .menu-panel { transform: translateX(0); box-shadow: 2px 0 8px rgba(0,0,0,0.15); }
     body.modo-menu-fijo .menu-cerrar { display: none; }
+
+    #menu-contextual {
+      display: none; position: fixed; z-index: 4000; background: #fff; border: 1px solid #ccc;
+      border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.25); min-width: 200px; padding: 4px 0;
+      font-size: 13px;
+    }
+    #menu-contextual .mc-item {
+      padding: 8px 14px; cursor: pointer; display: flex; align-items: center; gap: 8px;
+    }
+    #menu-contextual .mc-item:hover { background: #eef3ff; }
+    #menu-contextual .mc-separador { border-top: 1px solid #eee; margin: 4px 0; }
+    #menu-contextual .mc-titulo { padding: 6px 14px; font-size: 11px; color: #888; text-transform: uppercase; font-weight: bold; }
+
+    #mc-tooltip {
+      display: none; position: fixed; z-index: 4100; background: #333; color: #fff;
+      padding: 6px 10px; border-radius: 4px; font-size: 12px; max-width: 220px; pointer-events: none;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
   </style>
 </head>
 <body>
@@ -330,6 +348,8 @@
   </div>
 
   <div id="contenedor-avisos"></div>
+  <div id="menu-contextual"></div>
+  <div id="mc-tooltip"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
@@ -395,6 +415,11 @@
         `${perfil.nombre_completo} (${perfil.username}) — ${perfil.rol === 'TRABAJADOR' ? 'USUARIO' : perfil.rol}`;
 
       if (esGestor()) document.getElementById('menu-item-buque').style.display = 'flex';
+
+      if (miPerfil.rol === 'ADMIN') {
+        document.querySelectorAll('.menu-seccion-titulo').forEach(t => t.classList.add('abierta'));
+        document.querySelectorAll('.menu-seccion-contenido').forEach(c => c.classList.add('abierta'));
+      }
       if (perfil.rol === 'ADMIN') document.getElementById('menu-link-usuarios').style.display = 'flex';
 
       if (miPerfil.rol === 'TRABAJADOR') {
@@ -635,41 +660,17 @@
       }
       if (esGestor()) {
         acciones += `<button class="pequeno" onclick="abrirModalCrear('${nodo.id}', '${nodo.tipo}')" title="Añadir hijo">+</button>`;
-        acciones += `<button class="pequeno secundario" onclick="abrirModalLote('${nodo.id}', '${nodo.tipo}')" title="Crear varios">+N</button>`;
         acciones += `<button class="pequeno secundario" onclick="abrirModalEditar('${nodo.id}')" title="Editar">✎</button>`;
-        acciones += `<button class="pequeno secundario" onclick="abrirModalMover('${nodo.id}')" title="Mover">↔️</button>`;
         acciones += `<button class="pequeno secundario" onclick="reordenar('${nodo.id}', -1)" title="Subir">▲</button>`;
         acciones += `<button class="pequeno secundario" onclick="reordenar('${nodo.id}', 1)" title="Bajar">▼</button>`;
-        if (nodo.tipo === 'BLOQUE') {
-          acciones += `<button class="pequeno secundario" onclick="abrirModalDuplicar('${nodo.id}')" title="Duplicar bloque">⧉</button>`;
-        }
         if (!sinAsignacion) {
           acciones += `<button class="pequeno secundario" onclick="abrirModalAsignar('${nodo.id}')" title="Asignar">👤</button>`;
         }
         acciones += `<button class="pequeno peligro" onclick="desactivarNodo('${nodo.id}')" title="Desactivar">🗑️</button>`;
-      }
-
-      if (!sinAsignacion) {
-        const puedeEmpezarTerminar = esGestor() || nodo.trabajador_id === miPerfil.id;
-        if (puedeEmpezarTerminar) {
-          if (nodo.trabajo_estado === 'SIN_INICIAR' || nodo.trabajo_estado === 'REQUIERE_CORRECCION') {
-            acciones += `<button class="pequeno" onclick="accionMarcarEnTrabajo('${nodo.id}')">▶ Empezar</button>`;
-          } else if (nodo.trabajo_estado === 'EN_TRABAJO' || nodo.trabajo_estado === 'PENDIENTE_DUDAS' || nodo.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO') {
-            acciones += `<button class="pequeno exito" onclick="accionMarcarTerminado('${nodo.id}')">✔ Terminar</button>`;
-          }
-          if (nodo.trabajo_estado !== 'TERMINADO' && nodo.revision_estado !== 'APROBADO') {
-            if (nodo.trabajo_estado !== 'PENDIENTE_DUDAS') {
-              acciones += `<button class="pequeno secundario" onclick="accionMarcarPendienteDudas('${nodo.id}')" title="Pendiente de dudas">❓ Dudas</button>`;
-            }
-            if (nodo.trabajo_estado !== 'PENDIENTE_CAMBIOS_MODELO') {
-              acciones += `<button class="pequeno secundario" onclick="accionMarcarPendienteCambiosModelo('${nodo.id}')" title="Pendiente de cambios de modelo">🔧 Cambios</button>`;
-            }
-          }
-        }
-        if (esGestor() && nodo.trabajo_estado === 'TERMINADO') {
-          acciones += `<button class="pequeno exito" onclick="accionRevisar('${nodo.id}', true)">✔ Aprobar</button>`;
-          acciones += `<button class="pequeno peligro" onclick="accionRevisar('${nodo.id}', false)">✘ Rechazar</button>`;
-        }
+      } else if (!sinAsignacion) {
+        // El USUARIO también puede reordenar hermanos (no cambia la jerarquía, solo el orden)
+        acciones += `<button class="pequeno secundario" onclick="reordenar('${nodo.id}', -1)" title="Subir">▲</button>`;
+        acciones += `<button class="pequeno secundario" onclick="reordenar('${nodo.id}', 1)" title="Bajar">▼</button>`;
       }
 
       const notaDudas = (!sinAsignacion && nodo.trabajo_estado === 'PENDIENTE_DUDAS')
@@ -680,7 +681,7 @@
 
       return `
         <li class="nodo" id="li-${nodo.id}">
-          <div class="fila-nodo">
+          <div class="fila-nodo" oncontextmenu="mostrarMenuContextual(event, '${nodo.id}'); return false;">
             <span class="toggle ${tieneHijos ? '' : 'vacio'}" onclick="toggleNodo('${nodo.id}')">${abierto ? '▼' : '▶'}</span>
             <span class="flecha ${claseColor}" title="${estado}">${simboloFlecha}</span>
             <span class="codigo">${resaltarCoincidencia(nodo.codigo)}</span>
@@ -734,6 +735,126 @@
           await supabaseClient.from('nodes').update({ orden: i }).eq('id', hermanos[i].id);
         }
       }
+      await cargarArbol();
+    }
+
+    // -------------------- Menú contextual (clic derecho) --------------------
+
+    function mostrarMenuContextual(evento, nodeId) {
+      const nodo = mapaNodoPorId[nodeId];
+      const sinAsignacion = TIPOS_SIN_ASIGNACION.has(nodo.tipo);
+      const esMio = nodo.trabajador_id === miPerfil.id;
+      const puedeOperar = esGestor() || esMio;
+      const items = [];
+
+      if (esGestor()) {
+        items.push({ label: '+ Nuevo nodo', tip: 'Crea un nuevo nodo.', fn: () => abrirModalCrear(nodeId, nodo.tipo) });
+        items.push({ label: '+N Crear varios nodos', tip: 'Creación de varios nodos iguales al indicado.', fn: () => abrirModalLote(nodeId, nodo.tipo) });
+        items.push({ label: '↔️ Cambiar de nodo', tip: 'Cambia de nodo padre.', fn: () => abrirModalMover(nodeId) });
+        items.push({ label: '▲ Mover arriba', tip: 'Se mueve nodo hacia arriba.', fn: () => reordenar(nodeId, -1) });
+        items.push({ label: '▼ Mover abajo', tip: 'Se mueve nodo hacia abajo.', fn: () => reordenar(nodeId, 1) });
+        if (nodo.tipo === 'BLOQUE') {
+          items.push({ label: '⧉ Duplicar', tip: 'Se duplica el nodo seleccionado.', fn: () => abrirModalDuplicar(nodeId) });
+        }
+        if (!sinAsignacion) {
+          items.push({ label: '👤 Asignar usuario', tip: 'Asignación de tarea a un usuario.', fn: () => abrirModalAsignar(nodeId) });
+        }
+        items.push({ label: '🗑️ Desactivar', tip: 'Desactivación de un nodo o tarea.', fn: () => desactivarNodo(nodeId) });
+        items.push({ separador: true });
+      } else if (!sinAsignacion) {
+        items.push({ label: '▲ Mover arriba', tip: 'Se mueve nodo hacia arriba.', fn: () => reordenar(nodeId, -1) });
+        items.push({ label: '▼ Mover abajo', tip: 'Se mueve nodo hacia abajo.', fn: () => reordenar(nodeId, 1) });
+        items.push({ separador: true });
+      }
+
+      if (!sinAsignacion) {
+        if (!nodo.trabajador_id && !esGestor()) {
+          items.push({ label: '🖐 Tomar esta tarea', tip: 'Te autoasigna esta tarea, sin esperar a admin/revisor.', fn: () => tomarTarea(nodeId) });
+        }
+
+        if (puedeOperar) {
+          if (nodo.trabajo_estado === 'SIN_INICIAR' || nodo.trabajo_estado === 'REQUIERE_CORRECCION') {
+            items.push({
+              label: '▶ Empezar',
+              tip: esGestor() ? 'Se da por iniciada la tarea.' : 'Comenzar a trabajar en una tarea.',
+              fn: () => accionMarcarEnTrabajo(nodeId)
+            });
+          } else if (['EN_TRABAJO', 'PENDIENTE_DUDAS', 'PENDIENTE_CAMBIOS_MODELO'].includes(nodo.trabajo_estado)) {
+            items.push({ label: '✔ Finalizar', tip: 'Dar tarea por finalizada.', fn: () => accionMarcarTerminado(nodeId) });
+          }
+          if (nodo.trabajo_estado !== 'TERMINADO' && nodo.revision_estado !== 'APROBADO') {
+            if (nodo.trabajo_estado !== 'PENDIENTE_DUDAS') {
+              items.push({ label: '❓ Dudas', tip: 'Pendiente por dudas.', fn: () => accionMarcarPendienteDudas(nodeId) });
+            }
+            if (nodo.trabajo_estado !== 'PENDIENTE_CAMBIOS_MODELO') {
+              items.push({ label: '🔧 Cambios', tip: 'Pendiente por cambios en el modelo.', fn: () => accionMarcarPendienteCambiosModelo(nodeId) });
+            }
+          }
+        }
+        if (esGestor() && nodo.trabajo_estado === 'TERMINADO') {
+          items.push({ separador: true });
+          items.push({ label: '✔ Aprobar', tip: 'Aprueba la tarea revisada.', fn: () => accionRevisar(nodeId, true) });
+          items.push({ label: '✘ Rechazar', tip: 'Rechaza la tarea, pidiendo el motivo.', fn: () => accionRevisar(nodeId, false) });
+        }
+      }
+
+      // Quita un separador que quede colgando al final (si no hay nada después)
+      while (items.length && items[items.length - 1].separador) items.pop();
+      if (items.length === 0) return;
+
+      const menu = document.getElementById('menu-contextual');
+      menu.innerHTML = items.map((it, i) =>
+        it.separador ? '<div class="mc-separador"></div>' : `<div class="mc-item" data-idx="${i}">${it.label}</div>`
+      ).join('');
+
+      menu.querySelectorAll('.mc-item').forEach(el => {
+        const it = items[parseInt(el.dataset.idx, 10)];
+        el.addEventListener('click', () => { cerrarMenuContextual(); it.fn(); });
+        el.addEventListener('mouseenter', (e) => mostrarTooltipMenu(e, it.tip));
+        el.addEventListener('mousemove', (e) => posicionarTooltipMenu(e));
+        el.addEventListener('mouseleave', ocultarTooltipMenu);
+      });
+
+      // Posiciona el menú sin salirse de la pantalla
+      const anchoEstimado = 240, altoEstimado = items.length * 34 + 20;
+      let x = evento.clientX, y = evento.clientY;
+      if (x + anchoEstimado > window.innerWidth) x = window.innerWidth - anchoEstimado - 10;
+      if (y + altoEstimado > window.innerHeight) y = window.innerHeight - altoEstimado - 10;
+      menu.style.left = x + 'px';
+      menu.style.top = y + 'px';
+      menu.style.display = 'block';
+    }
+
+    function mostrarTooltipMenu(evento, texto) {
+      if (!texto) return;
+      const tip = document.getElementById('mc-tooltip');
+      tip.textContent = texto;
+      tip.style.display = 'block';
+      posicionarTooltipMenu(evento);
+    }
+    function posicionarTooltipMenu(evento) {
+      const tip = document.getElementById('mc-tooltip');
+      if (tip.style.display !== 'block') return;
+      tip.style.left = (evento.clientX + 16) + 'px';
+      tip.style.top = (evento.clientY + 12) + 'px';
+    }
+    function ocultarTooltipMenu() {
+      document.getElementById('mc-tooltip').style.display = 'none';
+    }
+
+    function cerrarMenuContextual() {
+      document.getElementById('menu-contextual').style.display = 'none';
+      ocultarTooltipMenu();
+    }
+
+    document.addEventListener('click', cerrarMenuContextual);
+    document.addEventListener('scroll', cerrarMenuContextual, true);
+
+    async function tomarTarea(nodeId) {
+      const { error } = await supabaseClient.rpc('asignar_trabajo', {
+        p_node_id: nodeId, p_trabajador_id: miPerfil.id, p_revisor_id: null
+      });
+      if (error) { alert('Error: ' + error.message); return; }
       await cargarArbol();
     }
 
