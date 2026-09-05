@@ -185,6 +185,7 @@
     </h1>
     <span id="texto-usuario" class="estado-msg"></span>
     <button class="secundario" onclick="location.href='index.html'">🏠 Inicio</button>
+    <button class="secundario" onclick="cerrarSesion()">Cerrar sesión</button>
   </div>
 
   <div class="card leyenda">
@@ -214,12 +215,17 @@
         <span class="menu-item" id="menu-item-buque" onclick="abrirModalCrear(null, 'BUQUE')" style="display:none;">+ Añadir Buque</span>
         <a class="menu-item" href="resumen.html">📊 Resumen</a>
         <a class="menu-item" id="menu-link-usuarios" href="usuarios.html" style="display:none;">👤 Usuarios</a>
+        <a class="menu-item" id="menu-link-log" href="log.html" style="display:none;">🗒️ Registro de actividad</a>
         <span class="menu-item" onclick="cerrarSesion()">🚪 Cerrar sesión</span>
       </div>
 
       <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Bloques <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
         <span class="menu-item" onclick="expandirTodo()">⏬ Expandir</span>
+        <span class="menu-item" onclick="expandirSinSubbloques()">⏬ Expandir (sin Subbloques)</span>
+        <label class="menu-item">
+          <input type="checkbox" id="chk-vista-simple" onchange="toggleVistaSimplificada()"> 🎨 Vista simplificada (solo colores)
+        </label>
         <span class="menu-item" onclick="encogerTodo()">⏫ Replegar</span>
       </div>
 
@@ -413,6 +419,12 @@
     let filtroUsuarioId = '';
     let filtroEstado = '';
     let mostrarDesactivados = false;
+    let vistaSimplificada = false;
+
+    function toggleVistaSimplificada() {
+      vistaSimplificada = document.getElementById('chk-vista-simple').checked;
+      if (vistaSimplificada) expandirTodo(); else renderizarArbolCompleto();
+    }
     let nodosVisiblesActual = null;
 
     function formatearFechaHora(iso) {
@@ -458,7 +470,10 @@
         document.querySelectorAll('.menu-seccion-titulo').forEach(t => t.classList.add('abierta'));
         document.querySelectorAll('.menu-seccion-contenido').forEach(c => c.classList.add('abierta'));
       }
-      if (perfil.rol === 'ADMIN') document.getElementById('menu-link-usuarios').style.display = 'flex';
+      if (perfil.rol === 'ADMIN') {
+        document.getElementById('menu-link-usuarios').style.display = 'flex';
+        document.getElementById('menu-link-log').style.display = 'flex';
+      }
 
       if (miPerfil.rol === 'TRABAJADOR') {
         document.getElementById('wrap-mis-tareas').style.display = 'flex';
@@ -506,6 +521,16 @@
     }
 
     function esGestor() { return miPerfil.rol === 'ADMIN' || miPerfil.rol === 'REVISOR'; }
+
+    async function registrarLog(accion, descripcion, nodeId) {
+      try {
+        await supabaseClient.functions.invoke('log-accion', {
+          body: { accion, descripcion, node_id: nodeId || null }
+        });
+      } catch (e) {
+        console.warn('No se pudo registrar el log:', e);
+      }
+    }
 
     function cambiarIdioma(idioma) {
       localStorage.setItem('estructura_idioma', idioma);
@@ -692,7 +717,7 @@
       const fechaRevisor = nodo.revisado_en ? formatearFechaHora(nodo.revisado_en) : '';
 
       let asignadosTexto = '';
-      if (!sinAsignacion) {
+      if (!sinAsignacion && !vistaSimplificada) {
         const partes = [];
         if (nodo.trabajador_nombre) partes.push(`👷 ${nodo.trabajador_nombre}${fechaTrabajador ? ` <span class="fecha">(${fechaTrabajador})</span>` : ''}`);
         if (nodo.revisor_nombre) partes.push(`🔍 ${nodo.revisor_nombre}${fechaRevisor ? ` <span class="fecha">(${fechaRevisor})</span>` : ''}`);
@@ -705,10 +730,10 @@
         acciones += `<button class="pequeno secundario" onclick="encogerRama('${nodo.id}')" title="Encoger esta rama">⏫</button>`;
       }
 
-      const notaDudas = (!sinAsignacion && nodo.trabajo_estado === 'PENDIENTE_DUDAS')
+      const notaDudas = (!sinAsignacion && !vistaSimplificada && nodo.trabajo_estado === 'PENDIENTE_DUDAS')
         ? `<div class="motivo-rechazo" style="color:rgb(0,176,240);">❓ Pendiente de dudas</div>` : '';
 
-      const motivoRechazo = (!sinAsignacion && nodo.revision_estado === 'RECHAZADO' && nodo.comentario_revision)
+      const motivoRechazo = (!sinAsignacion && !vistaSimplificada && nodo.revision_estado === 'RECHAZADO' && nodo.comentario_revision)
         ? `<div class="motivo-rechazo">✘ Motivo: ${nodo.comentario_revision}</div>` : '';
 
       return `
@@ -740,6 +765,12 @@
     }
 
     function expandirTodo() { todosLosNodos.forEach(n => nodosAbiertos.add(n.id)); cargarArbol(); }
+    function expandirSinSubbloques() {
+      todosLosNodos.forEach(n => {
+        if (n.tipo === 'SUBBLOQUE') nodosAbiertos.delete(n.id); else nodosAbiertos.add(n.id);
+      });
+      cargarArbol();
+    }
     function encogerTodo() { nodosAbiertos.clear(); cargarArbol(); }
     function expandirRama(nodeId) {
       nodosAbiertos.add(nodeId);
@@ -767,6 +798,7 @@
           await supabaseClient.from('nodes').update({ orden: i }).eq('id', hermanos[i].id);
         }
       }
+      registrarLog('REORDENAR_NODO', `Movió "${nodo.codigo}" ${direccion < 0 ? 'arriba' : 'abajo'}`, nodeId);
       await cargarArbol();
     }
 
@@ -949,6 +981,7 @@
     async function confirmarTomarTarea() {
       const estadoEl = document.getElementById('modal-tomar-estado');
       const revisorId = document.getElementById('modal-tomar-revisor').value || null;
+      const nodo = mapaNodoPorId[nodoTomarActual];
 
       const { error } = await supabaseClient.rpc('asignar_trabajo', {
         p_node_id: nodoTomarActual, p_trabajador_id: miPerfil.id, p_revisor_id: revisorId
@@ -956,21 +989,27 @@
 
       if (error) { estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado-msg error'; return; }
 
+      registrarLog('TOMAR_TAREA', `Tomó la tarea "${nodo?.codigo}"`, nodoTomarActual);
+
       cerrarModalTomar();
       await cargarArbol();
     }
 
     async function accionDesasignarTrabajador(nodeId) {
       if (!confirm('¿Quitar el usuario asignado y dejar esta tarea sin asignar?')) return;
+      const nodo = mapaNodoPorId[nodeId];
       const { error } = await supabaseClient.rpc('desasignar_trabajador', { p_node_id: nodeId });
       if (error) { alert('Error: ' + error.message); return; }
+      registrarLog('SIN_ASIGNAR', `Dejó sin asignar la tarea "${nodo?.codigo}"`, nodeId);
       await cargarArbol();
     }
 
     async function accionReiniciarTarea(nodeId) {
       if (!confirm('¿Reiniciar esta tarea a "Pendiente de hacer"? Se mantiene el usuario asignado.')) return;
+      const nodo = mapaNodoPorId[nodeId];
       const { error } = await supabaseClient.rpc('reiniciar_tarea', { p_node_id: nodeId });
       if (error) { alert('Error: ' + error.message); return; }
+      registrarLog('REINICIAR_TAREA', `Reinició la tarea "${nodo?.codigo}" a Pendiente de hacer`, nodeId);
       await cargarArbol();
     }
 
@@ -1034,11 +1073,13 @@
 
       const esBuqueNuevo = !nodoCrearPadre;
 
-      const { error } = await supabaseClient.from('nodes').insert({
+      const { data: nuevoNodo, error } = await supabaseClient.from('nodes').insert({
         parent_id: nodoCrearPadre ? nodoCrearPadre.id : null, tipo, codigo, nombre, descripcion: descripcion || null, orden
-      });
+      }).select().single();
 
       if (error) { estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado-msg error'; return; }
+
+      registrarLog('CREAR_NODO', `Creó ${tipo} "${codigo}"${nodoCrearPadre ? ` dentro de ${mapaNodoPorId[nodoCrearPadre.id]?.codigo || ''}` : ''}`, nuevoNodo?.id);
 
       cerrarModalNodo();
       if (nodoCrearPadre) nodosAbiertos.add(nodoCrearPadre.id);
@@ -1063,6 +1104,8 @@
 
       if (error) { estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado-msg error'; return; }
 
+      registrarLog('EDITAR_NODO', `Editó el nodo "${codigo}"`, nodeId);
+
       cerrarModalNodo();
       await cargarArbol();
     }
@@ -1076,12 +1119,15 @@
 
       const { error } = await supabaseClient.from('nodes').update({ activo: false }).eq('id', nodeId);
       if (error) { alert('Error: ' + error.message); return; }
+      registrarLog('DESACTIVAR_NODO', `Desactivó "${nodo.codigo}"`, nodeId);
       await cargarArbol();
     }
 
     async function reactivarNodo(nodeId) {
+      const nodo = mapaNodoPorId[nodeId];
       const { error } = await supabaseClient.from('nodes').update({ activo: true }).eq('id', nodeId);
       if (error) { alert('Error: ' + error.message); return; }
+      registrarLog('REACTIVAR_NODO', `Reactivó "${nodo?.codigo || nodeId}"`, nodeId);
       await cargarArbol();
     }
 
@@ -1174,6 +1220,7 @@
       btn.disabled = false;
       cerrarModalLote();
       nodosAbiertos.add(nodoLotePadre.id);
+      registrarLog('CREAR_LOTE', `Creó ${creados} nodos de tipo ${tipo} (${prefijo}${String(desde).padStart(anchoPadding,'0')} a ${prefijo}${String(hasta).padStart(anchoPadding,'0')}) dentro de "${nodoLotePadre.tipo}"`, nodoLotePadre.id);
       await cargarArbol();
     }
 
@@ -1221,6 +1268,7 @@
 
       try {
         await clonarSubarbol(nodoDuplicarActual.id, nodoDuplicarActual.parent_id, codigo, nombre);
+        registrarLog('DUPLICAR_NODO', `Duplicó "${nodoDuplicarActual.codigo}" como "${codigo}"`, nodoDuplicarActual.id);
         cerrarModalDuplicar();
         await cargarArbol();
       } catch (err) {
@@ -1288,6 +1336,8 @@
       const { error } = await supabaseClient.from('nodes').update({ parent_id: parentIdSeleccionadoParaMover }).eq('id', nodoMoverActual.id);
       if (error) { estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado-msg error'; return; }
 
+      registrarLog('CAMBIAR_NODO_PADRE', `Movió "${nodoMoverActual.codigo}" a "${mapaNodoPorId[parentIdSeleccionadoParaMover]?.codigo || parentIdSeleccionadoParaMover}"`, nodoMoverActual.id);
+
       cerrarModalMover();
       nodosAbiertos.add(parentIdSeleccionadoParaMover);
       await cargarArbol();
@@ -1316,6 +1366,7 @@
       const estadoEl = document.getElementById('modal-asignar-estado');
       const trabajadorId = document.getElementById('modal-asignar-trabajador').value || null;
       const revisorId = document.getElementById('modal-asignar-revisor').value || null;
+      const nodo = mapaNodoPorId[nodoAsignarActual];
 
       const { error } = await supabaseClient.rpc('asignar_trabajo', {
         p_node_id: nodoAsignarActual, p_trabajador_id: trabajadorId, p_revisor_id: revisorId
@@ -1323,32 +1374,44 @@
 
       if (error) { estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado-msg error'; return; }
 
+      const nombreTrab = perfilesCache.find(p => p.id === trabajadorId)?.nombre_completo || 'nadie';
+      const nombreRev = perfilesCache.find(p => p.id === revisorId)?.nombre_completo || 'nadie';
+      registrarLog('ASIGNAR', `Asignó "${nodo?.codigo}" — usuario: ${nombreTrab}, revisor: ${nombreRev}`, nodoAsignarActual);
+
       cerrarModalAsignar();
       await cargarArbol();
     }
 
     async function accionMarcarEnTrabajo(nodeId) {
+      const nodo = mapaNodoPorId[nodeId];
       const { error } = await supabaseClient.rpc('marcar_en_trabajo', { p_node_id: nodeId });
       if (error) { alert('Error: ' + error.message); return; }
+      registrarLog('EMPEZAR', `Empezó "${nodo?.codigo}"`, nodeId);
       await cargarArbol();
     }
 
     async function accionMarcarPendienteDudas(nodeId) {
+      const nodo = mapaNodoPorId[nodeId];
       const { error } = await supabaseClient.rpc('marcar_pendiente_dudas', { p_node_id: nodeId });
       if (error) { alert('Error: ' + error.message); return; }
+      registrarLog('PENDIENTE_DUDAS', `Marcó "${nodo?.codigo}" como Pendiente de dudas`, nodeId);
       await cargarArbol();
     }
 
     async function accionMarcarPendienteCambiosModelo(nodeId) {
+      const nodo = mapaNodoPorId[nodeId];
       const { error } = await supabaseClient.rpc('marcar_pendiente_cambios_modelo', { p_node_id: nodeId });
       if (error) { alert('Error: ' + error.message); return; }
+      registrarLog('PENDIENTE_CAMBIOS_MODELO', `Marcó "${nodo?.codigo}" como Pendiente de cambios de modelo`, nodeId);
       await cargarArbol();
     }
 
     async function accionMarcarTerminado(nodeId) {
       if (!confirm('¿Marcar este trabajo como terminado y enviarlo a revisión?')) return;
+      const nodo = mapaNodoPorId[nodeId];
       const { error } = await supabaseClient.rpc('marcar_terminado', { p_node_id: nodeId });
       if (error) { alert('Error: ' + error.message); return; }
+      registrarLog('FINALIZAR', `Finalizó "${nodo?.codigo}" (pasa a Pendiente de revisión)`, nodeId);
       await cargarArbol();
     }
 
@@ -1358,8 +1421,10 @@
         comentario = prompt('Motivo del rechazo (obligatorio):');
         if (!comentario || !comentario.trim()) return;
       }
+      const nodo = mapaNodoPorId[nodeId];
       const { error } = await supabaseClient.rpc('revisar_nodo', { p_node_id: nodeId, p_aprobado: aprobado, p_comentario: comentario });
       if (error) { alert('Error: ' + error.message); return; }
+      registrarLog(aprobado ? 'APROBAR' : 'RECHAZAR', `${aprobado ? 'Aprobó' : 'Rechazó'} "${nodo?.codigo}"${comentario ? ` — motivo: ${comentario}` : ''}`, nodeId);
       await cargarArbol();
     }
 

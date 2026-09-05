@@ -53,6 +53,31 @@
     .f-aprobado { color: rgb(146,208,80); }
     .f-rechazado { color: rgb(255,0,0); }
     .ruta-nodo { color: #666; font-size: 11px; }
+
+    #menu-asignar-resumen {
+      display: none; position: fixed; z-index: 4000; background: #fff; border: 1px solid #ccc;
+      border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.25); min-width: 160px; padding: 4px 0; font-size: 13px;
+    }
+    #menu-asignar-resumen .mc-item { padding: 8px 14px; cursor: pointer; }
+    #menu-asignar-resumen .mc-item:hover { background: #eef3ff; }
+    #menu-asignar-resumen .mc-item.mc-padre::after { content: '▸'; float: right; color: #999; margin-left: 10px; }
+
+    #submenu-estado-resumen {
+      display: none; position: fixed; z-index: 4050; background: #fff; border: 1px solid #ccc;
+      border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.25); min-width: 260px; padding: 4px 0; font-size: 13px;
+    }
+    #submenu-estado-resumen .mc-item { padding: 8px 14px; cursor: pointer; }
+    #submenu-estado-resumen .mc-item:hover { background: #eef3ff; }
+
+    .overlay {
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.55); align-items: center; justify-content: center; z-index: 5000;
+    }
+    .overlay-caja { background: white; border-radius: 8px; padding: 22px; max-width: 400px; width: 90%; }
+    .overlay-caja h3 { margin-top: 0; font-size: 16px; }
+    .overlay-caja label { display: block; font-weight: bold; font-size: 12px; margin: 10px 0 4px; }
+    .overlay-caja select { width: 100%; padding: 7px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 13px; }
+    .overlay-botones { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
   </style>
 </head>
 <body>
@@ -71,6 +96,24 @@
 
   <div id="contenido">
     <p>Cargando...</p>
+  </div>
+
+  <div id="menu-asignar-resumen"></div>
+  <div id="submenu-estado-resumen"></div>
+
+  <div class="overlay" id="modal-asignar-resumen">
+    <div class="overlay-caja">
+      <h3>Asignar usuario / revisor</h3>
+      <label>Usuario</label>
+      <select id="ar-trabajador"><option value="">— Sin asignar —</option></select>
+      <label>Revisor</label>
+      <select id="ar-revisor"><option value="">— Sin asignar —</option></select>
+      <div class="estado-msg" id="ar-estado"></div>
+      <div class="overlay-botones">
+        <button class="secundario" onclick="cerrarModalAsignarResumen()">Cancelar</button>
+        <button onclick="guardarAsignacionResumen()">Guardar</button>
+      </div>
+    </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -152,12 +195,12 @@
       `;
     }
 
-    function renderListaNodos(nodos, vacio) {
+    function renderListaNodos(nodos, vacio, permitirAsignar) {
       if (nodos.length === 0) return `<li>${vacio}</li>`;
       return nodos.map(n => {
         const estado = calcularEstadoPropio(n);
         return `
-          <li>
+          <li ${permitirAsignar ? `oncontextmenu="mostrarMenuAsignarResumen(event, '${n.id}'); return false;" style="cursor:context-menu;"` : ''}>
             <span class="flecha f-${estado}">▶</span>
             <div>
               <div><strong>${n.codigo}</strong> ${n.nombre} ${n.trabajador_nombre ? `— 👷 ${n.trabajador_nombre}` : ''}</div>
@@ -166,6 +209,127 @@
           </li>
         `;
       }).join('');
+    }
+
+    function envolverListaConScroll(nodos, vacio, permitirAsignar) {
+      const necesitaScroll = nodos.length > 3;
+      const estilo = necesitaScroll ? 'max-height:170px; overflow-y:auto;' : '';
+      return `<ul class="lista-nodos" style="${estilo}">${renderListaNodos(nodos, vacio, permitirAsignar)}</ul>`;
+    }
+
+    // -------------------- Asignar desde resumen (clic derecho) --------------------
+
+    let perfilesCache = [];
+    let nodoAsignarResumenActual = null;
+
+    async function cargarPerfilesResumen() {
+      const { data } = await supabaseClient.from('profiles').select('*').eq('activo', true);
+      perfilesCache = (data || []).sort((a, b) =>
+        (a.nombre_completo || '').localeCompare(b.nombre_completo || '', 'es', { sensitivity: 'base' })
+      );
+    }
+
+    function mostrarMenuAsignarResumen(evento, nodeId) {
+      nodoAsignarResumenActual = nodeId;
+      const menu = document.getElementById('menu-asignar-resumen');
+      menu.innerHTML = `
+        <div class="mc-item" id="mc-asignar-item">👤 Asignar usuario / revisor</div>
+        <div class="mc-item mc-padre" id="mc-estado-item">Estado tarea</div>
+      `;
+      document.getElementById('mc-asignar-item').addEventListener('click', (e) => {
+        e.stopPropagation();
+        cerrarMenuAsignarResumen();
+        abrirModalAsignarResumen(nodeId);
+      });
+      document.getElementById('mc-estado-item').addEventListener('click', (e) => {
+        e.stopPropagation();
+        mostrarSubmenuEstadoResumen(document.getElementById('mc-estado-item'), nodeId);
+      });
+      menu.style.left = evento.clientX + 'px';
+      menu.style.top = evento.clientY + 'px';
+      menu.style.display = 'block';
+    }
+    function cerrarMenuAsignarResumen() {
+      document.getElementById('menu-asignar-resumen').style.display = 'none';
+      document.getElementById('submenu-estado-resumen').style.display = 'none';
+    }
+    document.addEventListener('click', cerrarMenuAsignarResumen);
+
+    async function accionEstadoResumen(rpc, nodeId, params) {
+      const { error } = await supabaseClient.rpc(rpc, { p_node_id: nodeId, ...(params || {}) });
+      if (error) { alert('Error: ' + error.message); return; }
+      await recargarDatos();
+    }
+
+    function mostrarSubmenuEstadoResumen(elementoPadre, nodeId) {
+      const opciones = [
+        { label: '✔ Aprobado', fn: () => accionEstadoResumen('revisar_nodo', nodeId, { p_aprobado: true }) },
+        { label: '✘ Rechazado', fn: () => {
+            const comentario = prompt('Motivo del rechazo (obligatorio):');
+            if (!comentario || !comentario.trim()) return;
+            accionEstadoResumen('revisar_nodo', nodeId, { p_aprobado: false, p_comentario: comentario });
+          } },
+        { label: 'Sin asignar', fn: () => { if (confirm('¿Quitar el usuario asignado?')) accionEstadoResumen('desasignar_trabajador', nodeId); } },
+        { label: 'Pendiente de hacer', fn: () => { if (confirm('¿Reiniciar esta tarea?')) accionEstadoResumen('reiniciar_tarea', nodeId); } },
+        { label: 'En proceso', fn: () => accionEstadoResumen('marcar_en_trabajo', nodeId) },
+        { label: 'Pendiente de revisión', fn: () => accionEstadoResumen('marcar_terminado', nodeId) },
+        { label: 'Pendiente de dudas', fn: () => accionEstadoResumen('marcar_pendiente_dudas', nodeId) },
+        { label: 'Pendiente cambios en modelo', fn: () => accionEstadoResumen('marcar_pendiente_cambios_modelo', nodeId) }
+      ];
+
+      const sub = document.getElementById('submenu-estado-resumen');
+      sub.innerHTML = opciones.map((o, i) => `<div class="mc-item" data-idx="${i}">${o.label}</div>`).join('');
+      sub.querySelectorAll('.mc-item').forEach(el => {
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          cerrarMenuAsignarResumen();
+          opciones[parseInt(el.dataset.idx, 10)].fn();
+        });
+      });
+
+      const rect = elementoPadre.getBoundingClientRect();
+      let x = rect.right + 2;
+      if (x + 260 > window.innerWidth) x = rect.left - 262;
+      let y = rect.top;
+      if (y + 300 > window.innerHeight) y = window.innerHeight - 300;
+      sub.style.left = x + 'px';
+      sub.style.top = Math.max(y, 10) + 'px';
+      sub.style.display = 'block';
+    }
+
+    function abrirModalAsignarResumen(nodeId) {
+      const nodo = mapaNodoPorId[nodeId];
+      const selTrab = document.getElementById('ar-trabajador');
+      const selRev = document.getElementById('ar-revisor');
+
+      const usuarios = perfilesCache.filter(p => p.rol === 'TRABAJADOR');
+      const revisores = perfilesCache.filter(p => p.rol === 'REVISOR');
+
+      selTrab.innerHTML = '<option value="">— Sin asignar —</option>' +
+        usuarios.map(p => `<option value="${p.id}" ${p.id === nodo.trabajador_id ? 'selected' : ''}>${p.nombre_completo}</option>`).join('');
+      selRev.innerHTML = '<option value="">— Sin asignar —</option>' +
+        revisores.map(p => `<option value="${p.id}" ${p.id === nodo.revisor_id ? 'selected' : ''}>${p.nombre_completo}</option>`).join('');
+
+      document.getElementById('ar-estado').textContent = '';
+      document.getElementById('modal-asignar-resumen').style.display = 'flex';
+    }
+    function cerrarModalAsignarResumen() {
+      document.getElementById('modal-asignar-resumen').style.display = 'none';
+    }
+
+    async function guardarAsignacionResumen() {
+      const estadoEl = document.getElementById('ar-estado');
+      const trabajadorId = document.getElementById('ar-trabajador').value || null;
+      const revisorId = document.getElementById('ar-revisor').value || null;
+
+      const { error } = await supabaseClient.rpc('asignar_trabajo', {
+        p_node_id: nodoAsignarResumenActual, p_trabajador_id: trabajadorId, p_revisor_id: revisorId
+      });
+
+      if (error) { estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado-msg error'; return; }
+
+      cerrarModalAsignarResumen();
+      await recargarDatos();
     }
 
     async function iniciar() {
@@ -184,6 +348,8 @@
       document.getElementById('texto-usuario').textContent =
         `${perfil.nombre_completo} (${perfil.username}) — ${perfil.rol === 'TRABAJADOR' ? 'USUARIO' : perfil.rol}`;
       if (perfil.rol === 'ADMIN') document.getElementById('btn-usuarios').style.display = 'inline-block';
+
+      if (esGestor()) await cargarPerfilesResumen();
 
       await recargarDatos();
       suscribirseARealtime();
@@ -341,22 +507,22 @@
 
         <div class="card">
           <h2>❓ Pendientes de dudas (${dudas.length})</h2>
-          <ul class="lista-nodos">${renderListaNodos(dudas, 'Ninguna ahora mismo.')}</ul>
+          ${envolverListaConScroll(dudas, 'Ninguna ahora mismo.', true)}
         </div>
 
         <div class="card">
           <h2>🔧 Pendientes de cambios de modelo (${cambiosModelo.length})</h2>
-          <ul class="lista-nodos">${renderListaNodos(cambiosModelo, 'Ninguna ahora mismo.')}</ul>
+          ${envolverListaConScroll(cambiosModelo, 'Ninguna ahora mismo.', true)}
         </div>
 
         <div class="card">
           <h2>✘ Rechazados pendientes de corrección (${rechazados.length})</h2>
-          <ul class="lista-nodos">${renderListaNodos(rechazados, 'Ninguno ahora mismo.')}</ul>
+          ${envolverListaConScroll(rechazados, 'Ninguno ahora mismo.', true)}
         </div>
 
         <div class="card">
           <h2>Sin asignar (${sinAsignar.length})</h2>
-          <ul class="lista-nodos">${renderListaNodos(sinAsignar, 'Todo tiene usuario asignado.')}</ul>
+          ${envolverListaConScroll(sinAsignar, 'Todo tiene usuario asignado.', true)}
         </div>
       `;
     }
