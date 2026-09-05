@@ -65,6 +65,7 @@
         <button class="secundario" onclick="location.href='index.html'">🏠 Inicio</button>
         <button class="secundario" onclick="location.href='resumen.html'">📊 Resumen</button>
         <button class="secundario" onclick="location.href='arbol.html'">🌳 Árbol</button>
+        <button class="secundario" onclick="location.href='log.html'">🗒️ Registro</button>
         <button class="secundario" onclick="cerrarSesion()">Cerrar sesión</button>
         <button style="background:#dc3545;" onclick="cerrarPagina()">❌ Cerrar</button>
       </div>
@@ -102,21 +103,23 @@
 
     <div class="card">
       <h2 style="margin-top:0;">Usuarios existentes</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Usuario</th>
-            <th>Nombre completo</th>
-            <th>Rol</th>
-            <th>Ubicación</th>
-            <th>Activo</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="tabla-usuarios-body">
-          <tr><td colspan="6">Cargando...</td></tr>
-        </tbody>
-      </table>
+      <div style="max-height: 480px; overflow-y: auto; border: 1px solid #eee; border-radius: 6px;">
+        <table>
+          <thead>
+            <tr>
+              <th style="position: sticky; top: 0;">Usuario</th>
+              <th style="position: sticky; top: 0;">Nombre completo</th>
+              <th style="position: sticky; top: 0;">Rol</th>
+              <th style="position: sticky; top: 0;">Ubicación</th>
+              <th style="position: sticky; top: 0;">Activo</th>
+              <th style="position: sticky; top: 0;"></th>
+            </tr>
+          </thead>
+          <tbody id="tabla-usuarios-body">
+            <tr><td colspan="6">Cargando...</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -169,6 +172,14 @@
 
   <script>
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    async function registrarLog(accion, descripcion) {
+      try {
+        await supabaseClient.functions.invoke('log-accion', { body: { accion, descripcion } });
+      } catch (e) {
+        console.warn('No se pudo registrar el log:', e);
+      }
+    }
     let miPerfil = null;
     let idEditando = null;
 
@@ -249,6 +260,8 @@
         await supabaseClient.from('profiles').update({ ubicacion }).eq('id', data.perfil.id);
       }
 
+      registrarLog('CREAR_USUARIO', `Creó el usuario "${username}" (${nombre_completo}), rol ${rol}`);
+
       estadoEl.textContent = `Usuario "${username}" creado correctamente.`;
       estadoEl.className = 'estado ok';
       document.getElementById('username-nuevo').value = '';
@@ -322,6 +335,7 @@
       const movil = document.getElementById('editar-movil').value.trim() || null;
       const linkedin = document.getElementById('editar-linkedin').value.trim() || null;
       const activo = document.getElementById('editar-activo').checked;
+      const anterior = perfilesCache.find(p => p.id === idEditando);
 
       if (!nombre_completo) { estadoEl.textContent = 'El nombre no puede quedar vacío'; estadoEl.className = 'estado error'; return; }
 
@@ -334,6 +348,11 @@
       }).eq('id', idEditando);
 
       if (error) { estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado error'; return; }
+
+      const cambios = [];
+      if (anterior && anterior.rol !== rol) cambios.push(`rol ${anterior.rol}→${rol}`);
+      if (anterior && anterior.activo !== activo) cambios.push(activo ? 'reactivado' : 'desactivado');
+      registrarLog('EDITAR_USUARIO', `Editó a "${nombre_completo}"${cambios.length ? ' — ' + cambios.join(', ') : ''}`);
 
       cerrarModalEditar();
       cargarUsuarios();
@@ -350,6 +369,8 @@
         alert('Error: ' + (data?.error || error.message));
         return;
       }
+
+      registrarLog('RESETEAR_PASSWORD', `Reseteó la contraseña de "${p.username}"`);
 
       mostrarOverlayPassword(data.password, `Nueva contraseña de "${p.username}"`);
     }

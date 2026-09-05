@@ -550,16 +550,21 @@
 
     function aplicarModoMenu(modo) {
       document.body.classList.toggle('modo-menu-fijo', modo === 'fijo');
-      localStorage.setItem('estructura_modo_menu', modo);
+    }
+
+    async function cambiarModoMenu(modo) {
+      aplicarModoMenu(modo);
+      const { error } = await supabaseClient.rpc('guardar_preferencia_menu', { p_fijo: modo === 'fijo' });
+      if (error) console.warn('No se pudo guardar la preferencia de menú:', error.message);
     }
 
     function inicializarModoMenu() {
-      const guardado = localStorage.getItem('estructura_modo_menu') || 'desplegable';
-      document.getElementById(guardado === 'fijo' ? 'radio-fijo' : 'radio-desplegable').checked = true;
-      aplicarModoMenu(guardado);
+      const fijo = !!miPerfil.menu_fijo;
+      document.getElementById(fijo ? 'radio-fijo' : 'radio-desplegable').checked = true;
+      aplicarModoMenu(fijo ? 'fijo' : 'desplegable');
 
-      document.getElementById('radio-fijo').addEventListener('change', () => aplicarModoMenu('fijo'));
-      document.getElementById('radio-desplegable').addEventListener('change', () => aplicarModoMenu('desplegable'));
+      document.getElementById('radio-fijo').addEventListener('change', () => cambiarModoMenu('fijo'));
+      document.getElementById('radio-desplegable').addEventListener('change', () => cambiarModoMenu('desplegable'));
     }
 
     async function cerrarSesion() {
