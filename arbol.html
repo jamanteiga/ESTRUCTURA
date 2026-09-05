@@ -524,8 +524,9 @@
 
     async function registrarLog(accion, descripcion, nodeId) {
       try {
+        const codigo = nodeId ? (mapaNodoPorId[nodeId]?.codigo || null) : null;
         await supabaseClient.functions.invoke('bright-processor', {
-          body: { accion, descripcion, node_id: nodeId || null }
+          body: { accion, descripcion, node_id: nodeId || null, node_codigo: codigo }
         });
       } catch (e) {
         console.warn('No se pudo registrar el log:', e);
@@ -798,10 +799,18 @@
 
       [hermanos[idx], hermanos[nuevoIdx]] = [hermanos[nuevoIdx], hermanos[idx]];
 
+      let huboError = null;
       for (let i = 0; i < hermanos.length; i++) {
         if (hermanos[i].orden !== i) {
-          await supabaseClient.from('nodes').update({ orden: i }).eq('id', hermanos[i].id);
+          const { error } = await supabaseClient.from('nodes').update({ orden: i }).eq('id', hermanos[i].id);
+          if (error) huboError = error;
         }
+      }
+      if (huboError) {
+        alert('Error: ' + huboError.message);
+        registrarLog('INTENTO_FALLIDO', `Intento de mover "${nodo.codigo}" ${direccion < 0 ? 'arriba' : 'abajo'} denegado: ${huboError.message}`, nodeId);
+        await cargarArbol();
+        return;
       }
       registrarLog('REORDENAR_NODO', `Movió "${nodo.codigo}" ${direccion < 0 ? 'arriba' : 'abajo'}`, nodeId);
       await cargarArbol();
@@ -851,6 +860,9 @@
           });
         }
         items.push({ label: '🗑️ Desactivar', tip: 'Desactivación de un nodo o tarea.', fn: () => desactivarNodo(nodeId) });
+        if (miPerfil.rol === 'ADMIN') {
+          items.push({ label: '🗒️ Historial', tip: 'Ver el registro de actividad de este nodo.', fn: () => window.open(`log.html?nodo=${encodeURIComponent(nodo.codigo)}`, '_blank') });
+        }
       } else if (!sinAsignacion) {
         items.push({ label: '▲ Mover arriba', tip: 'Se mueve nodo hacia arriba.', fn: () => reordenar(nodeId, -1) });
         items.push({ label: '▼ Mover abajo', tip: 'Se mueve nodo hacia abajo.', fn: () => reordenar(nodeId, 1) });
@@ -994,7 +1006,11 @@
         p_node_id: nodoTomarActual, p_trabajador_id: miPerfil.id, p_revisor_id: revisorId
       });
 
-      if (error) { estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado-msg error'; return; }
+      if (error) {
+        estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado-msg error';
+        registrarLog('INTENTO_FALLIDO', `Intento de tomar la tarea "${nodo?.codigo}" denegado: ${error.message}`, nodoTomarActual);
+        return;
+      }
 
       registrarLog('TOMAR_TAREA', `Tomó la tarea "${nodo?.codigo}"`, nodoTomarActual);
 
@@ -1006,7 +1022,11 @@
       if (!confirm('¿Quitar el usuario asignado y dejar esta tarea sin asignar?')) return;
       const nodo = mapaNodoPorId[nodeId];
       const { error } = await supabaseClient.rpc('desasignar_trabajador', { p_node_id: nodeId });
-      if (error) { alert('Error: ' + error.message); return; }
+      if (error) {
+        alert('Error: ' + error.message);
+        registrarLog('INTENTO_FALLIDO', `Intento de dejar sin asignar "${nodo?.codigo}" denegado: ${error.message}`, nodeId);
+        return;
+      }
       registrarLog('SIN_ASIGNAR', `Dejó sin asignar la tarea "${nodo?.codigo}"`, nodeId);
       await cargarArbol();
     }
@@ -1015,7 +1035,11 @@
       if (!confirm('¿Reiniciar esta tarea a "Pendiente de hacer"? Se mantiene el usuario asignado.')) return;
       const nodo = mapaNodoPorId[nodeId];
       const { error } = await supabaseClient.rpc('reiniciar_tarea', { p_node_id: nodeId });
-      if (error) { alert('Error: ' + error.message); return; }
+      if (error) {
+        alert('Error: ' + error.message);
+        registrarLog('INTENTO_FALLIDO', `Intento de reiniciar "${nodo?.codigo}" denegado: ${error.message}`, nodeId);
+        return;
+      }
       registrarLog('REINICIAR_TAREA', `Reinició la tarea "${nodo?.codigo}" a Pendiente de hacer`, nodeId);
       await cargarArbol();
     }
@@ -1084,7 +1108,11 @@
         parent_id: nodoCrearPadre ? nodoCrearPadre.id : null, tipo, codigo, nombre, descripcion: descripcion || null, orden
       }).select().single();
 
-      if (error) { estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado-msg error'; return; }
+      if (error) {
+        estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado-msg error';
+        registrarLog('INTENTO_FALLIDO', `Intento de crear ${tipo} "${codigo}" denegado: ${error.message}`, nodoCrearPadre ? nodoCrearPadre.id : null);
+        return;
+      }
 
       registrarLog('CREAR_NODO', `Creó ${tipo} "${codigo}"${nodoCrearPadre ? ` dentro de ${mapaNodoPorId[nodoCrearPadre.id]?.codigo || ''}` : ''}`, nuevoNodo?.id);
 
@@ -1109,7 +1137,11 @@
       const { error } = await supabaseClient.from('nodes')
         .update({ codigo, nombre, descripcion: descripcion || null, orden }).eq('id', nodeId);
 
-      if (error) { estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado-msg error'; return; }
+      if (error) {
+        estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado-msg error';
+        registrarLog('INTENTO_FALLIDO', `Intento de editar "${codigo}" denegado: ${error.message}`, nodeId);
+        return;
+      }
 
       registrarLog('EDITAR_NODO', `Editó el nodo "${codigo}"`, nodeId);
 
@@ -1125,7 +1157,11 @@
       if (!confirm(`¿Desactivar "${nodo.codigo} - ${nodo.nombre}"? No se borra, solo deja de aparecer.`)) return;
 
       const { error } = await supabaseClient.from('nodes').update({ activo: false }).eq('id', nodeId);
-      if (error) { alert('Error: ' + error.message); return; }
+      if (error) {
+        alert('Error: ' + error.message);
+        registrarLog('INTENTO_FALLIDO', `Intento de desactivar "${nodo.codigo}" denegado: ${error.message}`, nodeId);
+        return;
+      }
       registrarLog('DESACTIVAR_NODO', `Desactivó "${nodo.codigo}"`, nodeId);
       await cargarArbol();
     }
@@ -1133,7 +1169,11 @@
     async function reactivarNodo(nodeId) {
       const nodo = mapaNodoPorId[nodeId];
       const { error } = await supabaseClient.from('nodes').update({ activo: true }).eq('id', nodeId);
-      if (error) { alert('Error: ' + error.message); return; }
+      if (error) {
+        alert('Error: ' + error.message);
+        registrarLog('INTENTO_FALLIDO', `Intento de reactivar "${nodo?.codigo || nodeId}" denegado: ${error.message}`, nodeId);
+        return;
+      }
       registrarLog('REACTIVAR_NODO', `Reactivó "${nodo?.codigo || nodeId}"`, nodeId);
       await cargarArbol();
     }
@@ -1211,6 +1251,7 @@
           estadoEl.textContent = `Error en ${codigo}: ${error.message} (creados ${creados} de ${hasta - desde + 1})`;
           estadoEl.className = 'estado-msg error';
           btn.disabled = false;
+          registrarLog('INTENTO_FALLIDO', `Intento de crear en lote (${tipo}, prefijo ${prefijo}) denegado en "${codigo}": ${error.message} — ${creados} creados antes del fallo`, nodoLotePadre.id);
           await cargarArbol();
           return;
         }
@@ -1281,6 +1322,7 @@
       } catch (err) {
         estadoEl.textContent = 'Error: ' + err.message;
         estadoEl.className = 'estado-msg error';
+        registrarLog('INTENTO_FALLIDO', `Intento de duplicar "${nodoDuplicarActual.codigo}" denegado: ${err.message}`, nodoDuplicarActual.id);
       }
       btn.disabled = false;
     }
@@ -1341,7 +1383,11 @@
       if (!parentIdSeleccionadoParaMover) { estadoEl.textContent = 'Elige un destino de la lista.'; estadoEl.className = 'estado-msg error'; return; }
 
       const { error } = await supabaseClient.from('nodes').update({ parent_id: parentIdSeleccionadoParaMover }).eq('id', nodoMoverActual.id);
-      if (error) { estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado-msg error'; return; }
+      if (error) {
+        estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado-msg error';
+        registrarLog('INTENTO_FALLIDO', `Intento de cambiar de nodo padre "${nodoMoverActual.codigo}" denegado: ${error.message}`, nodoMoverActual.id);
+        return;
+      }
 
       registrarLog('CAMBIAR_NODO_PADRE', `Movió "${nodoMoverActual.codigo}" a "${mapaNodoPorId[parentIdSeleccionadoParaMover]?.codigo || parentIdSeleccionadoParaMover}"`, nodoMoverActual.id);
 
@@ -1379,7 +1425,11 @@
         p_node_id: nodoAsignarActual, p_trabajador_id: trabajadorId, p_revisor_id: revisorId
       });
 
-      if (error) { estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado-msg error'; return; }
+      if (error) {
+        estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado-msg error';
+        registrarLog('INTENTO_FALLIDO', `Intento de asignar "${nodo?.codigo}" denegado: ${error.message}`, nodoAsignarActual);
+        return;
+      }
 
       const nombreTrab = perfilesCache.find(p => p.id === trabajadorId)?.nombre_completo || 'nadie';
       const nombreRev = perfilesCache.find(p => p.id === revisorId)?.nombre_completo || 'nadie';
@@ -1392,7 +1442,11 @@
     async function accionMarcarEnTrabajo(nodeId) {
       const nodo = mapaNodoPorId[nodeId];
       const { error } = await supabaseClient.rpc('marcar_en_trabajo', { p_node_id: nodeId });
-      if (error) { alert('Error: ' + error.message); return; }
+      if (error) {
+        alert('Error: ' + error.message);
+        registrarLog('INTENTO_FALLIDO', `Intento de empezar "${nodo?.codigo}" denegado: ${error.message}`, nodeId);
+        return;
+      }
       registrarLog('EMPEZAR', `Empezó "${nodo?.codigo}"`, nodeId);
       await cargarArbol();
     }
@@ -1400,7 +1454,11 @@
     async function accionMarcarPendienteDudas(nodeId) {
       const nodo = mapaNodoPorId[nodeId];
       const { error } = await supabaseClient.rpc('marcar_pendiente_dudas', { p_node_id: nodeId });
-      if (error) { alert('Error: ' + error.message); return; }
+      if (error) {
+        alert('Error: ' + error.message);
+        registrarLog('INTENTO_FALLIDO', `Intento de marcar dudas en "${nodo?.codigo}" denegado: ${error.message}`, nodeId);
+        return;
+      }
       registrarLog('PENDIENTE_DUDAS', `Marcó "${nodo?.codigo}" como Pendiente de dudas`, nodeId);
       await cargarArbol();
     }
@@ -1408,7 +1466,11 @@
     async function accionMarcarPendienteCambiosModelo(nodeId) {
       const nodo = mapaNodoPorId[nodeId];
       const { error } = await supabaseClient.rpc('marcar_pendiente_cambios_modelo', { p_node_id: nodeId });
-      if (error) { alert('Error: ' + error.message); return; }
+      if (error) {
+        alert('Error: ' + error.message);
+        registrarLog('INTENTO_FALLIDO', `Intento de marcar cambios de modelo en "${nodo?.codigo}" denegado: ${error.message}`, nodeId);
+        return;
+      }
       registrarLog('PENDIENTE_CAMBIOS_MODELO', `Marcó "${nodo?.codigo}" como Pendiente de cambios de modelo`, nodeId);
       await cargarArbol();
     }
@@ -1417,7 +1479,11 @@
       if (!confirm('¿Marcar este trabajo como terminado y enviarlo a revisión?')) return;
       const nodo = mapaNodoPorId[nodeId];
       const { error } = await supabaseClient.rpc('marcar_terminado', { p_node_id: nodeId });
-      if (error) { alert('Error: ' + error.message); return; }
+      if (error) {
+        alert('Error: ' + error.message);
+        registrarLog('INTENTO_FALLIDO', `Intento de finalizar "${nodo?.codigo}" denegado: ${error.message}`, nodeId);
+        return;
+      }
       registrarLog('FINALIZAR', `Finalizó "${nodo?.codigo}" (pasa a Pendiente de revisión)`, nodeId);
       await cargarArbol();
     }
@@ -1430,7 +1496,11 @@
       }
       const nodo = mapaNodoPorId[nodeId];
       const { error } = await supabaseClient.rpc('revisar_nodo', { p_node_id: nodeId, p_aprobado: aprobado, p_comentario: comentario });
-      if (error) { alert('Error: ' + error.message); return; }
+      if (error) {
+        alert('Error: ' + error.message);
+        registrarLog('INTENTO_FALLIDO', `Intento de ${aprobado ? 'aprobar' : 'rechazar'} "${nodo?.codigo}" denegado: ${error.message}`, nodeId);
+        return;
+      }
       registrarLog(aprobado ? 'APROBAR' : 'RECHAZAR', `${aprobado ? 'Aprobó' : 'Rechazó'} "${nodo?.codigo}"${comentario ? ` — motivo: ${comentario}` : ''}`, nodeId);
       await cargarArbol();
     }

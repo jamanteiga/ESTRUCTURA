@@ -253,6 +253,7 @@
       if (error || (data && data.error)) {
         estadoEl.textContent = 'Error: ' + (data?.error || error.message);
         estadoEl.className = 'estado error';
+        registrarLog('INTENTO_FALLIDO', `Intento de crear usuario "${username}" denegado: ${data?.error || error.message}`);
         return;
       }
 
@@ -347,7 +348,11 @@
         nombre_completo, rol, ubicacion, email_contacto, movil, linkedin, activo
       }).eq('id', idEditando);
 
-      if (error) { estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado error'; return; }
+      if (error) {
+        estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado error';
+        registrarLog('INTENTO_FALLIDO', `Intento de editar a "${nombre_completo}" denegado: ${error.message}`);
+        return;
+      }
 
       const cambios = [];
       if (anterior && anterior.rol !== rol) cambios.push(`rol ${anterior.rol}→${rol}`);
@@ -367,6 +372,7 @@
 
       if (error || (data && data.error)) {
         alert('Error: ' + (data?.error || error.message));
+        registrarLog('INTENTO_FALLIDO', `Intento de resetear contraseña de "${p.username}" denegado: ${data?.error || error.message}`);
         return;
       }
 

@@ -1,19 +1,24 @@
 // supabase/functions/log-accion/index.ts
+// (Desplegada en Supabase con el nombre "bright-processor" — el
+// nombre del fichero da igual, lo que importa es el nombre de la
+// función en Supabase, al que llaman arbol.html y usuarios.html.)
 //
 // Registra una línea de actividad en audit_log. La llama cualquier
 // usuario autenticado (no solo ADMIN) desde el propio navegador,
-// cada vez que hace algo relevante en la app.
+// cada vez que hace algo relevante en la app — incluidos los
+// intentos que fallan o son denegados.
 //
 // La IP y el user-agent se leen de las cabeceras de la petición en
 // el servidor, no de lo que diga el cliente — así no se pueden
-// falsear. El actor (quién lo hizo) se saca del token de sesión,
-// tampoco del body, por el mismo motivo.
+// falsear. El actor (quién lo hizo) y su rol en ese momento se
+// sacan del token de sesión y de profiles, tampoco del body.
 //
 // Body esperado (JSON):
 //   {
 //     "accion": "EMPEZAR_TAREA",      (obligatorio, código corto)
 //     "descripcion": "Empezó NL801",  (obligatorio, texto legible)
-//     "node_id": "uuid-opcional"      (opcional)
+//     "node_id": "uuid-opcional",     (opcional)
+//     "node_codigo": "NL801"          (opcional, código legible del nodo)
 //   }
 //
 // Respuesta 200: { "ok": true }
@@ -39,8 +44,6 @@ function jsonResponse(body: unknown, status: number): Response {
 }
 
 function obtenerIpReal(req: Request): string {
-  // x-forwarded-for puede traer varias IPs separadas por coma
-  // (proxies intermedios); la primera es la del cliente original.
   const xff = req.headers.get("x-forwarded-for");
   if (xff) return xff.split(",")[0].trim();
   return req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") || "desconocida";
@@ -71,7 +74,7 @@ serve(async (req: Request) => {
 
     const { data: perfil } = await callerClient
       .from("profiles")
-      .select("nombre_completo")
+      .select("nombre_completo, rol")
       .eq("id", userData.user.id)
       .single();
 
@@ -79,6 +82,7 @@ serve(async (req: Request) => {
     const accion: string | undefined = body?.accion;
     const descripcion: string | undefined = body?.descripcion;
     const nodeId: string | null = body?.node_id || null;
+    const nodeCodigo: string | null = body?.node_codigo || null;
 
     if (!accion || !descripcion) {
       return jsonResponse({ error: "Faltan los campos accion y/o descripcion" }, 400);
@@ -92,8 +96,10 @@ serve(async (req: Request) => {
     const { error: insertError } = await adminClient.from("audit_log").insert({
       actor_id: userData.user.id,
       actor_nombre: perfil?.nombre_completo || null,
+      actor_rol: perfil?.rol || null,
       accion,
       node_id: nodeId,
+      node_codigo: nodeCodigo,
       descripcion,
       ip,
       user_agent: userAgent,

@@ -53,12 +53,19 @@
       <select id="filtro-accion"><option value="">Acción: Todas</option></select>
       <input type="date" id="filtro-desde" title="Desde">
       <input type="date" id="filtro-hasta" title="Hasta">
+      <input type="text" id="filtro-nodo" placeholder="Nodo (código)..." style="max-width:140px;">
       <input type="text" id="filtro-texto" placeholder="Buscar en la descripción...">
       <button class="secundario" onclick="limpiarFiltros()">✕ Limpiar</button>
     </div>
 
     <div class="card">
-      <div id="resumen-resultados" class="estado-msg" style="margin-bottom:6px; color:#666;"></div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+        <div id="resumen-resultados" class="estado-msg" style="color:#666;"></div>
+        <div>
+          <button class="secundario" onclick="exportar('csv')">⬇ Exportar CSV</button>
+          <button class="secundario" onclick="exportar('xlsx')">⬇ Exportar Excel</button>
+        </div>
+      </div>
       <div class="contenedor-tabla">
         <table>
           <thead>
@@ -66,14 +73,16 @@
               <th>Fecha</th>
               <th>Hora</th>
               <th>Usuario</th>
+              <th>Rol</th>
               <th>Acción</th>
+              <th>Nodo</th>
               <th>Descripción</th>
               <th>IP</th>
               <th>Navegador / SO</th>
             </tr>
           </thead>
           <tbody id="tabla-body">
-            <tr><td colspan="7">Cargando...</td></tr>
+            <tr><td colspan="9">Cargando...</td></tr>
           </tbody>
         </table>
       </div>
@@ -86,6 +95,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script>
     const SUPABASE_URL = 'https://wuarkraddnndmgvfnkmm.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
@@ -157,6 +167,10 @@
       selUsuario.innerHTML = '<option value="">Usuario: Todos</option>' +
         (perfiles || []).map(p => `<option value="${p.id}">${p.nombre_completo}</option>`).join('');
 
+      const params = new URLSearchParams(window.location.search);
+      const nodoUrl = params.get('nodo');
+      if (nodoUrl) document.getElementById('filtro-nodo').value = nodoUrl;
+
       ['filtro-usuario', 'filtro-accion', 'filtro-desde', 'filtro-hasta'].forEach(id => {
         document.getElementById(id).addEventListener('change', () => { paginaActual = 0; cargarLog(); });
       });
@@ -164,6 +178,11 @@
       document.getElementById('filtro-texto').addEventListener('input', () => {
         clearTimeout(debounceTexto);
         debounceTexto = setTimeout(() => { paginaActual = 0; cargarLog(); }, 300);
+      });
+      let debounceNodo = null;
+      document.getElementById('filtro-nodo').addEventListener('input', () => {
+        clearTimeout(debounceNodo);
+        debounceNodo = setTimeout(() => { paginaActual = 0; cargarLog(); }, 300);
       });
 
       await cargarAccionesDisponibles();
@@ -184,6 +203,7 @@
       document.getElementById('filtro-desde').value = '';
       document.getElementById('filtro-hasta').value = '';
       document.getElementById('filtro-texto').value = '';
+      document.getElementById('filtro-nodo').value = '';
       paginaActual = 0;
       cargarLog();
     }
@@ -191,15 +211,13 @@
     function paginaAnterior() { if (paginaActual > 0) { paginaActual--; cargarLog(); } }
     function paginaSiguiente() { if ((paginaActual + 1) * POR_PAGINA < totalFilas) { paginaActual++; cargarLog(); } }
 
-    async function cargarLog() {
-      const tbody = document.getElementById('tabla-body');
-      tbody.innerHTML = '<tr><td colspan="7">Cargando...</td></tr>';
-
+    function construirConsultaBase() {
       const usuarioId = document.getElementById('filtro-usuario').value;
       const accion = document.getElementById('filtro-accion').value;
       const desde = document.getElementById('filtro-desde').value;
       const hasta = document.getElementById('filtro-hasta').value;
       const texto = document.getElementById('filtro-texto').value.trim();
+      const nodo = document.getElementById('filtro-nodo').value.trim();
 
       let query = supabaseClient.from('audit_log').select('*', { count: 'exact' }).order('creado_en', { ascending: false });
       if (usuarioId) query = query.eq('actor_id', usuarioId);
@@ -207,23 +225,31 @@
       if (desde) query = query.gte('creado_en', desde + 'T00:00:00');
       if (hasta) query = query.lte('creado_en', hasta + 'T23:59:59');
       if (texto) query = query.ilike('descripcion', `%${texto}%`);
+      if (nodo) query = query.ilike('node_codigo', `%${nodo}%`);
+      return query;
+    }
 
-      query = query.range(paginaActual * POR_PAGINA, paginaActual * POR_PAGINA + POR_PAGINA - 1);
+    async function cargarLog() {
+      const tbody = document.getElementById('tabla-body');
+      tbody.innerHTML = '<tr><td colspan="9">Cargando...</td></tr>';
 
+      const query = construirConsultaBase().range(paginaActual * POR_PAGINA, paginaActual * POR_PAGINA + POR_PAGINA - 1);
       const { data, error, count } = await query;
 
-      if (error) { tbody.innerHTML = `<tr><td colspan="7" style="color:red;">Error: ${error.message}</td></tr>`; return; }
+      if (error) { tbody.innerHTML = `<tr><td colspan="9" style="color:red;">Error: ${error.message}</td></tr>`; return; }
 
       totalFilas = count || 0;
 
       tbody.innerHTML = (data || []).length === 0
-        ? '<tr><td colspan="7">No hay resultados con estos filtros.</td></tr>'
+        ? '<tr><td colspan="9">No hay resultados con estos filtros.</td></tr>'
         : data.map(fila => `
             <tr>
               <td class="col-fecha">${formatearFecha(fila.creado_en)}</td>
               <td class="col-fecha">${formatearHora(fila.creado_en)}</td>
               <td>${fila.actor_nombre || '—'}</td>
+              <td>${fila.actor_rol || '—'}</td>
               <td><span class="col-accion">${fila.accion}</span></td>
+              <td>${fila.node_codigo || '—'}</td>
               <td>${fila.descripcion}</td>
               <td class="col-ip">${fila.ip || '—'}</td>
               <td class="col-ip">${resumirUserAgent(fila.user_agent)}</td>
@@ -238,6 +264,65 @@
       document.getElementById('texto-pagina').textContent = `Página ${paginaActual + 1}`;
       document.getElementById('btn-pag-anterior').disabled = paginaActual === 0;
       document.getElementById('btn-pag-siguiente').disabled = (paginaActual + 1) * POR_PAGINA >= totalFilas;
+    }
+
+    // -------------------- Exportar --------------------
+
+    async function obtenerTodasLasFilasFiltradas() {
+      const LOTE = 1000;
+      let desde = 0;
+      let todas = [];
+      while (true) {
+        const { data, error } = await construirConsultaBase().range(desde, desde + LOTE - 1);
+        if (error) { alert('Error al exportar: ' + error.message); return null; }
+        todas = todas.concat(data || []);
+        if (!data || data.length < LOTE) break;
+        desde += LOTE;
+      }
+      return todas;
+    }
+
+    function filaParaExportar(fila) {
+      return {
+        Fecha: formatearFecha(fila.creado_en),
+        Hora: formatearHora(fila.creado_en),
+        Usuario: fila.actor_nombre || '',
+        Rol: fila.actor_rol || '',
+        Accion: fila.accion,
+        Nodo: fila.node_codigo || '',
+        Descripcion: fila.descripcion,
+        IP: fila.ip || '',
+        Navegador_SO: resumirUserAgent(fila.user_agent)
+      };
+    }
+
+    async function exportar(formato) {
+      const filas = await obtenerTodasLasFilasFiltradas();
+      if (!filas) return;
+      if (filas.length === 0) { alert('No hay resultados con estos filtros para exportar.'); return; }
+
+      const datos = filas.map(filaParaExportar);
+      const fechaArchivo = new Date().toISOString().slice(0, 10);
+
+      if (formato === 'csv') {
+        const cabeceras = Object.keys(datos[0]);
+        const escapar = (v) => `"${String(v).replace(/"/g, '""')}"`;
+        const lineas = [cabeceras.join(';')].concat(
+          datos.map(fila => cabeceras.map(c => escapar(fila[c])).join(';'))
+        );
+        const csv = '\uFEFF' + lineas.join('\r\n'); // BOM para que Excel abra bien los acentos
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `registro-actividad-${fechaArchivo}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } else {
+        const hoja = XLSX.utils.json_to_sheet(datos);
+        const libro = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(libro, hoja, 'Registro');
+        XLSX.writeFile(libro, `registro-actividad-${fechaArchivo}.xlsx`);
+      }
     }
 
     iniciar();
