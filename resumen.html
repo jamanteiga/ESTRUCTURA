@@ -15,7 +15,12 @@
     button.secundario:hover { background: #5a6268; }
     .estado-msg { font-size: 13px; }
 
-    .contadores { display: flex; gap: 10px; flex-wrap: wrap; }
+    .contadores { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    @media (max-width: 700px) { .contadores { grid-template-columns: repeat(2, 1fr); } }
+    .contador.clicable { cursor: pointer; transition: transform 0.1s; }
+    .contador.clicable:hover { transform: translateY(-2px); }
+    .contador.activo { outline: 3px solid #333; }
+    .c-total { background: #343a40; color: #fff; }
     .contador {
       flex: 1; min-width: 118px; text-align: center; padding: 12px 6px; border-radius: 8px; font-weight: bold;
       border: 1px solid rgba(0,0,0,0.1);
@@ -89,6 +94,7 @@
     };
 
     let miPerfil = null;
+    let filtroDetalleEstado = null;
     let mapaNodoPorId = {};
 
     function rutaCompleta(nodo) {
@@ -124,11 +130,20 @@
 
     function esGestor() { return miPerfil.rol === 'ADMIN' || miPerfil.rol === 'REVISOR'; }
 
-    function renderContadores(conteo) {
+    function renderContadores(conteo, clicable, total) {
+      const cajaTotal = (total === undefined) ? '' : `
+        <div class="contador c-total ${clicable ? 'clicable' : ''} ${clicable && !filtroDetalleEstado ? 'activo' : ''}"
+             ${clicable ? `onclick="limpiarFiltroDetalle()"` : ''}>
+          <span class="numero">${total}</span>
+          <span class="etiqueta">Todas</span>
+        </div>
+      `;
       return `
         <div class="contadores">
+          ${cajaTotal}
           ${ESTADOS_ORDEN.map(e => `
-            <div class="contador c-${e}">
+            <div class="contador c-${e} ${clicable ? 'clicable' : ''} ${clicable && filtroDetalleEstado === e ? 'activo' : ''}"
+                 ${clicable ? `onclick="filtrarDetallePorEstado('${e}')"` : ''}>
               <span class="numero">${conteo[e] || 0}</span>
               <span class="etiqueta">${ETIQUETAS_ESTADO[e]}</span>
             </div>
@@ -213,25 +228,51 @@
         .subscribe();
     }
 
-    function renderVistaUsuario(nodos) {
-      const misNodos = nodos.filter(n => n.trabajador_id === miPerfil.id);
+    let misNodosActual = [];
 
+    function renderVistaUsuario(nodos) {
+      misNodosActual = nodos.filter(n => n.trabajador_id === miPerfil.id);
+      pintarVistaUsuario();
+    }
+
+    function pintarVistaUsuario() {
       const conteo = {};
-      misNodos.forEach(n => {
+      misNodosActual.forEach(n => {
         const e = calcularEstadoPropio(n);
         conteo[e] = (conteo[e] || 0) + 1;
       });
 
+      const nodosDetalle = filtroDetalleEstado
+        ? misNodosActual.filter(n => calcularEstadoPropio(n) === filtroDetalleEstado)
+        : misNodosActual;
+
+      const tituloDetalle = filtroDetalleEstado
+        ? `Detalle — ${ETIQUETAS_ESTADO[filtroDetalleEstado]} <button class="secundario" style="margin-left:8px; padding:2px 10px; font-size:11px;" onclick="limpiarFiltroDetalle()">✕ Ver todas</button>`
+        : 'Detalle';
+
       document.getElementById('contenido').innerHTML = `
         <div class="card">
-          <h2>Tus tareas asignadas (${misNodos.length})</h2>
-          ${renderContadores(conteo)}
+          <h2>Tus tareas asignadas (${misNodosActual.length})</h2>
+          <p style="font-size:11px; color:#888; margin:-4px 0 8px;">Pulsa un estado para ver solo esas tareas abajo.</p>
+          ${renderContadores(conteo, true, misNodosActual.length)}
         </div>
         <div class="card">
-          <h2>Detalle</h2>
-          <ul class="lista-nodos">${renderListaNodos(misNodos, 'No tienes tareas asignadas todavía.')}</ul>
+          <h2>${tituloDetalle}</h2>
+          <ul class="lista-nodos" style="max-height:340px; overflow-y:auto;">
+            ${renderListaNodos(nodosDetalle, filtroDetalleEstado ? 'No hay tareas en este estado.' : 'No tienes tareas asignadas todavía.')}
+          </ul>
         </div>
       `;
+    }
+
+    function filtrarDetallePorEstado(estado) {
+      filtroDetalleEstado = (filtroDetalleEstado === estado) ? null : estado;
+      pintarVistaUsuario();
+    }
+
+    function limpiarFiltroDetalle() {
+      filtroDetalleEstado = null;
+      pintarVistaUsuario();
     }
 
     async function renderVistaGestor(nodos) {

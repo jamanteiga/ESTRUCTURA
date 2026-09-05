@@ -211,6 +211,7 @@
       <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Navegación <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
         <a class="menu-item" href="index.html">🏠 Inicio</a>
+        <span class="menu-item" id="menu-item-buque" onclick="abrirModalCrear(null, 'BUQUE')" style="display:none;">+ Añadir Buque</span>
         <a class="menu-item" href="resumen.html">📊 Resumen</a>
         <a class="menu-item" id="menu-link-usuarios" href="usuarios.html" style="display:none;">👤 Usuarios</a>
         <span class="menu-item" onclick="cerrarSesion()">🚪 Cerrar sesión</span>
@@ -220,17 +221,13 @@
       <div class="menu-seccion-contenido">
         <span class="menu-item" onclick="expandirTodo()">⏬ Expandir</span>
         <span class="menu-item" onclick="encogerTodo()">⏫ Replegar</span>
-        <span class="menu-item" id="menu-item-buque" onclick="abrirModalCrear(null, 'BUQUE')" style="display:none;">+ Añadir Buque</span>
       </div>
 
-      <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Apariencia del menú <span class="flecha-menu">›</span></div>
+      <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Idiomas <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
-        <label class="menu-item">
-          <input type="radio" name="modo-menu" value="desplegable" id="radio-desplegable" checked> Desplegable
-        </label>
-        <label class="menu-item">
-          <input type="radio" name="modo-menu" value="fijo" id="radio-fijo"> Fijo en la izquierda
-        </label>
+        <span class="menu-item" onclick="cambiarIdioma('es')">🇪🇸 Español</span>
+        <span class="menu-item" onclick="cambiarIdioma('gl')">🏴 Galego</span>
+        <span class="menu-item" onclick="cambiarIdioma('eu')">🏴 Euskara</span>
       </div>
 
       <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Filtros <span class="flecha-menu">›</span></div>
@@ -256,6 +253,16 @@
         </label>
         <label class="menu-item" id="wrap-desactivados" style="display:none;">
           <input type="checkbox" id="chk-desactivados"> Mostrar desactivados
+        </label>
+      </div>
+
+      <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Apariencia del menú <span class="flecha-menu">›</span></div>
+      <div class="menu-seccion-contenido">
+        <label class="menu-item">
+          <input type="radio" name="modo-menu" value="desplegable" id="radio-desplegable" checked> Desplegable
+        </label>
+        <label class="menu-item">
+          <input type="radio" name="modo-menu" value="fijo" id="radio-fijo"> Fijo en la izquierda
         </label>
       </div>
     </div>
@@ -499,6 +506,14 @@
     }
 
     function esGestor() { return miPerfil.rol === 'ADMIN' || miPerfil.rol === 'REVISOR'; }
+
+    function cambiarIdioma(idioma) {
+      localStorage.setItem('estructura_idioma', idioma);
+      if (idioma !== 'es') {
+        alert('El cambio de idioma a Galego/Euskara todavía no está traducido en toda la aplicación — es un trabajo aparte, más grande, que dejamos pendiente. De momento solo queda guardada tu preferencia.');
+      }
+      cerrarMenu();
+    }
 
     function abrirMenu() { document.getElementById('menu-overlay').classList.add('abierto'); }
     function cerrarMenu() { document.getElementById('menu-overlay').classList.remove('abierto'); }
@@ -920,7 +935,7 @@
     function abrirModalTomar(nodeId) {
       nodoTomarActual = nodeId;
       const selRev = document.getElementById('modal-tomar-revisor');
-      const revisores = perfilesCache.filter(p => p.rol === 'REVISOR' || p.rol === 'ADMIN');
+      const revisores = perfilesCache.filter(p => p.rol === 'REVISOR');
       selRev.innerHTML = '<option value="">— Sin asignar —</option>' +
         revisores.map(p => `<option value="${p.id}">${p.nombre_completo} (${p.rol})</option>`).join('');
       document.getElementById('modal-tomar-estado').textContent = '';
@@ -1088,7 +1103,7 @@
       selTrab.innerHTML = '<option value="">— Sin asignar —</option>' +
         perfilesCache.map(p => `<option value="${p.id}">${p.nombre_completo} (${p.rol === 'TRABAJADOR' ? 'USUARIO' : p.rol})</option>`).join('');
 
-      const revisores = perfilesCache.filter(p => p.rol === 'REVISOR' || p.rol === 'ADMIN');
+      const revisores = perfilesCache.filter(p => p.rol === 'REVISOR');
       const selRev = document.getElementById('modal-lote-revisor');
       selRev.innerHTML = '<option value="">— Sin asignar —</option>' +
         revisores.map(p => `<option value="${p.id}">${p.nombre_completo} (${p.rol})</option>`).join('');
@@ -1287,7 +1302,7 @@
       selTrab.innerHTML = '<option value="">— Sin asignar —</option>' +
         perfilesCache.map(p => `<option value="${p.id}" ${p.id === nodo.trabajador_id ? 'selected' : ''}>${p.nombre_completo} (${p.rol === 'TRABAJADOR' ? 'USUARIO' : p.rol})</option>`).join('');
 
-      const revisores = perfilesCache.filter(p => p.rol === 'REVISOR' || p.rol === 'ADMIN');
+      const revisores = perfilesCache.filter(p => p.rol === 'REVISOR');
       selRev.innerHTML = '<option value="">— Sin asignar —</option>' +
         revisores.map(p => `<option value="${p.id}" ${p.id === nodo.revisor_id ? 'selected' : ''}>${p.nombre_completo} (${p.rol})</option>`).join('');
 
