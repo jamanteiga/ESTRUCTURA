@@ -146,17 +146,17 @@
       border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.25); min-width: 200px; padding: 4px 0;
       font-size: 13px;
     }
-    #menu-contextual .mc-item {
+    #menu-contextual .mc-item, #menu-submenu-flotante .mc-item {
       padding: 8px 14px; cursor: pointer; display: flex; align-items: center; gap: 8px;
     }
-    #menu-contextual .mc-item:hover { background: #eef3ff; }
+    #menu-contextual .mc-item:hover, #menu-submenu-flotante .mc-item:hover { background: #eef3ff; }
     #menu-contextual .mc-separador { border-top: 1px solid #eee; margin: 4px 0; }
     #menu-contextual .mc-titulo { padding: 6px 14px; font-size: 11px; color: #888; text-transform: uppercase; font-weight: bold; }
     #menu-contextual .mc-item.mc-padre::after { content: '▸'; float: right; color: #999; margin-left: 10px; }
 
     #menu-submenu-flotante {
       display: none; position: fixed; z-index: 4050; background: #fff; border: 1px solid #ccc;
-      border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.25); min-width: 220px; padding: 4px 0;
+      border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.25); min-width: 280px; padding: 4px 0;
       font-size: 13px;
     }
 
@@ -866,7 +866,7 @@
       });
 
       const rectPadre = elementoPadre.getBoundingClientRect();
-      const anchoSub = 240, altoSub = Math.min(subitems.length * 32 + 10, window.innerHeight - 20);
+      const anchoSub = 280, altoSub = Math.min(subitems.length * 34 + 10, window.innerHeight - 20);
 
       let x = rectPadre.right + 2;
       if (x + anchoSub > window.innerWidth) x = rectPadre.left - anchoSub - 2; // no cabe a la derecha: se abre a la izquierda
