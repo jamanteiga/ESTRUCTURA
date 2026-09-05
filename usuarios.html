@@ -66,6 +66,7 @@
         <button class="secundario" onclick="location.href='resumen.html'">📊 Resumen</button>
         <button class="secundario" onclick="location.href='arbol.html'">🌳 Árbol</button>
         <button class="secundario" onclick="cerrarSesion()">Cerrar sesión</button>
+        <button style="background:#dc3545;" onclick="cerrarPagina()">❌ Cerrar</button>
       </div>
     </div>
 
@@ -196,6 +197,14 @@
     async function cerrarSesion() {
       await supabaseClient.auth.signOut();
       window.location.href = 'login.html';
+    }
+
+    function cerrarPagina() {
+      // Si esta pestaña se abrió con script (p.ej. target="_blank" desde otra
+      // página de la app), window.close() la cierra directamente. Si no,
+      // los navegadores lo bloquean por seguridad y usamos volver atrás.
+      window.close();
+      setTimeout(() => { history.back(); }, 150);
     }
 
     function mostrarOverlayPassword(password, titulo) {
