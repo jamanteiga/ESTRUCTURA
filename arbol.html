@@ -810,6 +810,8 @@
     // -------------------- Menú contextual (clic derecho) --------------------
 
     function mostrarMenuContextual(evento, nodeId) {
+      evento.preventDefault();
+      evento.stopPropagation();
       const nodo = mapaNodoPorId[nodeId];
       const sinAsignacion = TIPOS_SIN_ASIGNACION.has(nodo.tipo);
       const esMio = nodo.trabajador_id === miPerfil.id;
