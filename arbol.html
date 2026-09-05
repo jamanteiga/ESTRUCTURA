@@ -524,7 +524,7 @@
 
     async function registrarLog(accion, descripcion, nodeId) {
       try {
-        await supabaseClient.functions.invoke('log-accion', {
+        await supabaseClient.functions.invoke('bright-processor', {
           body: { accion, descripcion, node_id: nodeId || null }
         });
       } catch (e) {

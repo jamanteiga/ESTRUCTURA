@@ -175,7 +175,7 @@
 
     async function registrarLog(accion, descripcion) {
       try {
-        await supabaseClient.functions.invoke('log-accion', { body: { accion, descripcion } });
+        await supabaseClient.functions.invoke('bright-processor', { body: { accion, descripcion } });
       } catch (e) {
         console.warn('No se pudo registrar el log:', e);
       }
