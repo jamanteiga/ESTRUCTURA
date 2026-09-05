@@ -333,6 +333,20 @@
     </div>
   </div>
 
+  <div class="overlay" id="modal-tomar">
+    <div class="overlay-caja">
+      <h3>Tomar esta tarea</h3>
+      <p style="font-size:13px; color:#666;">Te la asignas a ti mismo. Puedes indicar también quién será el revisor.</p>
+      <label>Revisor</label>
+      <select id="modal-tomar-revisor"><option value="">— Sin asignar —</option></select>
+      <div class="estado-msg" id="modal-tomar-estado"></div>
+      <div class="overlay-botones">
+        <button class="secundario" onclick="cerrarModalTomar()">Cancelar</button>
+        <button onclick="confirmarTomarTarea()">Tomar tarea</button>
+      </div>
+    </div>
+  </div>
+
   <div class="overlay" id="modal-mover">
     <div class="overlay-caja">
       <h3>Mover nodo</h3>
@@ -786,28 +800,24 @@
       } else if (!sinAsignacion) {
         items.push({ label: '▲ Mover arriba', tip: 'Se mueve nodo hacia arriba.', fn: () => reordenar(nodeId, -1) });
         items.push({ label: '▼ Mover abajo', tip: 'Se mueve nodo hacia abajo.', fn: () => reordenar(nodeId, 1) });
-        items.push({ separador: true });
-      }
 
-      if (!sinAsignacion && !esGestor()) {
         if (!nodo.trabajador_id) {
-          items.push({ label: '🖐 Tomar esta tarea', tip: 'Te autoasigna esta tarea, sin esperar a admin/revisor.', fn: () => tomarTarea(nodeId) });
-        }
-
-        if (puedeOperar) {
-          if (nodo.trabajo_estado === 'SIN_INICIAR' || nodo.trabajo_estado === 'REQUIERE_CORRECCION') {
-            items.push({ label: '▶ Empezar', tip: 'Comenzar a trabajar en una tarea.', fn: () => accionMarcarEnTrabajo(nodeId) });
-          } else if (['EN_TRABAJO', 'PENDIENTE_DUDAS', 'PENDIENTE_CAMBIOS_MODELO'].includes(nodo.trabajo_estado)) {
-            items.push({ label: '✔ Finalizar', tip: 'Dar tarea por finalizada.', fn: () => accionMarcarTerminado(nodeId) });
-          }
-          if (nodo.trabajo_estado !== 'TERMINADO' && nodo.revision_estado !== 'APROBADO') {
-            if (nodo.trabajo_estado !== 'PENDIENTE_DUDAS') {
-              items.push({ label: '❓ Dudas', tip: 'Pendiente por dudas.', fn: () => accionMarcarPendienteDudas(nodeId) });
-            }
-            if (nodo.trabajo_estado !== 'PENDIENTE_CAMBIOS_MODELO') {
-              items.push({ label: '🔧 Cambios', tip: 'Pendiente por cambios en el modelo.', fn: () => accionMarcarPendienteCambiosModelo(nodeId) });
-            }
-          }
+          items.push({ separador: true });
+          items.push({ label: '🖐 Tomar esta tarea', tip: 'Te asignas esta tarea (y puedes elegir revisor).', fn: () => abrirModalTomar(nodeId) });
+        } else if (esMio) {
+          items.push({ separador: true });
+          items.push({
+            submenu: true,
+            label: 'Estado tarea',
+            subitems: [
+              { label: 'Sin asignar', tip: 'Dejas de estar asignado a esta tarea.', fn: () => accionDesasignarTrabajador(nodeId) },
+              { label: 'Pendiente de hacer', tip: 'Reinicia la tarea, sigues siendo tú el asignado.', fn: () => accionReiniciarTarea(nodeId) },
+              { label: 'En proceso', tip: 'Comenzar a trabajar en una tarea.', fn: () => accionMarcarEnTrabajo(nodeId) },
+              { label: 'Pendiente de revisión', tip: 'Dar tarea por finalizada.', fn: () => accionMarcarTerminado(nodeId) },
+              { label: 'Pendiente de dudas', tip: 'Pendiente por dudas.', fn: () => accionMarcarPendienteDudas(nodeId) },
+              { label: 'Pendiente cambios en modelo', tip: 'Pendiente por cambios en el modelo.', fn: () => accionMarcarPendienteCambiosModelo(nodeId) }
+            ]
+          });
         }
       }
 
@@ -905,11 +915,33 @@
     document.addEventListener('click', cerrarMenuContextual);
     document.addEventListener('scroll', cerrarMenuContextual, true);
 
-    async function tomarTarea(nodeId) {
+    let nodoTomarActual = null;
+
+    function abrirModalTomar(nodeId) {
+      nodoTomarActual = nodeId;
+      const selRev = document.getElementById('modal-tomar-revisor');
+      const revisores = perfilesCache.filter(p => p.rol === 'REVISOR' || p.rol === 'ADMIN');
+      selRev.innerHTML = '<option value="">— Sin asignar —</option>' +
+        revisores.map(p => `<option value="${p.id}">${p.nombre_completo} (${p.rol})</option>`).join('');
+      document.getElementById('modal-tomar-estado').textContent = '';
+      document.getElementById('modal-tomar').style.display = 'flex';
+    }
+
+    function cerrarModalTomar() {
+      document.getElementById('modal-tomar').style.display = 'none';
+    }
+
+    async function confirmarTomarTarea() {
+      const estadoEl = document.getElementById('modal-tomar-estado');
+      const revisorId = document.getElementById('modal-tomar-revisor').value || null;
+
       const { error } = await supabaseClient.rpc('asignar_trabajo', {
-        p_node_id: nodeId, p_trabajador_id: miPerfil.id, p_revisor_id: null
+        p_node_id: nodoTomarActual, p_trabajador_id: miPerfil.id, p_revisor_id: revisorId
       });
-      if (error) { alert('Error: ' + error.message); return; }
+
+      if (error) { estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado-msg error'; return; }
+
+      cerrarModalTomar();
       await cargarArbol();
     }
 
