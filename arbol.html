@@ -152,6 +152,20 @@
     #menu-contextual .mc-item:hover { background: #eef3ff; }
     #menu-contextual .mc-separador { border-top: 1px solid #eee; margin: 4px 0; }
     #menu-contextual .mc-titulo { padding: 6px 14px; font-size: 11px; color: #888; text-transform: uppercase; font-weight: bold; }
+    #menu-contextual .mc-submenu { display: none; background: #fafafa; }
+    #menu-contextual .mc-submenu.abierto { display: block; }
+    #menu-contextual .mc-item.mc-padre::after { content: '▸'; float: right; color: #999; }
+    #menu-contextual .mc-item.mc-padre.abierto::after { content: '▾'; }
+    #menu-contextual .mc-subitem { padding: 7px 14px 7px 30px; font-size: 12px; }
+
+    @media (min-width: 2200px) {
+      html { font-size: 13px; }
+      body { max-width: 1300px; }
+      .pequeno { padding: 2px 5px; font-size: 10px; }
+      button { padding: 5px 10px; font-size: 12px; }
+      .fila-nodo { padding: 3px 5px; gap: 5px; }
+      .tipo-tag { font-size: 9px; padding: 1px 5px; }
+    }
 
     #mc-tooltip {
       display: none; position: fixed; z-index: 4100; background: #333; color: #fff;
@@ -659,18 +673,8 @@
         acciones += `<button class="pequeno secundario" onclick="encogerRama('${nodo.id}')" title="Encoger esta rama">⏫</button>`;
       }
       if (esGestor()) {
-        acciones += `<button class="pequeno" onclick="abrirModalCrear('${nodo.id}', '${nodo.tipo}')" title="Añadir hijo">+</button>`;
+        acciones += `<button class="pequeno" onclick="abrirModalCrear('${nodo.id}', '${nodo.tipo}')" title="Generar nodo hijo">+</button>`;
         acciones += `<button class="pequeno secundario" onclick="abrirModalEditar('${nodo.id}')" title="Editar">✎</button>`;
-        acciones += `<button class="pequeno secundario" onclick="reordenar('${nodo.id}', -1)" title="Subir">▲</button>`;
-        acciones += `<button class="pequeno secundario" onclick="reordenar('${nodo.id}', 1)" title="Bajar">▼</button>`;
-        if (!sinAsignacion) {
-          acciones += `<button class="pequeno secundario" onclick="abrirModalAsignar('${nodo.id}')" title="Asignar">👤</button>`;
-        }
-        acciones += `<button class="pequeno peligro" onclick="desactivarNodo('${nodo.id}')" title="Desactivar">🗑️</button>`;
-      } else if (!sinAsignacion) {
-        // El USUARIO también puede reordenar hermanos (no cambia la jerarquía, solo el orden)
-        acciones += `<button class="pequeno secundario" onclick="reordenar('${nodo.id}', -1)" title="Subir">▲</button>`;
-        acciones += `<button class="pequeno secundario" onclick="reordenar('${nodo.id}', 1)" title="Bajar">▼</button>`;
       }
 
       const notaDudas = (!sinAsignacion && nodo.trabajo_estado === 'PENDIENTE_DUDAS')
@@ -748,9 +752,10 @@
       const items = [];
 
       if (esGestor()) {
-        items.push({ label: '+ Nuevo nodo', tip: 'Crea un nuevo nodo.', fn: () => abrirModalCrear(nodeId, nodo.tipo) });
+        items.push({ label: '+ Generar nodo hijo', tip: 'Crea un nuevo nodo dentro de este.', fn: () => abrirModalCrear(nodeId, nodo.tipo) });
         items.push({ label: '+N Crear varios nodos', tip: 'Creación de varios nodos iguales al indicado.', fn: () => abrirModalLote(nodeId, nodo.tipo) });
         items.push({ label: '↔️ Cambiar de nodo', tip: 'Cambia de nodo padre.', fn: () => abrirModalMover(nodeId) });
+        items.push({ label: '✎ Editar', tip: 'Edita código, nombre y descripción del nodo.', fn: () => abrirModalEditar(nodeId) });
         items.push({ label: '▲ Mover arriba', tip: 'Se mueve nodo hacia arriba.', fn: () => reordenar(nodeId, -1) });
         items.push({ label: '▼ Mover abajo', tip: 'Se mueve nodo hacia abajo.', fn: () => reordenar(nodeId, 1) });
         if (nodo.tipo === 'BLOQUE') {
@@ -758,27 +763,37 @@
         }
         if (!sinAsignacion) {
           items.push({ label: '👤 Asignar usuario', tip: 'Asignación de tarea a un usuario.', fn: () => abrirModalAsignar(nodeId) });
+
+          items.push({
+            submenu: true,
+            label: 'Estado tarea',
+            subitems: [
+              { label: '✔ Aprobado', tip: 'Aprueba la tarea revisada.', fn: () => accionRevisar(nodeId, true) },
+              { label: '✘ Rechazado', tip: 'Rechaza la tarea, pidiendo el motivo.', fn: () => accionRevisar(nodeId, false) },
+              { label: 'Sin asignar', tip: 'Quita el usuario asignado y reinicia la tarea.', fn: () => accionDesasignarTrabajador(nodeId) },
+              { label: 'Pendiente de hacer', tip: 'Reinicia la tarea sin quitar al usuario asignado.', fn: () => accionReiniciarTarea(nodeId) },
+              { label: 'En proceso', tip: 'Se da por iniciada la tarea.', fn: () => accionMarcarEnTrabajo(nodeId) },
+              { label: 'Pendiente de revisión', tip: 'Dar tarea por finalizada, a la espera de revisión.', fn: () => accionMarcarTerminado(nodeId) },
+              { label: 'Pendiente de dudas', tip: 'Pendiente por dudas.', fn: () => accionMarcarPendienteDudas(nodeId) },
+              { label: 'Pendiente cambios en modelo', tip: 'Pendiente por cambios en el modelo.', fn: () => accionMarcarPendienteCambiosModelo(nodeId) }
+            ]
+          });
         }
         items.push({ label: '🗑️ Desactivar', tip: 'Desactivación de un nodo o tarea.', fn: () => desactivarNodo(nodeId) });
-        items.push({ separador: true });
       } else if (!sinAsignacion) {
         items.push({ label: '▲ Mover arriba', tip: 'Se mueve nodo hacia arriba.', fn: () => reordenar(nodeId, -1) });
         items.push({ label: '▼ Mover abajo', tip: 'Se mueve nodo hacia abajo.', fn: () => reordenar(nodeId, 1) });
         items.push({ separador: true });
       }
 
-      if (!sinAsignacion) {
-        if (!nodo.trabajador_id && !esGestor()) {
+      if (!sinAsignacion && !esGestor()) {
+        if (!nodo.trabajador_id) {
           items.push({ label: '🖐 Tomar esta tarea', tip: 'Te autoasigna esta tarea, sin esperar a admin/revisor.', fn: () => tomarTarea(nodeId) });
         }
 
         if (puedeOperar) {
           if (nodo.trabajo_estado === 'SIN_INICIAR' || nodo.trabajo_estado === 'REQUIERE_CORRECCION') {
-            items.push({
-              label: '▶ Empezar',
-              tip: esGestor() ? 'Se da por iniciada la tarea.' : 'Comenzar a trabajar en una tarea.',
-              fn: () => accionMarcarEnTrabajo(nodeId)
-            });
+            items.push({ label: '▶ Empezar', tip: 'Comenzar a trabajar en una tarea.', fn: () => accionMarcarEnTrabajo(nodeId) });
           } else if (['EN_TRABAJO', 'PENDIENTE_DUDAS', 'PENDIENTE_CAMBIOS_MODELO'].includes(nodo.trabajo_estado)) {
             items.push({ label: '✔ Finalizar', tip: 'Dar tarea por finalizada.', fn: () => accionMarcarTerminado(nodeId) });
           }
@@ -791,37 +806,63 @@
             }
           }
         }
-        if (esGestor() && nodo.trabajo_estado === 'TERMINADO') {
-          items.push({ separador: true });
-          items.push({ label: '✔ Aprobar', tip: 'Aprueba la tarea revisada.', fn: () => accionRevisar(nodeId, true) });
-          items.push({ label: '✘ Rechazar', tip: 'Rechaza la tarea, pidiendo el motivo.', fn: () => accionRevisar(nodeId, false) });
-        }
       }
 
-      // Quita un separador que quede colgando al final (si no hay nada después)
       while (items.length && items[items.length - 1].separador) items.pop();
       if (items.length === 0) return;
 
       const menu = document.getElementById('menu-contextual');
-      menu.innerHTML = items.map((it, i) =>
-        it.separador ? '<div class="mc-separador"></div>' : `<div class="mc-item" data-idx="${i}">${it.label}</div>`
-      ).join('');
+      menu.innerHTML = items.map((it, i) => {
+        if (it.separador) return '<div class="mc-separador"></div>';
+        if (it.submenu) {
+          return `
+            <div class="mc-item mc-padre" data-idx="${i}">${it.label}</div>
+            <div class="mc-submenu" data-parent="${i}">
+              ${it.subitems.map((sub, j) => `<div class="mc-item mc-subitem" data-idx="${i}-${j}">${sub.label}</div>`).join('')}
+            </div>
+          `;
+        }
+        return `<div class="mc-item" data-idx="${i}">${it.label}</div>`;
+      }).join('');
 
-      menu.querySelectorAll('.mc-item').forEach(el => {
+      // Items normales
+      menu.querySelectorAll('.mc-item[data-idx]:not(.mc-padre):not(.mc-subitem)').forEach(el => {
         const it = items[parseInt(el.dataset.idx, 10)];
-        el.addEventListener('click', () => { cerrarMenuContextual(); it.fn(); });
+        el.addEventListener('click', (e) => { e.stopPropagation(); cerrarMenuContextual(); it.fn(); });
+        el.addEventListener('mouseenter', (e) => mostrarTooltipMenu(e, it.tip));
+        el.addEventListener('mousemove', (e) => posicionarTooltipMenu(e));
+        el.addEventListener('mouseleave', ocultarTooltipMenu);
+      });
+
+      // Cabecera del submenú: solo despliega/repliega, no ejecuta ni cierra
+      menu.querySelectorAll('.mc-padre').forEach(el => {
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          el.classList.toggle('abierto');
+          const sub = menu.querySelector(`.mc-submenu[data-parent="${el.dataset.idx}"]`);
+          if (sub) sub.classList.toggle('abierto');
+        });
+      });
+
+      // Subitems del submenú
+      menu.querySelectorAll('.mc-subitem').forEach(el => {
+        const [i, j] = el.dataset.idx.split('-').map(Number);
+        const it = items[i].subitems[j];
+        el.addEventListener('click', (e) => { e.stopPropagation(); cerrarMenuContextual(); it.fn(); });
         el.addEventListener('mouseenter', (e) => mostrarTooltipMenu(e, it.tip));
         el.addEventListener('mousemove', (e) => posicionarTooltipMenu(e));
         el.addEventListener('mouseleave', ocultarTooltipMenu);
       });
 
       // Posiciona el menú sin salirse de la pantalla
-      const anchoEstimado = 240, altoEstimado = items.length * 34 + 20;
+      const anchoEstimado = 240, altoEstimado = Math.min(items.length * 34 + 20, window.innerHeight - 20);
       let x = evento.clientX, y = evento.clientY;
       if (x + anchoEstimado > window.innerWidth) x = window.innerWidth - anchoEstimado - 10;
       if (y + altoEstimado > window.innerHeight) y = window.innerHeight - altoEstimado - 10;
       menu.style.left = x + 'px';
-      menu.style.top = y + 'px';
+      menu.style.top = Math.max(y, 10) + 'px';
+      menu.style.maxHeight = (window.innerHeight - 20) + 'px';
+      menu.style.overflowY = 'auto';
       menu.style.display = 'block';
     }
 
@@ -854,6 +895,20 @@
       const { error } = await supabaseClient.rpc('asignar_trabajo', {
         p_node_id: nodeId, p_trabajador_id: miPerfil.id, p_revisor_id: null
       });
+      if (error) { alert('Error: ' + error.message); return; }
+      await cargarArbol();
+    }
+
+    async function accionDesasignarTrabajador(nodeId) {
+      if (!confirm('¿Quitar el usuario asignado y dejar esta tarea sin asignar?')) return;
+      const { error } = await supabaseClient.rpc('desasignar_trabajador', { p_node_id: nodeId });
+      if (error) { alert('Error: ' + error.message); return; }
+      await cargarArbol();
+    }
+
+    async function accionReiniciarTarea(nodeId) {
+      if (!confirm('¿Reiniciar esta tarea a "Pendiente de hacer"? Se mantiene el usuario asignado.')) return;
+      const { error } = await supabaseClient.rpc('reiniciar_tarea', { p_node_id: nodeId });
       if (error) { alert('Error: ' + error.message); return; }
       await cargarArbol();
     }
