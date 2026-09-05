@@ -211,11 +211,11 @@
 
       <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Navegación <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
+        <a class="menu-item" id="menu-link-log" href="log.html" style="display:none;">🗒️ Logs</a>
         <a class="menu-item" href="index.html">🏠 Inicio</a>
         <span class="menu-item" id="menu-item-buque" onclick="abrirModalCrear(null, 'BUQUE')" style="display:none;">+ Añadir Buque</span>
         <a class="menu-item" href="resumen.html">📊 Resumen</a>
         <a class="menu-item" id="menu-link-usuarios" href="usuarios.html" style="display:none;">👤 Usuarios</a>
-        <a class="menu-item" id="menu-link-log" href="log.html" style="display:none;">🗒️ Registro de actividad</a>
         <span class="menu-item" onclick="cerrarSesion()">🚪 Cerrar sesión</span>
       </div>
 
@@ -226,7 +226,7 @@
         <label class="menu-item">
           <input type="checkbox" id="chk-vista-simple" onchange="toggleVistaSimplificada()"> 🎨 Vista simplificada (solo colores)
         </label>
-        <span class="menu-item" onclick="encogerTodo()">⏫ Replegar</span>
+        <span class="menu-item" onclick="encogerTodo()">⏫ Contraer</span>
       </div>
 
       <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Idiomas <span class="flecha-menu">›</span></div>
@@ -823,7 +823,7 @@
         items.push({ label: '✎ Editar', tip: 'Edita código, nombre y descripción del nodo.', fn: () => abrirModalEditar(nodeId) });
         if ((mapaHijosPorPadre[nodeId] || []).length > 0) {
           items.push({ label: '⏬ Expandir', tip: 'Despliega todos los nodos dentro de este.', fn: () => expandirRama(nodeId) });
-          items.push({ label: '⏫ Replegar', tip: 'Pliega todos los nodos dentro de este.', fn: () => encogerRama(nodeId) });
+          items.push({ label: '⏫ Contraer', tip: 'Pliega todos los nodos dentro de este.', fn: () => encogerRama(nodeId) });
         }
         items.push({ label: '▲ Mover arriba', tip: 'Se mueve nodo hacia arriba.', fn: () => reordenar(nodeId, -1) });
         items.push({ label: '▼ Mover abajo', tip: 'Se mueve nodo hacia abajo.', fn: () => reordenar(nodeId, 1) });

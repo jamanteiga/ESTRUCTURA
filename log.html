@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESTRUCTURA - Registro de actividad</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 1100px; margin: 30px auto; padding: 0 20px; color: #333; }
+    h1 { font-size: 22px; }
+    .card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    .header-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+    button { padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; }
+    button.secundario { background: #6c757d; }
+    button.secundario:hover { background: #5a6268; }
+    .estado-msg { font-size: 13px; }
+
+    .filtros { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .filtros select, .filtros input { padding: 7px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+    .filtros input[type="text"] { flex: 1; min-width: 200px; }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; background: white; font-size: 12px; }
+    th, td { padding: 7px; text-align: left; border-bottom: 1px solid #eee; vertical-align: top; }
+    th { background: #1c6e8c; color: white; position: sticky; top: 0; }
+    tr:hover { background: #f5f8ff; }
+    .col-fecha { white-space: nowrap; color: #555; }
+    .col-accion { white-space: nowrap; font-family: monospace; font-size: 11px; background: #eef3ff; padding: 2px 6px; border-radius: 4px; }
+    .col-ip { white-space: nowrap; color: #888; font-size: 11px; }
+    .contenedor-tabla { max-height: 65vh; overflow-y: auto; margin-top: 10px; }
+    .paginacion { display: flex; justify-content: center; gap: 10px; margin-top: 12px; align-items: center; font-size: 13px; }
+  </style>
+</head>
+<body>
+
+  <div class="header-bar">
+    <h1>🗒️ Registro de actividad</h1>
+    <div>
+      <span id="texto-usuario" class="estado-msg"></span>
+      <button class="secundario" onclick="location.href='index.html'">🏠 Inicio</button>
+      <button class="secundario" onclick="location.href='arbol.html'">🌳 Árbol</button>
+      <button class="secundario" onclick="location.href='usuarios.html'">👤 Usuarios</button>
+      <button class="secundario" onclick="cerrarSesion()">Cerrar sesión</button>
+      <button style="background:#dc3545;" onclick="cerrarPagina()">❌ Cerrar</button>
+    </div>
+  </div>
+
+  <div id="sin-permiso" style="display:none; color:#dc3545; font-weight:bold; text-align:center; margin-top:60px;">
+    Solo ADMIN puede ver el registro de actividad.
+  </div>
+
+  <div id="panel" style="display:none;">
+    <div class="card filtros">
+      <select id="filtro-usuario"><option value="">Usuario: Todos</option></select>
+      <select id="filtro-accion"><option value="">Acción: Todas</option></select>
+      <input type="date" id="filtro-desde" title="Desde">
+      <input type="date" id="filtro-hasta" title="Hasta">
+      <input type="text" id="filtro-texto" placeholder="Buscar en la descripción...">
+      <button class="secundario" onclick="limpiarFiltros()">✕ Limpiar</button>
+    </div>
+
+    <div class="card">
+      <div id="resumen-resultados" class="estado-msg" style="margin-bottom:6px; color:#666;"></div>
+      <div class="contenedor-tabla">
+        <table>
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Hora</th>
+              <th>Usuario</th>
+              <th>Acción</th>
+              <th>Descripción</th>
+              <th>IP</th>
+              <th>Navegador / SO</th>
+            </tr>
+          </thead>
+          <tbody id="tabla-body">
+            <tr><td colspan="7">Cargando...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="paginacion">
+        <button class="secundario" id="btn-pag-anterior" onclick="paginaAnterior()">‹ Anterior</button>
+        <span id="texto-pagina"></span>
+        <button class="secundario" id="btn-pag-siguiente" onclick="paginaSiguiente()">Siguiente ›</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const SUPABASE_URL = 'https://wuarkraddnndmgvfnkmm.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const POR_PAGINA = 50;
+    let paginaActual = 0;
+    let totalFilas = 0;
+
+    function formatearFecha(iso) {
+      const d = new Date(iso);
+      const dd = String(d.getDate()).padStart(2, '0');
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const aaaa = d.getFullYear();
+      return `${dd}/${mm}/${aaaa}`;
+    }
+    function formatearHora(iso) {
+      const d = new Date(iso);
+      const h = d.getHours();
+      const min = String(d.getMinutes()).padStart(2, '0');
+      return `${h}:${min}`;
+    }
+
+    function resumirUserAgent(ua) {
+      if (!ua) return '—';
+      let so = 'SO desconocido';
+      if (/Windows/i.test(ua)) so = 'Windows';
+      else if (/Mac OS/i.test(ua)) so = 'macOS';
+      else if (/Android/i.test(ua)) so = 'Android';
+      else if (/iPhone|iPad/i.test(ua)) so = 'iOS';
+      else if (/Linux/i.test(ua)) so = 'Linux';
+
+      let nav = 'Navegador desconocido';
+      if (/Edg\//i.test(ua)) nav = 'Edge';
+      else if (/Chrome\//i.test(ua)) nav = 'Chrome';
+      else if (/Firefox\//i.test(ua)) nav = 'Firefox';
+      else if (/Safari\//i.test(ua)) nav = 'Safari';
+
+      return `${nav} · ${so}`;
+    }
+
+    async function cerrarSesion() {
+      await supabaseClient.auth.signOut();
+      window.location.href = 'login.html';
+    }
+
+    function cerrarPagina() {
+      window.close();
+      setTimeout(() => { history.back(); }, 150);
+    }
+
+    async function iniciar() {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (!session) { window.location.href = 'login.html?next=log.html'; return; }
+
+      const { data: perfil, error } = await supabaseClient
+        .from('profiles').select('*').eq('id', session.user.id).single();
+
+      if (error || !perfil || !perfil.activo || perfil.rol !== 'ADMIN') {
+        document.getElementById('sin-permiso').style.display = 'block';
+        return;
+      }
+
+      document.getElementById('texto-usuario').textContent = `${perfil.nombre_completo} (${perfil.username}) — ADMIN`;
+      document.getElementById('panel').style.display = 'block';
+
+      const { data: perfiles } = await supabaseClient.from('profiles').select('id, nombre_completo').order('nombre_completo');
+      const selUsuario = document.getElementById('filtro-usuario');
+      selUsuario.innerHTML = '<option value="">Usuario: Todos</option>' +
+        (perfiles || []).map(p => `<option value="${p.id}">${p.nombre_completo}</option>`).join('');
+
+      ['filtro-usuario', 'filtro-accion', 'filtro-desde', 'filtro-hasta'].forEach(id => {
+        document.getElementById(id).addEventListener('change', () => { paginaActual = 0; cargarLog(); });
+      });
+      let debounceTexto = null;
+      document.getElementById('filtro-texto').addEventListener('input', () => {
+        clearTimeout(debounceTexto);
+        debounceTexto = setTimeout(() => { paginaActual = 0; cargarLog(); }, 300);
+      });
+
+      await cargarAccionesDisponibles();
+      await cargarLog();
+    }
+
+    async function cargarAccionesDisponibles() {
+      const { data } = await supabaseClient.from('audit_log').select('accion').limit(1000);
+      const acciones = [...new Set((data || []).map(r => r.accion))].sort();
+      const sel = document.getElementById('filtro-accion');
+      sel.innerHTML = '<option value="">Acción: Todas</option>' +
+        acciones.map(a => `<option value="${a}">${a}</option>`).join('');
+    }
+
+    function limpiarFiltros() {
+      document.getElementById('filtro-usuario').value = '';
+      document.getElementById('filtro-accion').value = '';
+      document.getElementById('filtro-desde').value = '';
+      document.getElementById('filtro-hasta').value = '';
+      document.getElementById('filtro-texto').value = '';
+      paginaActual = 0;
+      cargarLog();
+    }
+
+    function paginaAnterior() { if (paginaActual > 0) { paginaActual--; cargarLog(); } }
+    function paginaSiguiente() { if ((paginaActual + 1) * POR_PAGINA < totalFilas) { paginaActual++; cargarLog(); } }
+
+    async function cargarLog() {
+      const tbody = document.getElementById('tabla-body');
+      tbody.innerHTML = '<tr><td colspan="7">Cargando...</td></tr>';
+
+      const usuarioId = document.getElementById('filtro-usuario').value;
+      const accion = document.getElementById('filtro-accion').value;
+      const desde = document.getElementById('filtro-desde').value;
+      const hasta = document.getElementById('filtro-hasta').value;
+      const texto = document.getElementById('filtro-texto').value.trim();
+
+      let query = supabaseClient.from('audit_log').select('*', { count: 'exact' }).order('creado_en', { ascending: false });
+      if (usuarioId) query = query.eq('actor_id', usuarioId);
+      if (accion) query = query.eq('accion', accion);
+      if (desde) query = query.gte('creado_en', desde + 'T00:00:00');
+      if (hasta) query = query.lte('creado_en', hasta + 'T23:59:59');
+      if (texto) query = query.ilike('descripcion', `%${texto}%`);
+
+      query = query.range(paginaActual * POR_PAGINA, paginaActual * POR_PAGINA + POR_PAGINA - 1);
+
+      const { data, error, count } = await query;
+
+      if (error) { tbody.innerHTML = `<tr><td colspan="7" style="color:red;">Error: ${error.message}</td></tr>`; return; }
+
+      totalFilas = count || 0;
+
+      tbody.innerHTML = (data || []).length === 0
+        ? '<tr><td colspan="7">No hay resultados con estos filtros.</td></tr>'
+        : data.map(fila => `
+            <tr>
+              <td class="col-fecha">${formatearFecha(fila.creado_en)}</td>
+              <td class="col-fecha">${formatearHora(fila.creado_en)}</td>
+              <td>${fila.actor_nombre || '—'}</td>
+              <td><span class="col-accion">${fila.accion}</span></td>
+              <td>${fila.descripcion}</td>
+              <td class="col-ip">${fila.ip || '—'}</td>
+              <td class="col-ip">${resumirUserAgent(fila.user_agent)}</td>
+            </tr>
+          `).join('');
+
+      const desdeN = paginaActual * POR_PAGINA + 1;
+      const hastaN = Math.min((paginaActual + 1) * POR_PAGINA, totalFilas);
+      document.getElementById('resumen-resultados').textContent = totalFilas === 0
+        ? 'Sin resultados.'
+        : `Mostrando ${desdeN}–${hastaN} de ${totalFilas}`;
+      document.getElementById('texto-pagina').textContent = `Página ${paginaActual + 1}`;
+      document.getElementById('btn-pag-anterior').disabled = paginaActual === 0;
+      document.getElementById('btn-pag-siguiente').disabled = (paginaActual + 1) * POR_PAGINA >= totalFilas;
+    }
+
+    iniciar();
+  </script>
+</body>
+</html>
