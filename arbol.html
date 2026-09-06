@@ -43,6 +43,11 @@
     .toggle.vacio { visibility: hidden; }
     .codigo { font-weight: bold; }
     .tipo-tag { font-size: 10px; background: #e9ecef; padding: 1px 6px; border-radius: 10px; color: #555; }
+    .badge-avance { background: #28a745; color: white; font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: bold; }
+    .badge-tiempos { background: #6f42c1; color: white; font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: bold; }
+    .badge-tiempos .en-curso { opacity: 0.75; font-style: italic; }
+    #barra-seleccion.visible { display: flex !important; }
+    .chk-seleccion { width: 16px; height: 16px; cursor: pointer; }
     .asignados { font-size: 11px; color: #888; }
     .asignados .fecha { color: #aaa; font-size: 10px; }
     .motivo-rechazo { font-size: 11px; color: #dc3545; font-style: italic; width: 100%; padding-left: 26px; }
@@ -229,13 +234,6 @@
         <span class="menu-item" onclick="encogerTodo()">⏫ Contraer</span>
       </div>
 
-      <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Idiomas <span class="flecha-menu">›</span></div>
-      <div class="menu-seccion-contenido">
-        <span class="menu-item" onclick="cambiarIdioma('es')">🇪🇸 Español</span>
-        <span class="menu-item" onclick="cambiarIdioma('gl')">🏴 Galego</span>
-        <span class="menu-item" onclick="cambiarIdioma('eu')">🏴 Euskara</span>
-      </div>
-
       <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Filtros <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
         <label class="menu-item" id="wrap-mis-tareas" style="display:none;">
@@ -259,6 +257,22 @@
         </label>
         <label class="menu-item" id="wrap-desactivados" style="display:none;">
           <input type="checkbox" id="chk-desactivados"> Mostrar desactivados
+        </label>
+      </div>
+
+      <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Herramientas <span class="flecha-menu">›</span></div>
+      <div class="menu-seccion-contenido">
+        <label class="menu-item" id="wrap-modo-seleccion" style="display:none;">
+          <input type="checkbox" id="chk-modo-seleccion" onchange="toggleModoSeleccion()"> ☑️ Selección múltiple
+        </label>
+        <label class="menu-item" id="wrap-papelera" style="display:none;">
+          <input type="checkbox" id="chk-papelera" onchange="togglePapelera()"> 🗑️ Ver papelera
+        </label>
+        <label class="menu-item" id="wrap-avance" style="display:none;">
+          <input type="checkbox" id="chk-avance" onchange="toggleAvance()"> 📈 Avance
+        </label>
+        <label class="menu-item" id="wrap-tiempos" style="display:none;">
+          <input type="checkbox" id="chk-tiempos" onchange="toggleTiempos()"> ⏱️ Tiempos
         </label>
       </div>
 
@@ -391,6 +405,28 @@
   </div>
 
   <div id="contenedor-avisos"></div>
+  <div id="barra-seleccion" style="display:none; position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#222; color:white; padding:12px 20px; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.35); z-index:3000; gap:12px; align-items:center;">
+    <span id="texto-seleccion" style="font-size:13px;"></span>
+    <button onclick="abrirModalAsignacionMasiva()">👤 Asignar seleccionadas</button>
+    <button class="secundario" onclick="cancelarSeleccion()">✕ Cancelar</button>
+  </div>
+
+  <div class="overlay" id="modal-asignar-masivo">
+    <div class="overlay-caja">
+      <h3>Asignar varias tareas</h3>
+      <p id="masivo-contador" style="font-size:13px; color:#666;"></p>
+      <label>Usuario</label>
+      <select id="masivo-trabajador"><option value="">— Sin asignar —</option></select>
+      <label>Revisor</label>
+      <select id="masivo-revisor"><option value="">— Sin asignar —</option></select>
+      <div class="estado-msg" id="masivo-estado"></div>
+      <div class="overlay-botones">
+        <button class="secundario" onclick="cerrarModalAsignacionMasiva()">Cancelar</button>
+        <button onclick="confirmarAsignacionMasiva()">Asignar</button>
+      </div>
+    </div>
+  </div>
+
   <div id="menu-contextual"></div>
   <div id="menu-submenu-flotante"></div>
   <div id="mc-tooltip"></div>
@@ -420,6 +456,12 @@
     let filtroEstado = '';
     let mostrarDesactivados = false;
     let vistaSimplificada = false;
+    let modoPapelera = false;
+    let modoAvance = false;
+    let modoTiempos = false;
+    let modoSeleccion = false;
+    let nodosSeleccionados = new Set();
+    let mapaTodoParaPapelera = {};
 
     function toggleVistaSimplificada() {
       vistaSimplificada = document.getElementById('chk-vista-simple').checked;
@@ -473,6 +515,12 @@
       if (perfil.rol === 'ADMIN') {
         document.getElementById('menu-link-usuarios').style.display = 'flex';
         document.getElementById('menu-link-log').style.display = 'flex';
+        document.getElementById('wrap-papelera').style.display = 'flex';
+        document.getElementById('wrap-avance').style.display = 'flex';
+        document.getElementById('wrap-tiempos').style.display = 'flex';
+      }
+      if (esGestor()) {
+        document.getElementById('wrap-modo-seleccion').style.display = 'flex';
       }
 
       if (miPerfil.rol === 'TRABAJADOR') {
@@ -533,14 +581,6 @@
       }
     }
 
-    function cambiarIdioma(idioma) {
-      localStorage.setItem('estructura_idioma', idioma);
-      if (idioma !== 'es') {
-        alert('El cambio de idioma a Galego/Euskara todavía no está traducido en toda la aplicación — es un trabajo aparte, más grande, que dejamos pendiente. De momento solo queda guardada tu preferencia.');
-      }
-      cerrarMenu();
-    }
-
     function abrirMenu() { document.getElementById('menu-overlay').classList.add('abierto'); }
     function cerrarMenu() { document.getElementById('menu-overlay').classList.remove('abierto'); }
     function cerrarMenuSiFondo(e) { if (e.target.id === 'menu-overlay') cerrarMenu(); }
@@ -569,6 +609,7 @@
     }
 
     async function cerrarSesion() {
+      await registrarLog('LOGOUT', `Cerró sesión (${miPerfil?.username || ''})`);
       await supabaseClient.auth.signOut();
       window.location.href = 'login.html';
     }
@@ -678,6 +719,35 @@
       return resultado;
     }
 
+    function calcularPorcentajeAvance(nodeId) {
+      const idsSubarbol = [nodeId, ...obtenerDescendientesIds(nodeId)];
+      const relevantes = idsSubarbol.map(id => mapaNodoPorId[id]).filter(n => n && !TIPOS_SIN_ASIGNACION.has(n.tipo));
+      if (relevantes.length === 0) return null;
+      const aprobados = relevantes.filter(n => n.revision_estado === 'APROBADO').length;
+      return Math.round((aprobados / relevantes.length) * 100);
+    }
+
+    function toggleAvance() {
+      modoAvance = document.getElementById('chk-avance').checked;
+      renderizarArbolCompleto();
+    }
+
+    function toggleTiempos() {
+      modoTiempos = document.getElementById('chk-tiempos').checked;
+      renderizarArbolCompleto();
+    }
+
+    function formatearDuracionHM(inicioIso, finIso) {
+      if (!inicioIso) return null;
+      const inicio = new Date(inicioIso);
+      const fin = finIso ? new Date(finIso) : new Date();
+      const minutosTotales = Math.floor((fin - inicio) / 60000);
+      if (minutosTotales < 0) return null;
+      const horas = Math.floor(minutosTotales / 60);
+      const minutos = minutosTotales % 60;
+      return `${horas}:${String(minutos).padStart(2, '0')}`;
+    }
+
     function resaltarCoincidencia(texto) {
       if (!filtroTexto) return texto;
       const idx = texto.toLowerCase().indexOf(filtroTexto.toLowerCase());
@@ -742,14 +812,35 @@
       const motivoRechazo = (!sinAsignacion && !vistaSimplificada && nodo.revision_estado === 'RECHAZADO' && nodo.comentario_revision)
         ? `<div class="motivo-rechazo">✘ Motivo: ${nodo.comentario_revision}</div>` : '';
 
+      const badgeAvance = (modoAvance && (nodo.tipo === 'BUQUE' || nodo.tipo === 'BLOQUE' || nodo.tipo === 'SUBBLOQUE'))
+        ? (() => { const pct = calcularPorcentajeAvance(nodo.id); return pct !== null ? `<span class="badge-avance">${pct}%</span>` : ''; })()
+        : '';
+
+      let badgeTiempos = '';
+      if (modoTiempos && miPerfil.rol === 'ADMIN' && !sinAsignacion) {
+        const edicion = formatearDuracionHM(nodo.trabajo_iniciado_en, nodo.trabajo_terminado_en);
+        const espera = formatearDuracionHM(nodo.trabajo_terminado_en, nodo.revisado_en);
+        const partes = [];
+        if (edicion !== null) partes.push(`✏️ ${edicion}${!nodo.trabajo_terminado_en ? ' <span class="en-curso">(en curso)</span>' : ''}`);
+        if (espera !== null) partes.push(`⏳ ${espera}${!nodo.revisado_en ? ' <span class="en-curso">(en curso)</span>' : ''}`);
+        if (partes.length > 0) badgeTiempos = `<span class="badge-tiempos">${partes.join(' · ')}</span>`;
+      }
+
+      const checkboxSeleccion = (modoSeleccion && esGestor() && !sinAsignacion)
+        ? `<input type="checkbox" class="chk-seleccion" ${nodosSeleccionados.has(nodo.id) ? 'checked' : ''} onclick="toggleSeleccionNodo('${nodo.id}', event)">`
+        : '';
+
       return `
         <li class="nodo" id="li-${nodo.id}">
           <div class="fila-nodo" oncontextmenu="mostrarMenuContextual(event, '${nodo.id}'); return false;">
+            ${checkboxSeleccion}
             <span class="toggle ${tieneHijos ? '' : 'vacio'}" onclick="toggleNodo('${nodo.id}')">${abierto ? '▼' : '▶'}</span>
             <span class="flecha ${claseColor}" title="${estado}">${simboloFlecha}</span>
             <span class="codigo">${resaltarCoincidencia(nodo.codigo)}</span>
             <span>${resaltarCoincidencia(nodo.nombre)}</span>
             <span class="tipo-tag">${nodo.tipo}</span>
+            ${badgeAvance}
+            ${badgeTiempos}
             ${asignadosTexto ? `<span class="asignados">${asignadosTexto}</span>` : ''}
             <span class="acciones">${acciones}</span>
             ${motivoRechazo}
@@ -1167,7 +1258,7 @@
     }
 
     async function reactivarNodo(nodeId) {
-      const nodo = mapaNodoPorId[nodeId];
+      const nodo = mapaNodoPorId[nodeId] || mapaTodoParaPapelera[nodeId];
       const { error } = await supabaseClient.from('nodes').update({ activo: true }).eq('id', nodeId);
       if (error) {
         alert('Error: ' + error.message);
@@ -1175,7 +1266,53 @@
         return;
       }
       registrarLog('REACTIVAR_NODO', `Reactivó "${nodo?.codigo || nodeId}"`, nodeId);
-      await cargarArbol();
+      if (modoPapelera) await cargarPapelera(); else await cargarArbol();
+    }
+
+    // -------------------- Papelera --------------------
+
+    function togglePapelera() {
+      modoPapelera = document.getElementById('chk-papelera').checked;
+      if (modoPapelera) { cargarPapelera(); } else { cargarArbol(); }
+    }
+
+    function rutaCompletaPapelera(nodo) {
+      const partes = [];
+      let actual = nodo;
+      while (actual) {
+        partes.unshift(`${actual.tipo} ${actual.codigo}`);
+        actual = actual.parent_id ? mapaTodoParaPapelera[actual.parent_id] : null;
+      }
+      return partes.join(' › ');
+    }
+
+    async function cargarPapelera() {
+      const raiz = document.getElementById('arbol-raiz');
+      raiz.innerHTML = '<li>Cargando papelera...</li>';
+
+      const { data, error } = await supabaseClient.from('nodes').select('*');
+      if (error) { raiz.innerHTML = `<li style="color:red;">Error: ${error.message}</li>`; return; }
+
+      mapaTodoParaPapelera = {};
+      data.forEach(n => { mapaTodoParaPapelera[n.id] = n; });
+
+      const inactivos = data.filter(n => !n.activo).sort((a, b) => a.codigo.localeCompare(b.codigo, 'es'));
+
+      raiz.innerHTML = inactivos.length === 0
+        ? '<li>La papelera está vacía.</li>'
+        : inactivos.map(n => `
+            <li class="nodo">
+              <div class="fila-nodo">
+                <span class="tipo-tag">${n.tipo}</span>
+                <span class="codigo">${n.codigo}</span>
+                <span>${n.nombre}</span>
+                <span style="font-size:11px; color:#888;">${rutaCompletaPapelera(n)}</span>
+                <span class="acciones">
+                  <button class="pequeno exito" onclick="reactivarNodo('${n.id}')">♻️ Reactivar</button>
+                </span>
+              </div>
+            </li>
+          `).join('');
     }
 
     async function abrirModalLote(parentId, parentTipo) {
@@ -1414,6 +1551,84 @@
     }
 
     function cerrarModalAsignar() { document.getElementById('modal-asignar').style.display = 'none'; }
+
+    // -------------------- Selección múltiple / asignación masiva --------------------
+
+    function toggleModoSeleccion() {
+      modoSeleccion = document.getElementById('chk-modo-seleccion').checked;
+      if (!modoSeleccion) nodosSeleccionados.clear();
+      actualizarBarraSeleccion();
+      renderizarArbolCompleto();
+    }
+
+    function toggleSeleccionNodo(nodeId, event) {
+      event.stopPropagation();
+      if (nodosSeleccionados.has(nodeId)) nodosSeleccionados.delete(nodeId); else nodosSeleccionados.add(nodeId);
+      actualizarBarraSeleccion();
+    }
+
+    function actualizarBarraSeleccion() {
+      const barra = document.getElementById('barra-seleccion');
+      if (!modoSeleccion || nodosSeleccionados.size === 0) { barra.classList.remove('visible'); return; }
+      document.getElementById('texto-seleccion').textContent = `${nodosSeleccionados.size} tarea(s) seleccionada(s)`;
+      barra.classList.add('visible');
+    }
+
+    function cancelarSeleccion() {
+      nodosSeleccionados.clear();
+      actualizarBarraSeleccion();
+      renderizarArbolCompleto();
+    }
+
+    function abrirModalAsignacionMasiva() {
+      document.getElementById('masivo-contador').textContent = `Se asignará a ${nodosSeleccionados.size} tarea(s) seleccionada(s).`;
+
+      const usuarios = perfilesCache.filter(p => p.rol === 'TRABAJADOR');
+      const revisores = perfilesCache.filter(p => p.rol === 'REVISOR');
+
+      document.getElementById('masivo-trabajador').innerHTML = '<option value="">— Sin asignar —</option>' +
+        usuarios.map(p => `<option value="${p.id}">${p.nombre_completo}</option>`).join('');
+      document.getElementById('masivo-revisor').innerHTML = '<option value="">— Sin asignar —</option>' +
+        revisores.map(p => `<option value="${p.id}">${p.nombre_completo}</option>`).join('');
+
+      document.getElementById('masivo-estado').textContent = '';
+      document.getElementById('modal-asignar-masivo').style.display = 'flex';
+    }
+
+    function cerrarModalAsignacionMasiva() {
+      document.getElementById('modal-asignar-masivo').style.display = 'none';
+    }
+
+    async function confirmarAsignacionMasiva() {
+      const estadoEl = document.getElementById('masivo-estado');
+      const btn = document.querySelector('#modal-asignar-masivo .overlay-botones button:last-child');
+      const trabajadorId = document.getElementById('masivo-trabajador').value || null;
+      const revisorId = document.getElementById('masivo-revisor').value || null;
+      const ids = [...nodosSeleccionados];
+
+      btn.disabled = true;
+      let hechos = 0, fallos = 0;
+
+      for (const id of ids) {
+        estadoEl.textContent = `Asignando (${hechos + fallos + 1}/${ids.length})...`;
+        const { error } = await supabaseClient.rpc('asignar_trabajo', {
+          p_node_id: id, p_trabajador_id: trabajadorId, p_revisor_id: revisorId
+        });
+        if (error) fallos++; else hechos++;
+      }
+
+      const nombreTrab = perfilesCache.find(p => p.id === trabajadorId)?.nombre_completo || 'nadie';
+      const nombreRev = perfilesCache.find(p => p.id === revisorId)?.nombre_completo || 'nadie';
+      registrarLog('ASIGNACION_MASIVA', `Asignó en lote ${hechos} de ${ids.length} tareas — usuario: ${nombreTrab}, revisor: ${nombreRev}${fallos ? ` (${fallos} fallaron)` : ''}`);
+
+      btn.disabled = false;
+      cerrarModalAsignacionMasiva();
+      nodosSeleccionados.clear();
+      modoSeleccion = false;
+      document.getElementById('chk-modo-seleccion').checked = false;
+      actualizarBarraSeleccion();
+      await cargarArbol();
+    }
 
     async function guardarAsignacion() {
       const estadoEl = document.getElementById('modal-asignar-estado');
