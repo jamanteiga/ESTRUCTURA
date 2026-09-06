@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ESTRUCTURA - Gantt</title>
   <style>
-    body { font-family: Arial, sans-serif; max-width: 1300px; margin: 20px auto; padding: 0 20px; color: #333; }
+    body { font-family: Arial, sans-serif; max-width: 1400px; margin: 20px auto; padding: 0 20px; color: #333; }
     h1 { font-size: 20px; margin: 0; }
     .subtitulo { color: #666; font-size: 13px; margin-top: 2px; }
     .header-bar { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
@@ -15,27 +15,37 @@
     button.secundario:hover { background: #5a6268; }
     button.peligro { background: #dc3545; }
     select { padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
-    .filtros { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .filtros { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
-    .leyenda { display: flex; gap: 16px; font-size: 12px; align-items: center; }
+    .leyenda { display: flex; gap: 16px; font-size: 12px; align-items: center; flex-wrap: wrap; }
     .leyenda .muestra { display: inline-block; width: 14px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+    .c-sin-empezar { background: #adb5bd; }
     .c-trabajo { background: #007bff; }
     .c-espera { background: #ffc107; }
+    .c-agregado { background: #6f42c1; }
 
     .gantt-scroll { overflow-x: auto; border: 1px solid #ddd; border-radius: 6px; background: white; }
     .gantt-fila { display: flex; border-bottom: 1px solid #eee; align-items: center; }
-    .gantt-etiqueta {
-      position: sticky; left: 0; background: white; z-index: 2; width: 220px; min-width: 220px;
-      padding: 6px 10px; font-size: 12px; border-right: 1px solid #ddd; box-sizing: border-box;
+    .gantt-fila:hover { background: rgba(0,123,255,0.05); }
+
+    .col-info {
+      position: sticky; left: 0; background: white; z-index: 2; display: flex; align-items: center;
+      border-right: 1px solid #ddd; box-sizing: border-box; flex-shrink: 0;
     }
-    .gantt-etiqueta .ruta { color: #888; font-size: 10px; display: block; }
-    .gantt-pista { position: relative; height: 34px; }
-    .gantt-barra { position: absolute; top: 8px; height: 16px; border-radius: 3px; }
+    .gantt-fila:hover .col-info { background: #f5f8ff; }
+    .col-nombre { width: 260px; min-width: 260px; padding: 6px 8px; font-size: 12px; box-sizing: border-box; display: flex; align-items: center; gap: 4px; }
+    .col-nombre .toggle { width: 14px; cursor: pointer; user-select: none; color: #666; font-size: 10px; flex-shrink: 0; }
+    .col-nombre .toggle.vacio { visibility: hidden; }
+    .col-nombre .tipo-tag { font-size: 8px; background: #e9ecef; padding: 1px 4px; border-radius: 8px; color: #777; margin-left: 3px; }
+    .col-fecha { width: 130px; min-width: 130px; padding: 6px 6px; font-size: 11px; color: #555; box-sizing: border-box; }
+    .col-duracion { width: 100px; min-width: 100px; padding: 6px 6px; font-size: 11px; color: #555; box-sizing: border-box; }
+    .en-curso-txt { color: #007bff; font-style: italic; }
+
+    .gantt-pista { position: relative; height: 30px; }
+    .gantt-barra { position: absolute; top: 7px; height: 16px; border-radius: 3px; }
+
     .gantt-cabecera { display: flex; border-bottom: 2px solid #ccc; background: #f0f2f5; position: sticky; top: 0; z-index: 3; }
-    .gantt-cabecera-etiqueta {
-      position: sticky; left: 0; background: #f0f2f5; z-index: 4; width: 220px; min-width: 220px;
-      padding: 6px 10px; font-size: 11px; font-weight: bold; border-right: 1px solid #ddd; box-sizing: border-box;
-    }
+    .gantt-cabecera .col-info { background: #f0f2f5; font-weight: bold; font-size: 11px; }
     .gantt-dia { flex-shrink: 0; font-size: 10px; text-align: center; color: #666; border-right: 1px solid #eee; padding: 4px 0; }
     .gantt-dia.hoy { background: #fff3cd; font-weight: bold; }
 
@@ -62,26 +72,25 @@
     </div>
   </div>
 
-  <div id="titulo-solo-impresion" style="display:none;">
-    <h1 id="titulo-pagina-print"></h1>
-    <div class="subtitulo" id="subtitulo-fecha-print"></div>
-  </div>
+  <div id="titulo-pagina-print" style="display:none;"></div>
 
   <div class="card filtros no-imprimir">
     <label for="sel-buque" style="font-size:12px; font-weight:bold;">Buque:</label>
     <select id="sel-buque"></select>
-    <label for="sel-bloque" style="font-size:12px; font-weight:bold;">Bloque:</label>
-    <select id="sel-bloque"><option value="">Todos</option></select>
+    <button class="secundario" onclick="expandirTodoGantt()">⏬ Expandir todo</button>
+    <button class="secundario" onclick="contraerTodoGantt()">⏫ Contraer todo</button>
   </div>
 
   <div class="card leyenda">
-    <span><span class="muestra c-trabajo"></span>En proceso (trabajo)</span>
+    <span><span class="muestra c-agregado"></span>Rama con varias tareas dentro (resumen)</span>
+    <span><span class="muestra c-sin-empezar"></span>Asignada, sin empezar</span>
+    <span><span class="muestra c-trabajo"></span>En proceso</span>
     <span><span class="muestra c-espera"></span>Esperando revisión</span>
   </div>
 
   <div class="estado-msg" id="mensaje-vacio" style="display:none; margin-bottom:10px;"></div>
 
-  <div class="gantt-scroll">
+  <div class="gantt-scroll" id="gantt-scroll-contenedor">
     <div id="gantt-contenido"></div>
   </div>
 
@@ -92,13 +101,17 @@
     const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    const PX_POR_DIA = 40;
+    const PX_POR_DIA = 36;
     const ANCHO_MIN_BARRA = 6;
 
     let miPerfil = null;
     let mapaNodoPorId = {};
+    let mapaHijosPorPadre = {};
     let buques = [];
-    let tareasActuales = [];
+    let buqueActualId = null;
+    let nodosAbiertos = new Set();
+    let cacheRangos = {};
+    let filasParaExportar = [];
 
     async function registrarLog(accion, descripcion) {
       try {
@@ -133,6 +146,17 @@
     function formatearFechaLarga(fecha) {
       return `${DIAS_SEMANA[fecha.getDay()]} ${fecha.getDate()} de ${MESES[fecha.getMonth()]} de ${fecha.getFullYear()}`;
     }
+    function formatearFechaCorta(fecha) {
+      return `${String(fecha.getDate()).padStart(2,'0')}/${String(fecha.getMonth()+1).padStart(2,'0')}/${fecha.getFullYear()} ${String(fecha.getHours()).padStart(2,'0')}:${String(fecha.getMinutes()).padStart(2,'0')}`;
+    }
+    function formatearDuracionHM(inicio, fin) {
+      if (!inicio) return null;
+      const minutos = Math.floor((fin - inicio) / 60000);
+      if (minutos < 0) return null;
+      const horas = Math.floor(minutos / 60);
+      const mins = minutos % 60;
+      return `${horas}:${String(mins).padStart(2, '0')}`;
+    }
 
     function actualizarCabecera(codigoBuque) {
       const hoy = new Date();
@@ -140,17 +164,6 @@
       const texto = `${codigoBuque || ''} — Semana ${semana} — ${formatearFechaLarga(hoy)}`;
       document.getElementById('titulo-pagina').textContent = `🗓️ ${texto}`;
       document.getElementById('titulo-pagina-print').textContent = `Gantt — ${texto}`;
-      document.getElementById('subtitulo-fecha-print').textContent = miPerfil ? `Generado por ${miPerfil.nombre_completo}` : '';
-    }
-
-    function rutaCompleta(nodo) {
-      const partes = [];
-      let actual = nodo;
-      while (actual) {
-        partes.unshift(`${actual.tipo} ${actual.codigo}`);
-        actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
-      }
-      return partes.join(' › ');
     }
 
     async function iniciar() {
@@ -171,11 +184,6 @@
         .from('nodes').select('id, codigo, nombre').eq('tipo', 'BUQUE').eq('activo', true).order('codigo');
       buques = nodosBuque || [];
 
-      const selBuque = document.getElementById('sel-buque');
-      selBuque.innerHTML = buques.map(b => `<option value="${b.id}">${b.codigo}</option>`).join('');
-      selBuque.addEventListener('change', () => { cargarBloquesDelBuque(); cargarGantt(); });
-      document.getElementById('sel-bloque').addEventListener('change', cargarGantt);
-
       if (buques.length === 0) {
         document.getElementById('mensaje-vacio').style.display = 'block';
         document.getElementById('mensaje-vacio').textContent = 'No hay ningún Buque creado todavía.';
@@ -183,75 +191,139 @@
         return;
       }
 
-      await cargarBloquesDelBuque();
+      const selBuque = document.getElementById('sel-buque');
+      selBuque.innerHTML = buques.map(b => `<option value="${b.id}">${b.codigo}</option>`).join('');
+      selBuque.addEventListener('change', () => { buqueActualId = selBuque.value; nodosAbiertos = new Set([buqueActualId]); cargarGantt(); });
+
+      buqueActualId = buques[0].id;
+      nodosAbiertos = new Set([buqueActualId]);
       await cargarGantt();
     }
 
-    async function cargarBloquesDelBuque() {
-      const buqueId = document.getElementById('sel-buque').value;
-      const { data } = await supabaseClient
-        .from('nodes').select('id, codigo').eq('parent_id', buqueId).eq('tipo', 'BLOQUE').eq('activo', true).order('codigo');
-      const selBloque = document.getElementById('sel-bloque');
-      selBloque.innerHTML = '<option value="">Todos</option>' + (data || []).map(b => `<option value="${b.id}">${b.codigo}</option>`).join('');
+    function expandirTodoGantt() {
+      Object.keys(mapaNodoPorId).forEach(id => nodosAbiertos.add(id));
+      pintarGantt();
+    }
+    function contraerTodoGantt() {
+      nodosAbiertos = new Set([buqueActualId]);
+      pintarGantt();
     }
 
     async function cargarGantt() {
       const contenedor = document.getElementById('gantt-contenido');
       const mensajeVacio = document.getElementById('mensaje-vacio');
-      contenedor.innerHTML = '';
+      contenedor.innerHTML = 'Cargando...';
       mensajeVacio.style.display = 'none';
 
-      const buqueId = document.getElementById('sel-buque').value;
-      const bloqueId = document.getElementById('sel-bloque').value;
-      const buqueSeleccionado = buques.find(b => b.id === buqueId);
+      const buqueSeleccionado = buques.find(b => b.id === buqueActualId);
       actualizarCabecera(buqueSeleccionado?.codigo || '');
 
-      const { data: todosNodos, error } = await supabaseClient.from('v_nodes_with_workflow').select('*').eq('activo', true);
+      const { data: filasCrudas, error } = await supabaseClient
+        .from('nodes')
+        .select(`
+          id, codigo, nombre, parent_id, tipo,
+          node_workflow ( trabajador_id, asignado_en, trabajo_iniciado_en, trabajo_terminado_en, revisado_en )
+        `)
+        .eq('activo', true);
+
       if (error) { mensajeVacio.style.display = 'block'; mensajeVacio.textContent = 'Error: ' + error.message; return; }
 
+      const todosNodos = filasCrudas.map(n => {
+        const wf = Array.isArray(n.node_workflow) ? n.node_workflow[0] : n.node_workflow;
+        return {
+          id: n.id, codigo: n.codigo, nombre: n.nombre, parent_id: n.parent_id, tipo: n.tipo,
+          asignado_en: wf?.asignado_en || null,
+          trabajo_iniciado_en: wf?.trabajo_iniciado_en || null,
+          trabajo_terminado_en: wf?.trabajo_terminado_en || null,
+          revisado_en: wf?.revisado_en || null
+        };
+      });
+
       mapaNodoPorId = {};
-      todosNodos.forEach(n => { mapaNodoPorId[n.id] = n; });
+      mapaHijosPorPadre = {};
+      todosNodos.forEach(n => {
+        mapaNodoPorId[n.id] = n;
+        const clave = n.parent_id || '__raiz__';
+        if (!mapaHijosPorPadre[clave]) mapaHijosPorPadre[clave] = [];
+        mapaHijosPorPadre[clave].push(n);
+      });
 
-      function estaDentroDe(nodo, ancestroId) {
-        let actual = nodo;
-        while (actual) {
-          if (actual.id === ancestroId) return true;
-          actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
-        }
-        return false;
-      }
-
-      const raizFiltro = bloqueId || buqueId;
-      const conTrabajoIniciado = todosNodos.filter(n =>
-        n.trabajo_iniciado_en && estaDentroDe(n, raizFiltro)
-      );
-
-      tareasActuales = conTrabajoIniciado.sort((a, b) => new Date(a.trabajo_iniciado_en) - new Date(b.trabajo_iniciado_en));
-
-      if (tareasActuales.length === 0) {
+      if (!mapaNodoPorId[buqueActualId]) {
         mensajeVacio.style.display = 'block';
-        mensajeVacio.textContent = 'Ninguna tarea de esta selección ha sido empezada todavía — no hay nada que dibujar.';
+        mensajeVacio.textContent = 'No se encuentra el Buque seleccionado.';
         return;
       }
 
-      const ahora = new Date();
-      let fechaMin = new Date(tareasActuales[0].trabajo_iniciado_en);
-      let fechaMax = ahora;
-      tareasActuales.forEach(t => {
-        const fin = t.revisado_en ? new Date(t.revisado_en) : (t.trabajo_terminado_en ? new Date(t.trabajo_terminado_en) : ahora);
-        if (fin > fechaMax) fechaMax = fin;
+      cacheRangos = {};
+      pintarGantt();
+    }
+
+    function calcularRango(nodeId) {
+      if (cacheRangos[nodeId]) return cacheRangos[nodeId];
+
+      const nodo = mapaNodoPorId[nodeId];
+      let inicio = nodo.asignado_en ? new Date(nodo.asignado_en) : null;
+      let finPropio = nodo.asignado_en ? (nodo.revisado_en ? new Date(nodo.revisado_en) : null) : null;
+      let tieneDato = !!nodo.asignado_en;
+      let cerrado = nodo.asignado_en ? !!nodo.revisado_en : true;
+      let finMax = finPropio;
+
+      const hijos = mapaHijosPorPadre[nodeId] || [];
+      hijos.forEach(h => {
+        const r = calcularRango(h.id);
+        if (r.tieneDato) {
+          tieneDato = true;
+          if (!inicio || r.inicio < inicio) inicio = r.inicio;
+          if (r.fin && (!finMax || r.fin > finMax)) finMax = r.fin;
+        }
+        if (!r.cerrado) cerrado = false;
       });
 
-      fechaMin.setHours(0, 0, 0, 0);
-      const fechaMaxDia = new Date(fechaMax); fechaMaxDia.setHours(0, 0, 0, 0);
+      const resultado = { inicio, fin: cerrado ? finMax : null, cerrado, tieneDato };
+      cacheRangos[nodeId] = resultado;
+      return resultado;
+    }
+
+    function generarFilasVisibles(nodeId, nivel, lista) {
+      lista.push({ id: nodeId, nivel });
+      if (nodosAbiertos.has(nodeId)) {
+        const hijos = mapaHijosPorPadre[nodeId] || [];
+        hijos.forEach(h => generarFilasVisibles(h.id, nivel + 1, lista));
+      }
+    }
+
+    function pintarGantt() {
+      const contenedor = document.getElementById('gantt-contenido');
+      const filas = [];
+      generarFilasVisibles(buqueActualId, 0, filas);
+
+      const rangoRaiz = calcularRango(buqueActualId);
+      const ahora = new Date();
+
+      if (!rangoRaiz.tieneDato) {
+        contenedor.innerHTML = '';
+        document.getElementById('mensaje-vacio').style.display = 'block';
+        document.getElementById('mensaje-vacio').textContent = 'Este Buque no tiene ninguna tarea asignada todavía.';
+        return;
+      }
+      document.getElementById('mensaje-vacio').style.display = 'none';
+
+      let fechaMin = new Date(rangoRaiz.inicio); fechaMin.setHours(0, 0, 0, 0);
+      let fechaMaxRef = rangoRaiz.fin || ahora;
+      const fechaMaxDia = new Date(fechaMaxRef); fechaMaxDia.setHours(0, 0, 0, 0);
       const totalDias = Math.max(1, Math.round((fechaMaxDia - fechaMin) / 86400000) + 1);
 
-      function diasDesdeInicio(fechaIso) {
-        return (new Date(fechaIso) - fechaMin) / 86400000;
-      }
+      function diasDesde(fecha) { return (fecha - fechaMin) / 86400000; }
 
       const hoyDia = new Date(); hoyDia.setHours(0, 0, 0, 0);
-      let cabeceraHtml = `<div class="gantt-cabecera"><div class="gantt-cabecera-etiqueta">Nodo</div>`;
+      let cabeceraHtml = `
+        <div class="gantt-cabecera">
+          <div class="col-info">
+            <div class="col-nombre">Nodo</div>
+            <div class="col-fecha">Inicio</div>
+            <div class="col-duracion">Duración</div>
+            <div class="col-fecha">Fin</div>
+          </div>`;
       for (let i = 0; i < totalDias; i++) {
         const dia = new Date(fechaMin); dia.setDate(dia.getDate() + i);
         const esHoy = dia.getTime() === hoyDia.getTime();
@@ -259,30 +331,68 @@
       }
       cabeceraHtml += `</div>`;
 
+      filasParaExportar = [];
+
       let filasHtml = '';
-      tareasActuales.forEach(t => {
-        const inicioTrabajo = diasDesdeInicio(t.trabajo_iniciado_en);
-        const finTrabajo = t.trabajo_terminado_en ? diasDesdeInicio(t.trabajo_terminado_en) : diasDesdeInicio(ahora.toISOString());
+      filas.forEach(({ id, nivel }) => {
+        const nodo = mapaNodoPorId[id];
+        const hijos = mapaHijosPorPadre[id] || [];
+        const tieneHijos = hijos.length > 0;
+        const abierto = nodosAbiertos.has(id);
+        const rango = calcularRango(id);
 
-        let barraTrabajo = `<div class="gantt-barra c-trabajo" style="left:${inicioTrabajo * PX_POR_DIA}px; width:${Math.max(ANCHO_MIN_BARRA, (finTrabajo - inicioTrabajo) * PX_POR_DIA)}px;" title="En proceso"></div>`;
+        let textoInicio = '—', textoDuracion = '—', textoFin = '—';
+        if (rango.tieneDato) {
+          textoInicio = formatearFechaCorta(rango.inicio);
+          const finParaDuracion = rango.fin || ahora;
+          textoDuracion = formatearDuracionHM(rango.inicio, finParaDuracion) + (rango.cerrado ? '' : ' <span class="en-curso-txt">(en curso)</span>');
+          textoFin = rango.fin ? formatearFechaCorta(rango.fin) : '<span class="en-curso-txt">(en curso)</span>';
+          filasParaExportar.push({
+            'Nombre': `${'  '.repeat(nivel)}${nodo.codigo} - ${nodo.nombre}`,
+            'Start': rango.inicio.toISOString().slice(0, 10),
+            'Finish': (rango.fin || ahora).toISOString().slice(0, 10),
+            'Duration': `${Math.max(1, Math.ceil((finParaDuracion - rango.inicio) / 86400000))} days`
+          });
+        }
 
-        let barraEspera = '';
-        if (t.trabajo_terminado_en) {
-          const inicioEspera = finTrabajo;
-          const finEspera = t.revisado_en ? diasDesdeInicio(t.revisado_en) : diasDesdeInicio(ahora.toISOString());
-          barraEspera = `<div class="gantt-barra c-espera" style="left:${inicioEspera * PX_POR_DIA}px; width:${Math.max(ANCHO_MIN_BARRA, (finEspera - inicioEspera) * PX_POR_DIA)}px;" title="Esperando revisión"></div>`;
+        let barrasHtml = '';
+        if (rango.tieneDato) {
+          if (tieneHijos) {
+            const iniBar = diasDesde(rango.inicio);
+            const finBar = diasDesde(rango.fin || ahora);
+            barrasHtml = `<div class="gantt-barra c-agregado" style="left:${iniBar * PX_POR_DIA}px; width:${Math.max(ANCHO_MIN_BARRA, (finBar - iniBar) * PX_POR_DIA)}px;" title="Resumen de la rama"></div>`;
+          } else if (nodo.asignado_en) {
+            const iniAsig = diasDesde(new Date(nodo.asignado_en));
+            const finAsig = nodo.trabajo_iniciado_en ? diasDesde(new Date(nodo.trabajo_iniciado_en)) : diasDesde(ahora);
+            barrasHtml += `<div class="gantt-barra c-sin-empezar" style="left:${iniAsig*PX_POR_DIA}px; width:${Math.max(ANCHO_MIN_BARRA,(finAsig-iniAsig)*PX_POR_DIA)}px;" title="Asignada, sin empezar"></div>`;
+
+            let finTrabajo = finAsig;
+            if (nodo.trabajo_iniciado_en) {
+              const iniTrab = finAsig;
+              finTrabajo = nodo.trabajo_terminado_en ? diasDesde(new Date(nodo.trabajo_terminado_en)) : diasDesde(ahora);
+              barrasHtml += `<div class="gantt-barra c-trabajo" style="left:${iniTrab*PX_POR_DIA}px; width:${Math.max(ANCHO_MIN_BARRA,(finTrabajo-iniTrab)*PX_POR_DIA)}px;" title="En proceso"></div>`;
+            }
+            if (nodo.trabajo_terminado_en) {
+              const iniEsp = finTrabajo;
+              const finEsp = nodo.revisado_en ? diasDesde(new Date(nodo.revisado_en)) : diasDesde(ahora);
+              barrasHtml += `<div class="gantt-barra c-espera" style="left:${iniEsp*PX_POR_DIA}px; width:${Math.max(ANCHO_MIN_BARRA,(finEsp-iniEsp)*PX_POR_DIA)}px;" title="Esperando revisión"></div>`;
+            }
+          }
         }
 
         filasHtml += `
           <div class="gantt-fila">
-            <div class="gantt-etiqueta">
-              <strong>${t.codigo}</strong> ${t.nombre}
-              <span class="ruta">${rutaCompleta(t)}</span>
+            <div class="col-info">
+              <div class="col-nombre" style="padding-left:${8 + nivel * 16}px;">
+                <span class="toggle ${tieneHijos ? '' : 'vacio'}" onclick="toggleNodoGantt('${id}')">${abierto ? '▼' : '▶'}</span>
+                <strong>${nodo.codigo}</strong> ${nodo.nombre}
+                <span class="tipo-tag">${nodo.tipo}</span>
+              </div>
+              <div class="col-fecha">${textoInicio}</div>
+              <div class="col-duracion">${textoDuracion}</div>
+              <div class="col-fecha">${textoFin}</div>
             </div>
-            <div class="gantt-pista" style="width:${totalDias * PX_POR_DIA}px;">
-              ${barraTrabajo}
-              ${barraEspera}
-            </div>
+            <div class="gantt-pista" style="width:${totalDias * PX_POR_DIA}px;">${barrasHtml}</div>
           </div>
         `;
       });
@@ -290,28 +400,19 @@
       contenedor.innerHTML = cabeceraHtml + filasHtml;
     }
 
-    function filaParaExportar(t) {
-      const inicio = new Date(t.trabajo_iniciado_en);
-      const fin = t.revisado_en ? new Date(t.revisado_en) : (t.trabajo_terminado_en ? new Date(t.trabajo_terminado_en) : new Date());
-      const duracionDias = Math.max(1, Math.ceil((fin - inicio) / 86400000));
-      return {
-        'Task Name': `${t.codigo} - ${t.nombre}`,
-        'Start': inicio.toISOString().slice(0, 10),
-        'Finish': fin.toISOString().slice(0, 10),
-        'Duration': `${duracionDias} days`,
-        'Resource Names': t.trabajador_nombre || ''
-      };
+    function toggleNodoGantt(id) {
+      if (nodosAbiertos.has(id)) nodosAbiertos.delete(id); else nodosAbiertos.add(id);
+      pintarGantt();
     }
 
     function exportarExcel() {
-      if (tareasActuales.length === 0) { alert('No hay tareas que exportar.'); return; }
-      const datos = tareasActuales.map(filaParaExportar);
-      const hoja = XLSX.utils.json_to_sheet(datos);
+      if (filasParaExportar.length === 0) { alert('No hay tareas que exportar.'); return; }
+      const hoja = XLSX.utils.json_to_sheet(filasParaExportar);
       const libro = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(libro, hoja, 'Tareas');
-      const buqueCodigo = buques.find(b => b.id === document.getElementById('sel-buque').value)?.codigo || 'buque';
-      XLSX.writeFile(libro, `gantt-${buqueCodigo}-${new Date().toISOString().slice(0,10)}.xlsx`);
-      registrarLog('EXPORT_GANTT', `Exportó el Gantt de "${buqueCodigo}" a Excel/Project (${datos.length} tareas)`);
+      XLSX.utils.book_append_sheet(libro, hoja, 'WBS');
+      const buqueCodigo = buques.find(b => b.id === buqueActualId)?.codigo || 'buque';
+      XLSX.writeFile(libro, `gantt-wbs-${buqueCodigo}-${new Date().toISOString().slice(0,10)}.xlsx`);
+      registrarLog('EXPORT_GANTT', `Exportó el Gantt WBS de "${buqueCodigo}" a Excel/Project (${filasParaExportar.length} filas)`);
     }
 
     iniciar();
