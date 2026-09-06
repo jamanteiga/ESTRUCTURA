@@ -24,7 +24,7 @@
     .c-espera { background: #ffc107; }
     .c-agregado { background: #6f42c1; }
 
-    .gantt-scroll { overflow-x: auto; border: 1px solid #ddd; border-radius: 6px; background: white; }
+    .gantt-scroll { overflow-x: auto; overflow-y: auto; max-height: 70vh; border: 1px solid #ddd; border-radius: 6px; background: white; }
     .gantt-fila { display: flex; border-bottom: 1px solid #eee; align-items: center; }
     .gantt-fila:hover { background: rgba(0,123,255,0.05); }
 
@@ -254,6 +254,7 @@
         return;
       }
 
+      nodosAbiertos = new Set(Object.keys(mapaNodoPorId));
       cacheRangos = {};
       pintarGantt();
     }
