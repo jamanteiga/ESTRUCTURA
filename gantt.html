@@ -38,6 +38,8 @@
     .col-nombre .toggle.vacio { visibility: hidden; }
     .col-nombre .tipo-tag { font-size: 8px; background: #e9ecef; padding: 1px 4px; border-radius: 8px; color: #777; margin-left: 3px; }
     .col-fecha { width: 130px; min-width: 130px; padding: 6px 6px; font-size: 11px; color: #555; box-sizing: border-box; }
+    .col-avance { width: 60px; min-width: 60px; padding: 6px 6px; font-size: 11px; color: #333; box-sizing: border-box; text-align: center; }
+    .col-avance .pct { font-weight: bold; padding: 1px 6px; border-radius: 10px; background: #e9f7ec; color: #218838; }
     .col-duracion { width: 100px; min-width: 100px; padding: 6px 6px; font-size: 11px; color: #555; box-sizing: border-box; }
     .en-curso-txt { color: #007bff; font-style: italic; }
 
@@ -224,7 +226,7 @@
         .from('nodes')
         .select(`
           id, codigo, nombre, parent_id, tipo,
-          node_workflow ( trabajador_id, asignado_en, trabajo_iniciado_en, trabajo_terminado_en, revisado_en )
+          node_workflow ( trabajador_id, asignado_en, trabajo_iniciado_en, trabajo_terminado_en, revisado_en, revision_estado )
         `)
         .eq('activo', true);
 
@@ -237,7 +239,8 @@
           asignado_en: wf?.asignado_en || null,
           trabajo_iniciado_en: wf?.trabajo_iniciado_en || null,
           trabajo_terminado_en: wf?.trabajo_terminado_en || null,
-          revisado_en: wf?.revisado_en || null
+          revisado_en: wf?.revisado_en || null,
+          revision_estado: wf?.revision_estado || null
         };
       });
 
@@ -259,6 +262,19 @@
       nodosAbiertos = new Set(Object.keys(mapaNodoPorId));
       cacheRangos = {};
       pintarGantt();
+    }
+
+    function calcularPorcentajeAvanceGantt(nodeId) {
+      const relevantes = [];
+      function recolectar(id) {
+        const n = mapaNodoPorId[id];
+        if (n.tipo !== 'BUQUE') relevantes.push(n);
+        (mapaHijosPorPadre[id] || []).forEach(h => recolectar(h.id));
+      }
+      recolectar(nodeId);
+      if (relevantes.length === 0) return null;
+      const aprobados = relevantes.filter(n => n.revision_estado === 'APROBADO').length;
+      return Math.round((aprobados / relevantes.length) * 100);
     }
 
     function calcularRango(nodeId) {
@@ -323,6 +339,7 @@
         <div class="gantt-cabecera">
           <div class="col-info">
             <div class="col-nombre">Nodo</div>
+            <div class="col-avance">Avance</div>
             <div class="col-fecha">Inicio</div>
             <div class="col-duracion">Duración</div>
             <div class="col-fecha">Fin</div>
@@ -391,6 +408,7 @@
                 <strong>${nodo.codigo}</strong> ${nodo.nombre}
                 <span class="tipo-tag">${nodo.tipo}</span>
               </div>
+              <div class="col-avance">${(() => { const pct = calcularPorcentajeAvanceGantt(id); return pct !== null ? `<span class="pct">${pct}%</span>` : '—'; })()}</div>
               <div class="col-fecha">${textoInicio}</div>
               <div class="col-duracion">${textoDuracion}</div>
               <div class="col-fecha">${textoFin}</div>
