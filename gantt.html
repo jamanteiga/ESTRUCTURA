@@ -22,6 +22,7 @@
     .c-sin-empezar { background: #adb5bd; }
     .c-trabajo { background: #007bff; }
     .c-espera { background: #ffc107; }
+    .c-cuello-botella { background: #dc3545; }
     .c-agregado { background: #6f42c1; }
 
     .gantt-scroll { overflow-x: auto; overflow-y: auto; max-height: 70vh; border: 1px solid #ddd; border-radius: 6px; background: white; }
@@ -50,6 +51,8 @@
     .gantt-cabecera .col-info { background: #f0f2f5; font-weight: bold; font-size: 11px; }
     .gantt-dia { flex-shrink: 0; font-size: 10px; text-align: center; color: #666; border-right: 1px solid #eee; padding: 4px 0; }
     .gantt-dia.hoy { background: #fff3cd; font-weight: bold; }
+    #gantt-contenido { position: relative; }
+    .linea-hoy { position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(220,53,69,0.6); z-index: 1; pointer-events: none; }
 
     .estado-msg { font-size: 13px; color: #666; }
 
@@ -81,6 +84,10 @@
   <div class="card filtros no-imprimir">
     <label for="sel-buque" style="font-size:12px; font-weight:bold;">Buque:</label>
     <select id="sel-buque"></select>
+    <label for="sel-usuario-gantt" style="font-size:12px; font-weight:bold;">Usuario:</label>
+    <select id="sel-usuario-gantt"><option value="">Todos</option></select>
+    <label for="input-umbral" style="font-size:12px; font-weight:bold;" title="Días esperando revisión para marcar como cuello de botella">⚠️ Aviso tras (días):</label>
+    <input type="number" id="input-umbral" value="3" min="1" style="width:50px; padding:6px; border:1px solid #ccc; border-radius:4px;">
     <button class="secundario" onclick="expandirTodoGantt()">⏬ Expandir todo</button>
     <button class="secundario" onclick="contraerTodoGantt()">⏫ Contraer todo</button>
   </div>
@@ -90,6 +97,7 @@
     <span><span class="muestra c-sin-empezar"></span>Asignada, sin empezar</span>
     <span><span class="muestra c-trabajo"></span>En proceso</span>
     <span><span class="muestra c-espera"></span>Esperando revisión</span>
+    <span><span class="muestra c-cuello-botella"></span>Esperando revisión, lleva demasiado</span>
   </div>
 
   <div class="estado-msg" id="mensaje-vacio" style="display:none; margin-bottom:10px;"></div>
@@ -106,6 +114,8 @@
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     const PX_POR_DIA = 36;
+    const PX_POR_SEMANA = 54;
+    const UMBRAL_DIAS_PARA_SEMANAS = 60;
     const ANCHO_MIN_BARRA = 6;
 
     let miPerfil = null;
@@ -116,6 +126,9 @@
     let nodosAbiertos = new Set();
     let cacheRangos = {};
     let filasParaExportar = [];
+    let mapaNombresPerfil = {};
+    let filtroUsuarioId = '';
+    let umbralCuelloBotella = 3;
 
     async function registrarLog(accion, descripcion) {
       try {
@@ -199,6 +212,28 @@
       selBuque.innerHTML = buques.map(b => `<option value="${b.id}">${b.codigo}</option>`).join('');
       selBuque.addEventListener('change', () => { buqueActualId = selBuque.value; nodosAbiertos = new Set([buqueActualId]); cargarGantt(); });
 
+      const { data: perfilesTrab } = await supabaseClient
+        .from('profiles').select('id, nombre_completo').eq('rol', 'TRABAJADOR').eq('activo', true).order('nombre_completo');
+      const selUsuario = document.getElementById('sel-usuario-gantt');
+      selUsuario.innerHTML = '<option value="">Todos</option>' + (perfilesTrab || []).map(p => `<option value="${p.id}">${p.nombre_completo}</option>`).join('');
+      selUsuario.addEventListener('change', () => {
+        filtroUsuarioId = selUsuario.value;
+        if (filtroUsuarioId) {
+          Object.values(mapaNodoPorId).forEach(n => {
+            if (n.trabajador_id === filtroUsuarioId) {
+              let actual = n;
+              while (actual) { nodosAbiertos.add(actual.id); actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null; }
+            }
+          });
+        }
+        pintarGantt();
+      });
+
+      document.getElementById('input-umbral').addEventListener('change', (e) => {
+        umbralCuelloBotella = parseInt(e.target.value, 10) || 3;
+        pintarGantt();
+      });
+
       buqueActualId = buques[0].id;
       nodosAbiertos = new Set([buqueActualId]);
       await cargarGantt();
@@ -226,7 +261,7 @@
         .from('nodes')
         .select(`
           id, codigo, nombre, parent_id, tipo,
-          node_workflow ( trabajador_id, asignado_en, trabajo_iniciado_en, trabajo_terminado_en, revisado_en, revision_estado )
+          node_workflow ( trabajador_id, revisor_id, asignado_en, trabajo_iniciado_en, trabajo_terminado_en, revisado_en, revision_estado )
         `)
         .eq('activo', true);
 
@@ -237,6 +272,8 @@
         return {
           id: n.id, codigo: n.codigo, nombre: n.nombre, parent_id: n.parent_id, tipo: n.tipo,
           asignado_en: wf?.asignado_en || null,
+          trabajador_id: wf?.trabajador_id || null,
+          revisor_id: wf?.revisor_id || null,
           trabajo_iniciado_en: wf?.trabajo_iniciado_en || null,
           trabajo_terminado_en: wf?.trabajo_terminado_en || null,
           revisado_en: wf?.revisado_en || null,
@@ -257,6 +294,13 @@
         mensajeVacio.style.display = 'block';
         mensajeVacio.textContent = 'No se encuentra el Buque seleccionado.';
         return;
+      }
+
+      const idsPersonas = [...new Set(todosNodos.flatMap(n => [n.trabajador_id, n.revisor_id]).filter(Boolean))];
+      mapaNombresPerfil = {};
+      if (idsPersonas.length > 0) {
+        const { data: perfiles } = await supabaseClient.from('profiles').select('id, nombre_completo').in('id', idsPersonas);
+        (perfiles || []).forEach(p => { mapaNombresPerfil[p.id] = p.nombre_completo; });
       }
 
       nodosAbiertos = new Set(Object.keys(mapaNodoPorId));
@@ -303,7 +347,14 @@
       return resultado;
     }
 
+    function nodoOAlgunDescendienteEsDeUsuario(nodeId) {
+      const nodo = mapaNodoPorId[nodeId];
+      if (nodo.trabajador_id === filtroUsuarioId) return true;
+      return (mapaHijosPorPadre[nodeId] || []).some(h => nodoOAlgunDescendienteEsDeUsuario(h.id));
+    }
+
     function generarFilasVisibles(nodeId, nivel, lista) {
+      if (filtroUsuarioId && !nodoOAlgunDescendienteEsDeUsuario(nodeId)) return;
       lista.push({ id: nodeId, nivel });
       if (nodosAbiertos.has(nodeId)) {
         const hijos = mapaHijosPorPadre[nodeId] || [];
@@ -325,6 +376,12 @@
         document.getElementById('mensaje-vacio').textContent = 'Este Buque no tiene ninguna tarea asignada todavía.';
         return;
       }
+      if (filas.length === 0) {
+        contenedor.innerHTML = '';
+        document.getElementById('mensaje-vacio').style.display = 'block';
+        document.getElementById('mensaje-vacio').textContent = 'Esa persona no tiene ninguna tarea en este Buque.';
+        return;
+      }
       document.getElementById('mensaje-vacio').style.display = 'none';
 
       let fechaMin = new Date(rangoRaiz.inicio); fechaMin.setHours(0, 0, 0, 0);
@@ -332,9 +389,14 @@
       const fechaMaxDia = new Date(fechaMaxRef); fechaMaxDia.setHours(0, 0, 0, 0);
       const totalDias = Math.max(1, Math.round((fechaMaxDia - fechaMin) / 86400000) + 1);
 
+      const escalaSemanas = totalDias > UMBRAL_DIAS_PARA_SEMANAS;
+      const pxPorUnidad = escalaSemanas ? PX_POR_SEMANA : PX_POR_DIA;
+
       function diasDesde(fecha) { return (fecha - fechaMin) / 86400000; }
+      function posX(fecha) { return escalaSemanas ? (diasDesde(fecha) / 7) * PX_POR_SEMANA : diasDesde(fecha) * PX_POR_DIA; }
 
       const hoyDia = new Date(); hoyDia.setHours(0, 0, 0, 0);
+      let anchoTotalLinea;
       let cabeceraHtml = `
         <div class="gantt-cabecera">
           <div class="col-info">
@@ -344,10 +406,22 @@
             <div class="col-duracion">Duración</div>
             <div class="col-fecha">Fin</div>
           </div>`;
-      for (let i = 0; i < totalDias; i++) {
-        const dia = new Date(fechaMin); dia.setDate(dia.getDate() + i);
-        const esHoy = dia.getTime() === hoyDia.getTime();
-        cabeceraHtml += `<div class="gantt-dia ${esHoy ? 'hoy' : ''}" style="width:${PX_POR_DIA}px;">${String(dia.getDate()).padStart(2,'0')}/${String(dia.getMonth()+1).padStart(2,'0')}</div>`;
+
+      if (escalaSemanas) {
+        const totalSemanas = Math.ceil(totalDias / 7);
+        for (let i = 0; i < totalSemanas; i++) {
+          const diaInicioSemana = new Date(fechaMin); diaInicioSemana.setDate(diaInicioSemana.getDate() + i * 7);
+          const semanaNum = obtenerSemanaISO(diaInicioSemana);
+          cabeceraHtml += `<div class="gantt-dia" style="width:${PX_POR_SEMANA}px;">S${semanaNum}<br>${String(diaInicioSemana.getDate()).padStart(2,'0')}/${String(diaInicioSemana.getMonth()+1).padStart(2,'0')}</div>`;
+        }
+        anchoTotalLinea = totalSemanas * PX_POR_SEMANA;
+      } else {
+        for (let i = 0; i < totalDias; i++) {
+          const dia = new Date(fechaMin); dia.setDate(dia.getDate() + i);
+          const esHoy = dia.getTime() === hoyDia.getTime();
+          cabeceraHtml += `<div class="gantt-dia ${esHoy ? 'hoy' : ''}" style="width:${PX_POR_DIA}px;">${String(dia.getDate()).padStart(2,'0')}/${String(dia.getMonth()+1).padStart(2,'0')}</div>`;
+        }
+        anchoTotalLinea = totalDias * PX_POR_DIA;
       }
       cabeceraHtml += `</div>`;
 
@@ -375,27 +449,37 @@
           });
         }
 
+        const nombreTrab = nodo.trabajador_id ? (mapaNombresPerfil[nodo.trabajador_id] || '?') : null;
+        const nombreRev = nodo.revisor_id ? (mapaNombresPerfil[nodo.revisor_id] || '?') : null;
+        const sufijoPersonas = [nombreTrab ? `Usuario: ${nombreTrab}` : null, nombreRev ? `Revisor: ${nombreRev}` : null].filter(Boolean).join(' · ');
+
         let barrasHtml = '';
         if (rango.tieneDato) {
           if (tieneHijos) {
-            const iniBar = diasDesde(rango.inicio);
-            const finBar = diasDesde(rango.fin || ahora);
-            barrasHtml = `<div class="gantt-barra c-agregado" style="left:${iniBar * PX_POR_DIA}px; width:${Math.max(ANCHO_MIN_BARRA, (finBar - iniBar) * PX_POR_DIA)}px;" title="Resumen de la rama"></div>`;
+            const iniBar = posX(rango.inicio);
+            const finBar = posX(rango.fin || ahora);
+            barrasHtml = `<div class="gantt-barra c-agregado" style="left:${iniBar}px; width:${Math.max(ANCHO_MIN_BARRA, finBar - iniBar)}px;" title="Resumen de la rama — ${nodo.codigo}"></div>`;
           } else if (nodo.asignado_en) {
-            const iniAsig = diasDesde(new Date(nodo.asignado_en));
-            const finAsig = nodo.trabajo_iniciado_en ? diasDesde(new Date(nodo.trabajo_iniciado_en)) : diasDesde(ahora);
-            barrasHtml += `<div class="gantt-barra c-sin-empezar" style="left:${iniAsig*PX_POR_DIA}px; width:${Math.max(ANCHO_MIN_BARRA,(finAsig-iniAsig)*PX_POR_DIA)}px;" title="Asignada, sin empezar"></div>`;
+            const iniAsig = posX(new Date(nodo.asignado_en));
+            const finAsig = nodo.trabajo_iniciado_en ? posX(new Date(nodo.trabajo_iniciado_en)) : posX(ahora);
+            barrasHtml += `<div class="gantt-barra c-sin-empezar" style="left:${iniAsig}px; width:${Math.max(ANCHO_MIN_BARRA, finAsig-iniAsig)}px;" title="Asignada, sin empezar${sufijoPersonas ? ' — ' + sufijoPersonas : ''}"></div>`;
 
             let finTrabajo = finAsig;
             if (nodo.trabajo_iniciado_en) {
               const iniTrab = finAsig;
-              finTrabajo = nodo.trabajo_terminado_en ? diasDesde(new Date(nodo.trabajo_terminado_en)) : diasDesde(ahora);
-              barrasHtml += `<div class="gantt-barra c-trabajo" style="left:${iniTrab*PX_POR_DIA}px; width:${Math.max(ANCHO_MIN_BARRA,(finTrabajo-iniTrab)*PX_POR_DIA)}px;" title="En proceso"></div>`;
+              finTrabajo = nodo.trabajo_terminado_en ? posX(new Date(nodo.trabajo_terminado_en)) : posX(ahora);
+              barrasHtml += `<div class="gantt-barra c-trabajo" style="left:${iniTrab}px; width:${Math.max(ANCHO_MIN_BARRA, finTrabajo-iniTrab)}px;" title="En proceso${sufijoPersonas ? ' — ' + sufijoPersonas : ''}"></div>`;
             }
             if (nodo.trabajo_terminado_en) {
               const iniEsp = finTrabajo;
-              const finEsp = nodo.revisado_en ? diasDesde(new Date(nodo.revisado_en)) : diasDesde(ahora);
-              barrasHtml += `<div class="gantt-barra c-espera" style="left:${iniEsp*PX_POR_DIA}px; width:${Math.max(ANCHO_MIN_BARRA,(finEsp-iniEsp)*PX_POR_DIA)}px;" title="Esperando revisión"></div>`;
+              const finEsp = nodo.revisado_en ? posX(new Date(nodo.revisado_en)) : posX(ahora);
+              const diasEsperando = nodo.revisado_en ? 0 : (ahora - new Date(nodo.trabajo_terminado_en)) / 86400000;
+              const esCuelloBotella = !nodo.revisado_en && diasEsperando > umbralCuelloBotella;
+              const claseEspera = esCuelloBotella ? 'c-cuello-botella' : 'c-espera';
+              const tituloEspera = esCuelloBotella
+                ? `⚠️ Esperando revisión desde hace ${Math.floor(diasEsperando)} días${sufijoPersonas ? ' — ' + sufijoPersonas : ''}`
+                : `Esperando revisión${sufijoPersonas ? ' — ' + sufijoPersonas : ''}`;
+              barrasHtml += `<div class="gantt-barra ${claseEspera}" style="left:${iniEsp}px; width:${Math.max(ANCHO_MIN_BARRA, finEsp-iniEsp)}px;" title="${tituloEspera}"></div>`;
             }
           }
         }
@@ -413,12 +497,24 @@
               <div class="col-duracion">${textoDuracion}</div>
               <div class="col-fecha">${textoFin}</div>
             </div>
-            <div class="gantt-pista" style="width:${totalDias * PX_POR_DIA}px;">${barrasHtml}</div>
+            <div class="gantt-pista" style="width:${anchoTotalLinea}px;">${barrasHtml}</div>
           </div>
         `;
       });
 
       contenedor.innerHTML = cabeceraHtml + filasHtml;
+
+      // Línea vertical de "hoy" — se posiciona tras pintar, para saber el
+      // ancho real de la columna de información (nombre+avance+fechas).
+      const anchoColInfo = document.querySelector('.gantt-cabecera .col-info').offsetWidth;
+      const posHoy = posX(hoyDia);
+      if (posHoy >= 0 && posHoy <= anchoTotalLinea) {
+        const linea = document.createElement('div');
+        linea.className = 'linea-hoy';
+        linea.style.left = (anchoColInfo + posHoy) + 'px';
+        linea.title = 'Hoy';
+        contenedor.appendChild(linea);
+      }
     }
 
     function toggleNodoGantt(id) {

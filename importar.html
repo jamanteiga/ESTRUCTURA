@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESTRUCTURA - Importar estructura</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 1000px; margin: 20px auto; padding: 0 20px; color: #333; }
+    h1 { font-size: 20px; margin: 0; }
+    .subtitulo { color: #666; font-size: 13px; margin-top: 2px; }
+    .header-bar { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+    .card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    button { padding: 7px 14px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; }
+    button.secundario { background: #6c757d; }
+    button.secundario:hover { background: #5a6268; }
+    button.peligro { background: #dc3545; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    select, input[type="file"] { padding: 7px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+    label { display: block; font-weight: bold; font-size: 12px; margin: 10px 0 4px; }
+    .estado-msg { font-size: 13px; margin-top: 8px; }
+    .error { color: #dc3545; }
+    .ok { color: #218838; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; background: white; font-size: 12px; }
+    th, td { padding: 6px; text-align: left; border-bottom: 1px solid #eee; }
+    th { background: #1c6e8c; color: white; }
+    .contenedor-preview { max-height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 6px; }
+    .fila-error { background: #fdecea; }
+    .fila-ok { background: #eafaf1; }
+    .fila-pendiente { background: white; }
+  </style>
+</head>
+<body>
+
+  <div class="header-bar">
+    <div>
+      <h1>📥 Importar estructura desde Excel</h1>
+      <div class="subtitulo" id="texto-usuario"></div>
+    </div>
+    <div>
+      <button class="secundario" onclick="location.href='index.html'">🏠 Inicio</button>
+      <button class="secundario" onclick="location.href='arbol.html'">🌳 Árbol</button>
+      <button class="peligro" onclick="cerrarPagina()">❌ Cerrar</button>
+    </div>
+  </div>
+
+  <div id="sin-permiso" style="display:none; color:#dc3545; font-weight:bold; text-align:center; margin-top:60px;">
+    Solo ADMIN puede importar estructura.
+  </div>
+
+  <div id="panel" style="display:none;">
+    <div class="card">
+      <h2 style="margin-top:0; font-size:15px;">1. Descarga la plantilla</h2>
+      <p style="font-size:13px; color:#555;">
+        La plantilla tiene 4 columnas: <strong>Nivel</strong> (1, 2, 3... según la profundidad respecto al nodo destino que elijas abajo),
+        <strong>Tipo</strong>, <strong>Codigo</strong> y <strong>Nombre</strong> (Descripcion y Orden son opcionales).
+        Cada fila de Nivel 1 cuelga del nodo destino; una fila de Nivel 2 cuelga de la última fila de Nivel 1 que hayas escrito antes, y así sucesivamente — igual que un esquema numerado.
+      </p>
+      <button class="secundario" onclick="descargarPlantilla()">⬇ Descargar plantilla de ejemplo</button>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0; font-size:15px;">2. Elige dónde se añadirá</h2>
+      <label for="sel-destino">Nodo destino (todo lo importado colgará de aquí)</label>
+      <select id="sel-destino"></select>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0; font-size:15px;">3. Sube tu fichero Excel</h2>
+      <input type="file" id="input-excel" accept=".xlsx,.xls">
+      <div class="estado-msg" id="estado-carga"></div>
+    </div>
+
+    <div class="card" id="card-preview" style="display:none;">
+      <h2 style="margin-top:0; font-size:15px;">4. Revisa antes de importar</h2>
+      <div class="contenedor-preview">
+        <table>
+          <thead>
+            <tr><th>Nivel</th><th>Tipo</th><th>Código</th><th>Nombre</th><th>Colgará de</th><th>Estado</th></tr>
+          </thead>
+          <tbody id="tabla-preview"></tbody>
+        </table>
+      </div>
+      <div class="estado-msg" id="estado-importar"></div>
+      <div style="margin-top:12px; display:flex; gap:8px;">
+        <button id="btn-importar" onclick="ejecutarImportacion()">✔ Importar todo</button>
+        <button class="secundario" onclick="location.reload()">✕ Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script>
+    const SUPABASE_URL = 'https://wuarkraddnndmgvfnkmm.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let miPerfil = null;
+    let filasImportar = [];
+    let nodoDestinoTipo = null;
+
+    async function registrarLog(accion, descripcion, nodeId) {
+      try {
+        await supabaseClient.functions.invoke('bright-processor', { body: { accion, descripcion, node_id: nodeId || null } });
+      } catch (e) {
+        console.warn('No se pudo registrar el log:', e);
+      }
+    }
+
+    async function cerrarSesion() {
+      await registrarLog('LOGOUT', `Cerró sesión (${miPerfil?.username || ''})`);
+      await supabaseClient.auth.signOut();
+      window.location.href = 'login.html';
+    }
+
+    function cerrarPagina() {
+      window.close();
+      setTimeout(() => { history.back(); }, 150);
+    }
+
+    async function iniciar() {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (!session) { window.location.href = 'login.html?next=importar.html'; return; }
+
+      const { data: perfil, error } = await supabaseClient
+        .from('profiles').select('*').eq('id', session.user.id).single();
+
+      if (error || !perfil || !perfil.activo || perfil.rol !== 'ADMIN') {
+        document.getElementById('sin-permiso').style.display = 'block';
+        return;
+      }
+
+      miPerfil = perfil;
+      document.getElementById('texto-usuario').textContent = `${perfil.nombre_completo} (${perfil.username}) — ADMIN`;
+      document.getElementById('panel').style.display = 'block';
+
+      await cargarNodosDestino();
+
+      document.getElementById('input-excel').addEventListener('change', manejarArchivoSubido);
+      document.getElementById('sel-destino').addEventListener('change', () => {
+        nodoDestinoTipo = document.getElementById('sel-destino').selectedOptions[0]?.dataset.tipo || null;
+        if (filasImportar.length > 0) validarFilas();
+      });
+    }
+
+    async function cargarNodosDestino() {
+      const { data } = await supabaseClient
+        .from('nodes').select('id, codigo, nombre, tipo, parent_id').eq('activo', true).order('codigo');
+
+      const mapa = {};
+      (data || []).forEach(n => { mapa[n.id] = n; });
+
+      function ruta(n) {
+        const partes = [];
+        let actual = n;
+        while (actual) { partes.unshift(`${actual.tipo} ${actual.codigo}`); actual = actual.parent_id ? mapa[actual.parent_id] : null; }
+        return partes.join(' › ');
+      }
+
+      const sel = document.getElementById('sel-destino');
+      sel.innerHTML = '<option value="">— Elige un nodo destino —</option>' +
+        (data || []).map(n => `<option value="${n.id}" data-tipo="${n.tipo}">${ruta(n)}</option>`).join('');
+    }
+
+    function descargarPlantilla() {
+      const datos = [
+        { Nivel: 1, Tipo: 'SUBBLOQUE', Codigo: 'SB9', Nombre: 'Subbloque 9', Descripcion: '', Orden: 0 },
+        { Nivel: 2, Tipo: 'PANELES', Codigo: 'PANELES', Nombre: 'Paneles', Descripcion: '', Orden: 0 },
+        { Nivel: 2, Tipo: 'UNIDAD_ABIERTA', Codigo: 'UA1', Nombre: 'Unidad abierta 1', Descripcion: '', Orden: 1 },
+        { Nivel: 3, Tipo: 'UNIDAD_ABIERTA', Codigo: 'UA1B', Nombre: 'Sub-unidad de UA1', Descripcion: '', Orden: 0 },
+        { Nivel: 1, Tipo: 'SUBBLOQUE', Codigo: 'SB10', Nombre: 'Subbloque 10', Descripcion: '', Orden: 2 }
+      ];
+      const hoja = XLSX.utils.json_to_sheet(datos);
+      const libro = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(libro, hoja, 'Estructura');
+      XLSX.writeFile(libro, 'plantilla-importar-estructura.xlsx');
+    }
+
+    function manejarArchivoSubido(e) {
+      const archivo = e.target.files[0];
+      if (!archivo) return;
+
+      const lector = new FileReader();
+      lector.onload = (ev) => {
+        const datos = new Uint8Array(ev.target.result);
+        const libro = XLSX.read(datos, { type: 'array' });
+        const hoja = libro.Sheets[libro.SheetNames[0]];
+        const filas = XLSX.utils.sheet_to_json(hoja);
+
+        filasImportar = filas.map(f => ({
+          nivel: parseInt(f.Nivel, 10),
+          tipo: (f.Tipo || '').toString().trim().toUpperCase(),
+          codigo: (f.Codigo || '').toString().trim(),
+          nombre: (f.Nombre || '').toString().trim(),
+          descripcion: (f.Descripcion || '').toString().trim() || null,
+          orden: f.Orden !== undefined && f.Orden !== '' ? parseInt(f.Orden, 10) : 0,
+          estado: 'pendiente', mensaje: '', parentIdReal: null, parentEtiqueta: ''
+        }));
+
+        document.getElementById('card-preview').style.display = 'block';
+        validarFilas();
+      };
+      lector.readAsArrayBuffer(archivo);
+    }
+
+    async function validarFilas() {
+      const estadoEl = document.getElementById('estado-importar');
+      const destinoId = document.getElementById('sel-destino').value;
+
+      if (!destinoId) {
+        estadoEl.textContent = 'Elige primero un nodo destino arriba.';
+        estadoEl.className = 'estado-msg error';
+        pintarPreview();
+        return;
+      }
+
+      // Trae las reglas de jerarquía para poder validar tipo-padre antes de tocar la base de datos
+      const { data: reglas } = await supabaseClient.from('node_type_rules').select('parent_type, child_type');
+      const hijosValidosPorTipo = {};
+      (reglas || []).forEach(r => {
+        if (!hijosValidosPorTipo[r.parent_type]) hijosValidosPorTipo[r.parent_type] = new Set();
+        hijosValidosPorTipo[r.parent_type].add(r.child_type);
+      });
+
+      const ultimoPorNivel = { 0: { tipo: nodoDestinoTipo, etiqueta: document.getElementById('sel-destino').selectedOptions[0]?.textContent || '' } };
+
+      let huboError = false;
+      filasImportar.forEach(f => {
+        if (!f.nivel || !f.tipo || !f.codigo || !f.nombre) {
+          f.estado = 'error'; f.mensaje = 'Faltan datos obligatorios (Nivel/Tipo/Codigo/Nombre)';
+          huboError = true;
+          return;
+        }
+        const padreInfo = ultimoPorNivel[f.nivel - 1];
+        if (!padreInfo) {
+          f.estado = 'error'; f.mensaje = `No hay ningún nodo de Nivel ${f.nivel - 1} antes de esta fila`;
+          huboError = true;
+          return;
+        }
+        f.parentEtiqueta = padreInfo.etiqueta;
+
+        const permitidos = hijosValidosPorTipo[padreInfo.tipo];
+        if (!permitidos || !permitidos.has(f.tipo)) {
+          f.estado = 'error';
+          f.mensaje = `"${f.tipo}" no puede ir dentro de "${padreInfo.tipo}"`;
+          huboError = true;
+        } else {
+          f.estado = 'pendiente'; f.mensaje = '';
+        }
+
+        ultimoPorNivel[f.nivel] = { tipo: f.tipo, etiqueta: `${f.tipo} ${f.codigo}` };
+        Object.keys(ultimoPorNivel).forEach(k => { if (parseInt(k, 10) > f.nivel) delete ultimoPorNivel[k]; });
+      });
+
+      pintarPreview();
+      estadoEl.textContent = huboError
+        ? 'Hay filas con error — corrígelas en el Excel y vuelve a subirlo, o impórtalo igualmente y esas filas concretas se saltarán.'
+        : `Todo listo — se crearán ${filasImportar.length} nodos.`;
+      estadoEl.className = huboError ? 'estado-msg error' : 'estado-msg ok';
+    }
+
+    function pintarPreview() {
+      const tbody = document.getElementById('tabla-preview');
+      tbody.innerHTML = filasImportar.map(f => `
+        <tr class="fila-${f.estado === 'error' ? 'error' : (f.estado === 'creado' ? 'ok' : 'pendiente')}">
+          <td>${'—'.repeat(Math.max(0,(f.nivel||1)-1))} ${f.nivel || '?'}</td>
+          <td>${f.tipo || '?'}</td>
+          <td>${f.codigo || '?'}</td>
+          <td>${f.nombre || '?'}</td>
+          <td style="font-size:10px; color:#888;">${f.parentEtiqueta || '—'}</td>
+          <td>${f.estado === 'error' ? '✘ ' + f.mensaje : (f.estado === 'creado' ? '✔ Creado' : 'Pendiente')}</td>
+        </tr>
+      `).join('');
+    }
+
+    async function ejecutarImportacion() {
+      const btn = document.getElementById('btn-importar');
+      const estadoEl = document.getElementById('estado-importar');
+      const destinoId = document.getElementById('sel-destino').value;
+      if (!destinoId) { alert('Elige un nodo destino.'); return; }
+
+      btn.disabled = true;
+      const idRealPorNivel = { 0: destinoId };
+      let creados = 0, fallados = 0, saltados = 0;
+
+      for (const f of filasImportar) {
+        if (f.estado === 'error') { saltados++; continue; }
+
+        const parentIdReal = idRealPorNivel[f.nivel - 1];
+        if (!parentIdReal) {
+          f.estado = 'error'; f.mensaje = 'Su nodo padre no llegó a crearse';
+          saltados++; continue;
+        }
+
+        estadoEl.textContent = `Creando ${f.codigo} (${creados + fallados + 1}/${filasImportar.length})...`;
+
+        const { data: nuevo, error } = await supabaseClient.from('nodes').insert({
+          parent_id: parentIdReal, tipo: f.tipo, codigo: f.codigo, nombre: f.nombre,
+          descripcion: f.descripcion, orden: f.orden || 0
+        }).select().single();
+
+        if (error) {
+          f.estado = 'error'; f.mensaje = error.message;
+          fallados++;
+          Object.keys(idRealPorNivel).forEach(k => { if (parseInt(k, 10) >= f.nivel) delete idRealPorNivel[k]; });
+        } else {
+          f.estado = 'creado';
+          idRealPorNivel[f.nivel] = nuevo.id;
+          Object.keys(idRealPorNivel).forEach(k => { if (parseInt(k, 10) > f.nivel) delete idRealPorNivel[k]; });
+          creados++;
+        }
+        pintarPreview();
+      }
+
+      registrarLog('IMPORTAR_EXCEL', `Importó estructura desde Excel: ${creados} nodos creados, ${fallados} con error, ${saltados} saltados`, destinoId);
+
+      estadoEl.textContent = `Terminado: ${creados} creados, ${fallados} con error, ${saltados} saltados.`;
+      estadoEl.className = fallados > 0 ? 'estado-msg error' : 'estado-msg ok';
+      btn.disabled = false;
+    }
+
+    iniciar();
+  </script>
+</body>
+</html>
