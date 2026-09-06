@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESTRUCTURA - Comprobar duplicados</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 1000px; margin: 20px auto; padding: 0 20px; color: #333; }
+    h1 { font-size: 20px; margin: 0; }
+    .subtitulo { color: #666; font-size: 13px; margin-top: 2px; }
+    .header-bar { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+    .card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    button { padding: 7px 14px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; }
+    button.secundario { background: #6c757d; }
+    button.secundario:hover { background: #5a6268; }
+    button.peligro { background: #dc3545; }
+    .estado-msg { font-size: 13px; color: #666; }
+    .grupo-duplicado { background: white; border: 1px solid #ffc107; border-left: 4px solid #ffc107; border-radius: 6px; padding: 12px; margin-bottom: 10px; }
+    .grupo-duplicado .valor-repetido { font-weight: bold; font-size: 14px; color: #856404; }
+    .grupo-duplicado ul { list-style: none; padding: 0; margin: 8px 0 0; }
+    .grupo-duplicado li { padding: 5px 0; border-top: 1px solid #f0f0f0; font-size: 13px; }
+    .grupo-duplicado li:first-child { border-top: none; }
+    .num-aparicion { display: inline-block; background: #e9ecef; color: #555; font-size: 10px; padding: 1px 6px; border-radius: 10px; margin-right: 6px; }
+    .ruta-dup { color: #888; font-size: 11px; }
+    .sin-duplicados { color: #218838; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+  <div class="header-bar">
+    <div>
+      <h1>🔍 Comprobar nombres/códigos repetidos</h1>
+      <div class="subtitulo" id="texto-usuario"></div>
+    </div>
+    <div>
+      <button class="secundario" onclick="location.href='index.html'">🏠 Inicio</button>
+      <button class="secundario" onclick="location.href='arbol.html'">🌳 Árbol</button>
+      <button class="peligro" onclick="cerrarPagina()">❌ Cerrar</button>
+    </div>
+  </div>
+
+  <div id="sin-permiso" style="display:none; color:#dc3545; font-weight:bold; text-align:center; margin-top:60px;">
+    Solo ADMIN puede usar esta herramienta.
+  </div>
+
+  <div id="panel" style="display:none;">
+    <div class="card">
+      <p style="font-size:13px; color:#555; margin-top:0;">
+        Revisa toda la estructura activa del árbol (todos los Buques) y agrupa los nodos que comparten el mismo <strong>Código</strong>
+        o el mismo <strong>Nombre</strong>, mostrando la ruta completa de cada uno. Que aparezcan varios con el mismo código
+        no es necesariamente un error — por ejemplo, "UA1" puede existir legítimamente en varios Subbloques distintos —
+        pero te permite revisarlo de un vistazo y confirmar que todo está donde debe.
+      </p>
+      <button onclick="comprobarDuplicados()">🔍 Comprobar ahora</button>
+      <span class="estado-msg" id="estado-comprobacion" style="margin-left:10px;"></span>
+    </div>
+
+    <div id="resultado-codigos"></div>
+    <div id="resultado-nombres"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const SUPABASE_URL = 'https://wuarkraddnndmgvfnkmm.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let miPerfil = null;
+    let mapaNodoPorId = {};
+
+    async function registrarLog(accion, descripcion) {
+      try {
+        await supabaseClient.functions.invoke('bright-processor', { body: { accion, descripcion } });
+      } catch (e) {
+        console.warn('No se pudo registrar el log:', e);
+      }
+    }
+
+    async function cerrarSesion() {
+      await registrarLog('LOGOUT', `Cerró sesión (${miPerfil?.username || ''})`);
+      await supabaseClient.auth.signOut();
+      window.location.href = 'login.html';
+    }
+
+    function cerrarPagina() {
+      window.close();
+      setTimeout(() => { history.back(); }, 150);
+    }
+
+    async function iniciar() {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (!session) { window.location.href = 'login.html?next=duplicados.html'; return; }
+
+      const { data: perfil, error } = await supabaseClient
+        .from('profiles').select('*').eq('id', session.user.id).single();
+
+      if (error || !perfil || !perfil.activo || perfil.rol !== 'ADMIN') {
+        document.getElementById('sin-permiso').style.display = 'block';
+        return;
+      }
+
+      miPerfil = perfil;
+      document.getElementById('texto-usuario').textContent = `${perfil.nombre_completo} (${perfil.username}) — ADMIN`;
+      document.getElementById('panel').style.display = 'block';
+
+      await comprobarDuplicados();
+    }
+
+    function rutaCompleta(nodo) {
+      const partes = [];
+      let actual = nodo;
+      while (actual) {
+        partes.unshift(`${actual.tipo} ${actual.codigo}`);
+        actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
+      }
+      return partes.join(' › ');
+    }
+
+    function agruparPorCampo(nodos, campo) {
+      const grupos = {};
+      nodos.forEach(n => {
+        const valor = (n[campo] || '').trim();
+        if (!valor) return;
+        const clave = valor.toLowerCase();
+        if (!grupos[clave]) grupos[clave] = { valorOriginal: valor, nodos: [] };
+        grupos[clave].nodos.push(n);
+      });
+      return Object.values(grupos).filter(g => g.nodos.length > 1);
+    }
+
+    function pintarGrupos(grupos, contenedorId, tituloCampo) {
+      const cont = document.getElementById(contenedorId);
+      if (grupos.length === 0) {
+        cont.innerHTML = `<div class="card"><span class="sin-duplicados">✔ Sin ${tituloCampo} repetidos.</span></div>`;
+        return;
+      }
+      cont.innerHTML = `
+        <div class="card">
+          <h3 style="margin-top:0; font-size:15px;">${tituloCampo} repetidos (${grupos.length})</h3>
+          ${grupos.map(g => `
+            <div class="grupo-duplicado">
+              <div class="valor-repetido">"${g.valorOriginal}" — aparece ${g.nodos.length} veces</div>
+              <ul>
+                ${g.nodos.map((n, i) => `
+                  <li>
+                    <span class="num-aparicion">${i + 1}ª aparición</span>
+                    <strong>${n.tipo}</strong>
+                    <div class="ruta-dup">${rutaCompleta(n)}</div>
+                  </li>
+                `).join('')}
+              </ul>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    async function comprobarDuplicados() {
+      const estadoEl = document.getElementById('estado-comprobacion');
+      estadoEl.textContent = 'Comprobando...';
+
+      const { data: nodos, error } = await supabaseClient
+        .from('nodes').select('id, codigo, nombre, tipo, parent_id').eq('activo', true);
+
+      if (error) { estadoEl.textContent = 'Error: ' + error.message; return; }
+
+      mapaNodoPorId = {};
+      nodos.forEach(n => { mapaNodoPorId[n.id] = n; });
+
+      const gruposCodigo = agruparPorCampo(nodos, 'codigo');
+      const gruposNombre = agruparPorCampo(nodos, 'nombre');
+
+      pintarGrupos(gruposCodigo, 'resultado-codigos', 'Códigos');
+      pintarGrupos(gruposNombre, 'resultado-nombres', 'Nombres');
+
+      estadoEl.textContent = `Revisados ${nodos.length} nodos activos.`;
+      registrarLog('COMPROBAR_DUPLICADOS', `Comprobó duplicados: ${gruposCodigo.length} códigos repetidos, ${gruposNombre.length} nombres repetidos`);
+    }
+
+    iniciar();
+  </script>
+</body>
+</html>

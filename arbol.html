@@ -8,6 +8,7 @@
     body { font-family: Arial, sans-serif; max-width: 1050px; margin: 30px auto; padding: 0 20px; color: #333; }
     h1 { font-size: 22px; }
     .card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 14px; margin-bottom: 16px; }
+    #card-arbol { overflow-y: auto; overflow-x: auto; }
     .header-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
     button { padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; }
     button:hover { background: #0069d9; }
@@ -304,6 +305,7 @@
         </label>
         <a class="menu-item" id="menu-link-gantt" href="gantt.html" target="_blank" style="display:none;">🗓️ Gantt</a>
         <a class="menu-item" id="menu-link-importar" href="importar.html" target="_blank" style="display:none;">📥 Importar Excel</a>
+        <a class="menu-item" id="menu-link-duplicados" href="duplicados.html" target="_blank" style="display:none;">🔍 Comprobar duplicados</a>
         <label class="menu-item" id="wrap-papelera" style="display:none;">
           <input type="checkbox" id="chk-papelera" onchange="togglePapelera()"> 🗑️ Ver papelera
         </label>
@@ -327,7 +329,7 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card" id="card-arbol">
     <ul class="arbol raiz" id="arbol-raiz">
       <li>Cargando...</li>
     </ul>
@@ -559,6 +561,7 @@
         document.getElementById('wrap-tiempos').style.display = 'flex';
         document.getElementById('menu-link-gantt').style.display = 'flex';
         document.getElementById('menu-link-importar').style.display = 'flex';
+        document.getElementById('menu-link-duplicados').style.display = 'flex';
       }
       if (pareceGestor()) {
         document.getElementById('wrap-modo-seleccion').style.display = 'flex';
@@ -631,6 +634,16 @@
       titulo.classList.toggle('abierta');
       titulo.nextElementSibling.classList.toggle('abierta');
     }
+
+    function ajustarAlturaArbol() {
+      const contenedor = document.getElementById('card-arbol');
+      if (!contenedor) return;
+      const espacioSuperior = contenedor.getBoundingClientRect().top;
+      const margenInferior = 20;
+      const alturaDisponible = window.innerHeight - espacioSuperior - margenInferior;
+      contenedor.style.maxHeight = Math.max(200, alturaDisponible) + 'px';
+    }
+    window.addEventListener('resize', ajustarAlturaArbol);
 
     function aplicarModoMenu(modo) {
       document.body.classList.toggle('modo-menu-fijo', modo === 'fijo');
@@ -742,6 +755,8 @@
       raiz.innerHTML = nodosRaiz.length === 0
         ? '<li>No hay ningún Buque que coincida.</li>'
         : nodosRaiz.map(n => renderizarNodo(n)).join('');
+
+      ajustarAlturaArbol();
     }
 
     function calcularEstadoPropio(nodo) {
