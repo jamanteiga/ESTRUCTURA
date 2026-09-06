@@ -165,6 +165,37 @@
       font-size: 13px;
     }
 
+    /* ---- Tema oscuro ---- */
+    body.tema-oscuro { background: #1a1d21; color: #e0e0e0; }
+    body.tema-oscuro .card { background: #24282e; border-color: #3a3f47; }
+    body.tema-oscuro h1, body.tema-oscuro h2 { color: #f0f0f0; }
+    body.tema-oscuro .estado-msg { color: #b0b0b0; }
+    body.tema-oscuro .fila-nodo:hover { background: rgba(255,255,255,0.06); }
+    body.tema-oscuro .tipo-tag { background: #3a3f47; color: #c0c0c0; }
+    body.tema-oscuro .asignados { color: #a0a0a0; }
+    body.tema-oscuro button.secundario { background: #4a4f57; }
+    body.tema-oscuro button.secundario:hover { background: #5a5f67; }
+    body.tema-oscuro .btn-hamburguesa { background: #24282e; border-color: #007bff; }
+    body.tema-oscuro .btn-hamburguesa span { background: #4da3ff; }
+    body.tema-oscuro .menu-panel { background: #24282e; }
+    body.tema-oscuro .menu-seccion-titulo { border-top-color: #3a3f47; color: #6fb3ff; }
+    body.tema-oscuro .menu-item { color: #e0e0e0; border-bottom-color: #33373d; }
+    body.tema-oscuro .menu-item:hover { background: #2f343b; }
+    body.tema-oscuro .menu-buscador-wrap { border-bottom-color: #3a3f47; }
+    body.tema-oscuro .menu-buscador-wrap input,
+    body.tema-oscuro select, body.tema-oscuro input[type="text"], body.tema-oscuro input[type="number"],
+    body.tema-oscuro textarea { background: #1a1d21; color: #e0e0e0; border-color: #4a4f57; }
+    body.tema-oscuro .overlay-caja { background: #24282e; color: #e0e0e0; }
+    body.tema-oscuro #menu-contextual, body.tema-oscuro #menu-submenu-flotante { background: #24282e; border-color: #3a3f47; }
+    body.tema-oscuro #menu-contextual .mc-item:hover, body.tema-oscuro #menu-submenu-flotante .mc-item:hover { background: #2f343b; }
+    body.tema-oscuro #menu-contextual .mc-separador { border-top-color: #3a3f47; }
+    body.tema-oscuro .lista-mover { border-color: #3a3f47; }
+    body.tema-oscuro .opcion-mover { border-bottom-color: #33373d; }
+    body.tema-oscuro .opcion-mover:hover { background: #2f343b; }
+    body.tema-oscuro .aviso { background: #24282e; color: #e0e0e0; }
+    body.tema-oscuro .aviso .ruta { color: #a0a0a0; }
+    body.tema-oscuro #barra-seleccion { background: #000; }
+
     @media (min-width: 2200px) {
       html { font-size: 13px; }
       body { max-width: 1300px; }
@@ -216,8 +247,8 @@
 
       <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Navegación <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
-        <a class="menu-item" id="menu-link-log" href="log.html" style="display:none;">🗒️ Logs</a>
         <a class="menu-item" href="index.html">🏠 Inicio</a>
+        <a class="menu-item" id="menu-link-log" href="log.html" style="display:none;">🗒️ Logs</a>
         <span class="menu-item" id="menu-item-buque" onclick="abrirModalCrear(null, 'BUQUE')" style="display:none;">+ Añadir Buque</span>
         <a class="menu-item" href="resumen.html">📊 Resumen</a>
         <a class="menu-item" id="menu-link-usuarios" href="usuarios.html" style="display:none;">👤 Usuarios</a>
@@ -227,11 +258,11 @@
       <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Bloques <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
         <span class="menu-item" onclick="expandirTodo()">⏬ Expandir</span>
+        <span class="menu-item" onclick="encogerTodo()">⏫ Contraer</span>
         <span class="menu-item" onclick="expandirSinSubbloques()">⏬ Expandir (sin Subbloques)</span>
         <label class="menu-item">
           <input type="checkbox" id="chk-vista-simple" onchange="toggleVistaSimplificada()"> 🎨 Vista simplificada (solo colores)
         </label>
-        <span class="menu-item" onclick="encogerTodo()">⏫ Contraer</span>
       </div>
 
       <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Filtros <span class="flecha-menu">›</span></div>
@@ -265,9 +296,6 @@
         <label class="menu-item" id="wrap-modo-seleccion" style="display:none;">
           <input type="checkbox" id="chk-modo-seleccion" onchange="toggleModoSeleccion()"> ☑️ Selección múltiple
         </label>
-        <label class="menu-item" id="wrap-papelera" style="display:none;">
-          <input type="checkbox" id="chk-papelera" onchange="togglePapelera()"> 🗑️ Ver papelera
-        </label>
         <label class="menu-item" id="wrap-avance" style="display:none;">
           <input type="checkbox" id="chk-avance" onchange="toggleAvance()"> 📈 Avance
         </label>
@@ -276,10 +304,19 @@
         </label>
         <a class="menu-item" id="menu-link-gantt" href="gantt.html" target="_blank" style="display:none;">🗓️ Gantt</a>
         <a class="menu-item" id="menu-link-importar" href="importar.html" target="_blank" style="display:none;">📥 Importar Excel</a>
+        <label class="menu-item" id="wrap-papelera" style="display:none;">
+          <input type="checkbox" id="chk-papelera" onchange="togglePapelera()"> 🗑️ Ver papelera
+        </label>
       </div>
 
-      <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Apariencia del menú <span class="flecha-menu">›</span></div>
+      <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Apariencia <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
+        <label class="menu-item">
+          <input type="radio" name="modo-tema" value="claro" id="radio-tema-claro" checked> ☀️ Claro
+        </label>
+        <label class="menu-item">
+          <input type="radio" name="modo-tema" value="oscuro" id="radio-tema-oscuro"> 🌙 Oscuro
+        </label>
         <label class="menu-item">
           <input type="radio" name="modo-menu" value="desplegable" id="radio-desplegable" checked> Desplegable
         </label>
@@ -610,6 +647,22 @@
 
       document.getElementById('radio-fijo').addEventListener('change', () => cambiarModoMenu('fijo'));
       document.getElementById('radio-desplegable').addEventListener('change', () => cambiarModoMenu('desplegable'));
+
+      inicializarTema();
+    }
+
+    function aplicarTema(tema) {
+      document.body.classList.toggle('tema-oscuro', tema === 'oscuro');
+      localStorage.setItem('estructura_tema', tema);
+    }
+
+    function inicializarTema() {
+      const guardado = localStorage.getItem('estructura_tema') || 'claro';
+      document.getElementById(guardado === 'oscuro' ? 'radio-tema-oscuro' : 'radio-tema-claro').checked = true;
+      aplicarTema(guardado);
+
+      document.getElementById('radio-tema-claro').addEventListener('change', () => aplicarTema('claro'));
+      document.getElementById('radio-tema-oscuro').addEventListener('change', () => aplicarTema('oscuro'));
     }
 
     async function cerrarSesion() {
