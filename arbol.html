@@ -1399,7 +1399,7 @@
 
       const selTrab = document.getElementById('modal-lote-trabajador');
       selTrab.innerHTML = '<option value="">— Sin asignar —</option>' +
-        perfilesCache.map(p => `<option value="${p.id}">${p.nombre_completo} (${p.rol === 'TRABAJADOR' ? 'USUARIO' : p.rol})</option>`).join('');
+        perfilesCache.map(p => `<option value="${p.id}">${p.nombre_completo} (${p.rol === 'TRABAJADOR' ? 'USUARIO' : (p.rol === 'REVISOR' ? 'SUPERVISOR' : p.rol)})</option>`).join('');
 
       const revisores = perfilesCache.filter(p => p.rol === 'REVISOR');
       const selRev = document.getElementById('modal-lote-revisor');
@@ -1608,7 +1608,7 @@
       const selRev = document.getElementById('modal-asignar-revisor');
 
       selTrab.innerHTML = '<option value="">— Sin asignar —</option>' +
-        perfilesCache.map(p => `<option value="${p.id}" ${p.id === nodo.trabajador_id ? 'selected' : ''}>${p.nombre_completo} (${p.rol === 'TRABAJADOR' ? 'USUARIO' : p.rol})</option>`).join('');
+        perfilesCache.map(p => `<option value="${p.id}" ${p.id === nodo.trabajador_id ? 'selected' : ''}>${p.nombre_completo} (${p.rol === 'TRABAJADOR' ? 'USUARIO' : (p.rol === 'REVISOR' ? 'SUPERVISOR' : p.rol)})</option>`).join('');
 
       const revisores = perfilesCache.filter(p => p.rol === 'REVISOR');
       selRev.innerHTML = '<option value="">— Sin asignar —</option>' +
