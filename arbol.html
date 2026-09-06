@@ -274,6 +274,7 @@
         <label class="menu-item" id="wrap-tiempos" style="display:none;">
           <input type="checkbox" id="chk-tiempos" onchange="toggleTiempos()"> ⏱️ Tiempos
         </label>
+        <a class="menu-item" id="menu-link-gantt" href="gantt.html" target="_blank" style="display:none;">🗓️ Gantt</a>
       </div>
 
       <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Apariencia del menú <span class="flecha-menu">›</span></div>
@@ -518,6 +519,7 @@
         document.getElementById('wrap-papelera').style.display = 'flex';
         document.getElementById('wrap-avance').style.display = 'flex';
         document.getElementById('wrap-tiempos').style.display = 'flex';
+        document.getElementById('menu-link-gantt').style.display = 'flex';
       }
       if (esGestor()) {
         document.getElementById('wrap-modo-seleccion').style.display = 'flex';

@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESTRUCTURA - Gantt</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 1300px; margin: 20px auto; padding: 0 20px; color: #333; }
+    h1 { font-size: 20px; margin: 0; }
+    .subtitulo { color: #666; font-size: 13px; margin-top: 2px; }
+    .header-bar { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+    .card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 14px; margin-bottom: 14px; }
+    button { padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; }
+    button.secundario { background: #6c757d; }
+    button.secundario:hover { background: #5a6268; }
+    button.peligro { background: #dc3545; }
+    select { padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+    .filtros { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+    .leyenda { display: flex; gap: 16px; font-size: 12px; align-items: center; }
+    .leyenda .muestra { display: inline-block; width: 14px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+    .c-trabajo { background: #007bff; }
+    .c-espera { background: #ffc107; }
+
+    .gantt-scroll { overflow-x: auto; border: 1px solid #ddd; border-radius: 6px; background: white; }
+    .gantt-fila { display: flex; border-bottom: 1px solid #eee; align-items: center; }
+    .gantt-etiqueta {
+      position: sticky; left: 0; background: white; z-index: 2; width: 220px; min-width: 220px;
+      padding: 6px 10px; font-size: 12px; border-right: 1px solid #ddd; box-sizing: border-box;
+    }
+    .gantt-etiqueta .ruta { color: #888; font-size: 10px; display: block; }
+    .gantt-pista { position: relative; height: 34px; }
+    .gantt-barra { position: absolute; top: 8px; height: 16px; border-radius: 3px; }
+    .gantt-cabecera { display: flex; border-bottom: 2px solid #ccc; background: #f0f2f5; position: sticky; top: 0; z-index: 3; }
+    .gantt-cabecera-etiqueta {
+      position: sticky; left: 0; background: #f0f2f5; z-index: 4; width: 220px; min-width: 220px;
+      padding: 6px 10px; font-size: 11px; font-weight: bold; border-right: 1px solid #ddd; box-sizing: border-box;
+    }
+    .gantt-dia { flex-shrink: 0; font-size: 10px; text-align: center; color: #666; border-right: 1px solid #eee; padding: 4px 0; }
+    .gantt-dia.hoy { background: #fff3cd; font-weight: bold; }
+
+    .estado-msg { font-size: 13px; color: #666; }
+
+    @media print {
+      .no-imprimir { display: none !important; }
+      body { margin: 0; max-width: 100%; }
+      .gantt-scroll { overflow: visible; border: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header-bar no-imprimir">
+    <div>
+      <h1 id="titulo-pagina">🗓️ Gantt</h1>
+      <div class="subtitulo" id="subtitulo-fecha"></div>
+    </div>
+    <div>
+      <button class="secundario" onclick="exportarExcel()">⬇ Exportar a Project (Excel)</button>
+      <button class="secundario" onclick="window.print()">⬇ Exportar a PDF</button>
+      <button class="peligro" onclick="cerrarPagina()">❌ Cerrar</button>
+    </div>
+  </div>
+
+  <div id="titulo-solo-impresion" style="display:none;">
+    <h1 id="titulo-pagina-print"></h1>
+    <div class="subtitulo" id="subtitulo-fecha-print"></div>
+  </div>
+
+  <div class="card filtros no-imprimir">
+    <label for="sel-buque" style="font-size:12px; font-weight:bold;">Buque:</label>
+    <select id="sel-buque"></select>
+    <label for="sel-bloque" style="font-size:12px; font-weight:bold;">Bloque:</label>
+    <select id="sel-bloque"><option value="">Todos</option></select>
+  </div>
+
+  <div class="card leyenda">
+    <span><span class="muestra c-trabajo"></span>En proceso (trabajo)</span>
+    <span><span class="muestra c-espera"></span>Esperando revisión</span>
+  </div>
+
+  <div class="estado-msg" id="mensaje-vacio" style="display:none; margin-bottom:10px;"></div>
+
+  <div class="gantt-scroll">
+    <div id="gantt-contenido"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script>
+    const SUPABASE_URL = 'https://wuarkraddnndmgvfnkmm.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const PX_POR_DIA = 40;
+    const ANCHO_MIN_BARRA = 6;
+
+    let miPerfil = null;
+    let mapaNodoPorId = {};
+    let buques = [];
+    let tareasActuales = [];
+
+    async function registrarLog(accion, descripcion) {
+      try {
+        await supabaseClient.functions.invoke('bright-processor', { body: { accion, descripcion } });
+      } catch (e) {
+        console.warn('No se pudo registrar el log:', e);
+      }
+    }
+
+    async function cerrarSesion() {
+      await registrarLog('LOGOUT', `Cerró sesión (${miPerfil?.username || ''})`);
+      await supabaseClient.auth.signOut();
+      window.location.href = 'login.html';
+    }
+
+    function cerrarPagina() {
+      window.close();
+      setTimeout(() => { history.back(); }, 150);
+    }
+
+    function obtenerSemanaISO(fecha) {
+      const d = new Date(Date.UTC(fecha.getFullYear(), fecha.getMonth(), fecha.getDate()));
+      const diaSemana = d.getUTCDay() || 7;
+      d.setUTCDate(d.getUTCDate() + 4 - diaSemana);
+      const inicioAno = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+      return Math.ceil((((d - inicioAno) / 86400000) + 1) / 7);
+    }
+
+    const DIAS_SEMANA = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+    const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+    function formatearFechaLarga(fecha) {
+      return `${DIAS_SEMANA[fecha.getDay()]} ${fecha.getDate()} de ${MESES[fecha.getMonth()]} de ${fecha.getFullYear()}`;
+    }
+
+    function actualizarCabecera(codigoBuque) {
+      const hoy = new Date();
+      const semana = obtenerSemanaISO(hoy);
+      const texto = `${codigoBuque || ''} — Semana ${semana} — ${formatearFechaLarga(hoy)}`;
+      document.getElementById('titulo-pagina').textContent = `🗓️ ${texto}`;
+      document.getElementById('titulo-pagina-print').textContent = `Gantt — ${texto}`;
+      document.getElementById('subtitulo-fecha-print').textContent = miPerfil ? `Generado por ${miPerfil.nombre_completo}` : '';
+    }
+
+    function rutaCompleta(nodo) {
+      const partes = [];
+      let actual = nodo;
+      while (actual) {
+        partes.unshift(`${actual.tipo} ${actual.codigo}`);
+        actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
+      }
+      return partes.join(' › ');
+    }
+
+    async function iniciar() {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (!session) { window.location.href = 'login.html?next=gantt.html'; return; }
+
+      const { data: perfil, error } = await supabaseClient
+        .from('profiles').select('*').eq('id', session.user.id).single();
+
+      if (error || !perfil || !perfil.activo || perfil.rol !== 'ADMIN') {
+        document.body.innerHTML = '<p style="color:red; font-weight:bold; margin-top:60px; text-align:center;">Solo ADMIN puede ver el Gantt.</p>';
+        return;
+      }
+
+      miPerfil = perfil;
+
+      const { data: nodosBuque } = await supabaseClient
+        .from('nodes').select('id, codigo, nombre').eq('tipo', 'BUQUE').eq('activo', true).order('codigo');
+      buques = nodosBuque || [];
+
+      const selBuque = document.getElementById('sel-buque');
+      selBuque.innerHTML = buques.map(b => `<option value="${b.id}">${b.codigo}</option>`).join('');
+      selBuque.addEventListener('change', () => { cargarBloquesDelBuque(); cargarGantt(); });
+      document.getElementById('sel-bloque').addEventListener('change', cargarGantt);
+
+      if (buques.length === 0) {
+        document.getElementById('mensaje-vacio').style.display = 'block';
+        document.getElementById('mensaje-vacio').textContent = 'No hay ningún Buque creado todavía.';
+        actualizarCabecera('');
+        return;
+      }
+
+      await cargarBloquesDelBuque();
+      await cargarGantt();
+    }
+
+    async function cargarBloquesDelBuque() {
+      const buqueId = document.getElementById('sel-buque').value;
+      const { data } = await supabaseClient
+        .from('nodes').select('id, codigo').eq('parent_id', buqueId).eq('tipo', 'BLOQUE').eq('activo', true).order('codigo');
+      const selBloque = document.getElementById('sel-bloque');
+      selBloque.innerHTML = '<option value="">Todos</option>' + (data || []).map(b => `<option value="${b.id}">${b.codigo}</option>`).join('');
+    }
+
+    async function cargarGantt() {
+      const contenedor = document.getElementById('gantt-contenido');
+      const mensajeVacio = document.getElementById('mensaje-vacio');
+      contenedor.innerHTML = '';
+      mensajeVacio.style.display = 'none';
+
+      const buqueId = document.getElementById('sel-buque').value;
+      const bloqueId = document.getElementById('sel-bloque').value;
+      const buqueSeleccionado = buques.find(b => b.id === buqueId);
+      actualizarCabecera(buqueSeleccionado?.codigo || '');
+
+      const { data: todosNodos, error } = await supabaseClient.from('v_nodes_with_workflow').select('*').eq('activo', true);
+      if (error) { mensajeVacio.style.display = 'block'; mensajeVacio.textContent = 'Error: ' + error.message; return; }
+
+      mapaNodoPorId = {};
+      todosNodos.forEach(n => { mapaNodoPorId[n.id] = n; });
+
+      function estaDentroDe(nodo, ancestroId) {
+        let actual = nodo;
+        while (actual) {
+          if (actual.id === ancestroId) return true;
+          actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
+        }
+        return false;
+      }
+
+      const raizFiltro = bloqueId || buqueId;
+      const conTrabajoIniciado = todosNodos.filter(n =>
+        n.trabajo_iniciado_en && estaDentroDe(n, raizFiltro)
+      );
+
+      tareasActuales = conTrabajoIniciado.sort((a, b) => new Date(a.trabajo_iniciado_en) - new Date(b.trabajo_iniciado_en));
+
+      if (tareasActuales.length === 0) {
+        mensajeVacio.style.display = 'block';
+        mensajeVacio.textContent = 'Ninguna tarea de esta selección ha sido empezada todavía — no hay nada que dibujar.';
+        return;
+      }
+
+      const ahora = new Date();
+      let fechaMin = new Date(tareasActuales[0].trabajo_iniciado_en);
+      let fechaMax = ahora;
+      tareasActuales.forEach(t => {
+        const fin = t.revisado_en ? new Date(t.revisado_en) : (t.trabajo_terminado_en ? new Date(t.trabajo_terminado_en) : ahora);
+        if (fin > fechaMax) fechaMax = fin;
+      });
+
+      fechaMin.setHours(0, 0, 0, 0);
+      const fechaMaxDia = new Date(fechaMax); fechaMaxDia.setHours(0, 0, 0, 0);
+      const totalDias = Math.max(1, Math.round((fechaMaxDia - fechaMin) / 86400000) + 1);
+
+      function diasDesdeInicio(fechaIso) {
+        return (new Date(fechaIso) - fechaMin) / 86400000;
+      }
+
+      const hoyDia = new Date(); hoyDia.setHours(0, 0, 0, 0);
+      let cabeceraHtml = `<div class="gantt-cabecera"><div class="gantt-cabecera-etiqueta">Nodo</div>`;
+      for (let i = 0; i < totalDias; i++) {
+        const dia = new Date(fechaMin); dia.setDate(dia.getDate() + i);
+        const esHoy = dia.getTime() === hoyDia.getTime();
+        cabeceraHtml += `<div class="gantt-dia ${esHoy ? 'hoy' : ''}" style="width:${PX_POR_DIA}px;">${String(dia.getDate()).padStart(2,'0')}/${String(dia.getMonth()+1).padStart(2,'0')}</div>`;
+      }
+      cabeceraHtml += `</div>`;
+
+      let filasHtml = '';
+      tareasActuales.forEach(t => {
+        const inicioTrabajo = diasDesdeInicio(t.trabajo_iniciado_en);
+        const finTrabajo = t.trabajo_terminado_en ? diasDesdeInicio(t.trabajo_terminado_en) : diasDesdeInicio(ahora.toISOString());
+
+        let barraTrabajo = `<div class="gantt-barra c-trabajo" style="left:${inicioTrabajo * PX_POR_DIA}px; width:${Math.max(ANCHO_MIN_BARRA, (finTrabajo - inicioTrabajo) * PX_POR_DIA)}px;" title="En proceso"></div>`;
+
+        let barraEspera = '';
+        if (t.trabajo_terminado_en) {
+          const inicioEspera = finTrabajo;
+          const finEspera = t.revisado_en ? diasDesdeInicio(t.revisado_en) : diasDesdeInicio(ahora.toISOString());
+          barraEspera = `<div class="gantt-barra c-espera" style="left:${inicioEspera * PX_POR_DIA}px; width:${Math.max(ANCHO_MIN_BARRA, (finEspera - inicioEspera) * PX_POR_DIA)}px;" title="Esperando revisión"></div>`;
+        }
+
+        filasHtml += `
+          <div class="gantt-fila">
+            <div class="gantt-etiqueta">
+              <strong>${t.codigo}</strong> ${t.nombre}
+              <span class="ruta">${rutaCompleta(t)}</span>
+            </div>
+            <div class="gantt-pista" style="width:${totalDias * PX_POR_DIA}px;">
+              ${barraTrabajo}
+              ${barraEspera}
+            </div>
+          </div>
+        `;
+      });
+
+      contenedor.innerHTML = cabeceraHtml + filasHtml;
+    }
+
+    function filaParaExportar(t) {
+      const inicio = new Date(t.trabajo_iniciado_en);
+      const fin = t.revisado_en ? new Date(t.revisado_en) : (t.trabajo_terminado_en ? new Date(t.trabajo_terminado_en) : new Date());
+      const duracionDias = Math.max(1, Math.ceil((fin - inicio) / 86400000));
+      return {
+        'Task Name': `${t.codigo} - ${t.nombre}`,
+        'Start': inicio.toISOString().slice(0, 10),
+        'Finish': fin.toISOString().slice(0, 10),
+        'Duration': `${duracionDias} days`,
+        'Resource Names': t.trabajador_nombre || ''
+      };
+    }
+
+    function exportarExcel() {
+      if (tareasActuales.length === 0) { alert('No hay tareas que exportar.'); return; }
+      const datos = tareasActuales.map(filaParaExportar);
+      const hoja = XLSX.utils.json_to_sheet(datos);
+      const libro = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(libro, hoja, 'Tareas');
+      const buqueCodigo = buques.find(b => b.id === document.getElementById('sel-buque').value)?.codigo || 'buque';
+      XLSX.writeFile(libro, `gantt-${buqueCodigo}-${new Date().toISOString().slice(0,10)}.xlsx`);
+      registrarLog('EXPORT_GANTT', `Exportó el Gantt de "${buqueCodigo}" a Excel/Project (${datos.length} tareas)`);
+    }
+
+    iniciar();
+  </script>
+</body>
+</html>
