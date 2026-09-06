@@ -16,6 +16,8 @@
     button.peligro { background: #dc3545; }
     .estado-msg { font-size: 13px; color: #666; }
     .grupo-duplicado { background: white; border: 1px solid #ffc107; border-left: 4px solid #ffc107; border-radius: 6px; padding: 12px; margin-bottom: 10px; }
+    .grupo-duplicado.normal { border-color: #ddd; border-left-color: #adb5bd; }
+    .grupo-duplicado.normal .valor-repetido { color: #666; }
     .grupo-duplicado .valor-repetido { font-weight: bold; font-size: 14px; color: #856404; }
     .grupo-duplicado ul { list-style: none; padding: 0; margin: 8px 0 0; }
     .grupo-duplicado li { padding: 5px 0; border-top: 1px solid #f0f0f0; font-size: 13px; }
@@ -116,6 +118,25 @@
       return partes.join(' › ');
     }
 
+    // Sube por los padres hasta encontrar el Subbloque que lo contiene (o,
+    // si no hay ninguno por encima, el Bloque, o en último caso el Buque).
+    // Dos apariciones dentro del MISMO de estos cuentan como duplicado real;
+    // en Subbloques distintos es una repetición normal y esperable.
+    function ancestroDeReferencia(nodo) {
+      let actual = nodo.parent_id ? mapaNodoPorId[nodo.parent_id] : null;
+      while (actual) {
+        if (['SUBBLOQUE', 'BLOQUE', 'BUQUE'].includes(actual.tipo)) return actual.id;
+        actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
+      }
+      return nodo.parent_id || 'raiz';
+    }
+
+    const PREFIJOS_SIEMPRE_UNICOS = ['PT', 'PS', 'B'];
+    function empiezaPorPrefijoUnico(valor) {
+      const v = valor.toUpperCase();
+      return PREFIJOS_SIEMPRE_UNICOS.some(p => v.startsWith(p));
+    }
+
     function agruparPorCampo(nodos, campo) {
       const grupos = {};
       nodos.forEach(n => {
@@ -125,7 +146,22 @@
         if (!grupos[clave]) grupos[clave] = { valorOriginal: valor, nodos: [] };
         grupos[clave].nodos.push(n);
       });
-      return Object.values(grupos).filter(g => g.nodos.length > 1);
+
+      return Object.values(grupos)
+        .filter(g => g.nodos.length > 1)
+        .map(g => {
+          if (campo === 'codigo' && empiezaPorPrefijoUnico(g.valorOriginal)) {
+            g.esProblema = true;
+            return g;
+          }
+          const contadorAncestro = {};
+          g.nodos.forEach(n => {
+            const anc = ancestroDeReferencia(n);
+            contadorAncestro[anc] = (contadorAncestro[anc] || 0) + 1;
+          });
+          g.esProblema = Object.values(contadorAncestro).some(c => c > 1);
+          return g;
+        });
     }
 
     function pintarGrupos(grupos, contenedorId, tituloCampo) {
@@ -134,23 +170,38 @@
         cont.innerHTML = `<div class="card"><span class="sin-duplicados">✔ Sin ${tituloCampo} repetidos.</span></div>`;
         return;
       }
+
+      const problemas = grupos.filter(g => g.esProblema);
+      const normales = grupos.filter(g => !g.esProblema);
+
+      function pintarLista(lista, claseExtra) {
+        return lista.map(g => `
+          <div class="grupo-duplicado ${claseExtra}">
+            <div class="valor-repetido">"${g.valorOriginal}" — aparece ${g.nodos.length} veces</div>
+            <ul>
+              ${g.nodos.map((n, i) => `
+                <li>
+                  <span class="num-aparicion">${i + 1}ª aparición</span>
+                  <strong>${n.tipo}</strong>
+                  <div class="ruta-dup">${rutaCompleta(n)}</div>
+                </li>
+              `).join('')}
+            </ul>
+          </div>
+        `).join('');
+      }
+
       cont.innerHTML = `
         <div class="card">
-          <h3 style="margin-top:0; font-size:15px;">${tituloCampo} repetidos (${grupos.length})</h3>
-          ${grupos.map(g => `
-            <div class="grupo-duplicado">
-              <div class="valor-repetido">"${g.valorOriginal}" — aparece ${g.nodos.length} veces</div>
-              <ul>
-                ${g.nodos.map((n, i) => `
-                  <li>
-                    <span class="num-aparicion">${i + 1}ª aparición</span>
-                    <strong>${n.tipo}</strong>
-                    <div class="ruta-dup">${rutaCompleta(n)}</div>
-                  </li>
-                `).join('')}
-              </ul>
-            </div>
-          `).join('')}
+          <h3 style="margin-top:0; font-size:15px;">${tituloCampo} repetidos</h3>
+          ${problemas.length > 0 ? `
+            <p style="font-size:13px; font-weight:bold; color:#dc3545; margin-bottom:6px;">⚠️ A revisar — repetido dentro del mismo Subbloque/Bloque (${problemas.length})</p>
+            ${pintarLista(problemas, 'problema')}
+          ` : `<p style="font-size:13px; color:#218838;">✔ Ningún caso a revisar dentro del mismo Subbloque/Bloque.</p>`}
+          ${normales.length > 0 ? `
+            <p style="font-size:13px; color:#666; margin:14px 0 6px;">ℹ️ Repetido en Subbloques distintos — normal (${normales.length})</p>
+            ${pintarLista(normales, 'normal')}
+          ` : ''}
         </div>
       `;
     }
