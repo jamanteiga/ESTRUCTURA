@@ -27,6 +27,30 @@
     .col-ip { white-space: nowrap; color: #888; font-size: 11px; }
     .contenedor-tabla { max-height: 65vh; overflow-y: auto; margin-top: 10px; }
     .paginacion { display: flex; justify-content: center; gap: 10px; margin-top: 12px; align-items: center; font-size: 13px; }
+
+    .selector-vista { display: flex; gap: 6px; }
+    .selector-vista button.activo { background: #14395c; }
+
+    .timeline { list-style: none; padding: 0; margin: 10px 0 0; max-height: 65vh; overflow-y: auto; }
+    .timeline li { display: flex; gap: 12px; padding: 10px 4px; border-bottom: 1px solid #eee; }
+    .timeline .punto-tl {
+      width: 12px; height: 12px; border-radius: 50%; background: #007bff; margin-top: 4px; flex-shrink: 0;
+      box-shadow: 0 0 0 3px #eef3ff;
+    }
+    .timeline .punto-tl.fallo { background: #dc3545; box-shadow: 0 0 0 3px #fdecea; }
+    .timeline .punto-tl.aprobar { background: #28a745; box-shadow: 0 0 0 3px #eafaf1; }
+    .timeline .punto-tl.rechazar { background: #dc3545; box-shadow: 0 0 0 3px #fdecea; }
+    .timeline .contenido-tl { flex: 1; font-size: 13px; }
+    .timeline .fecha-tl { font-size: 11px; color: #888; }
+    .timeline .accion-tl { font-family: monospace; font-size: 10px; background: #eef3ff; padding: 1px 5px; border-radius: 4px; margin-left: 6px; }
+
+    .panel-ahora .grupo-persona { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-bottom: 10px; }
+    .panel-ahora .nombre-persona { font-weight: bold; font-size: 14px; margin-bottom: 6px; }
+    .panel-ahora .tarea-ahora { font-size: 12px; padding: 6px 0; border-top: 1px solid #f0f0f0; display: flex; justify-content: space-between; }
+    .panel-ahora .tarea-ahora:first-of-type { border-top: none; }
+    .panel-ahora .tiempo-transcurrido { color: #888; font-size: 11px; }
+    .panel-ahora h3 { font-size: 14px; margin: 18px 0 8px; color: #14395c; }
+    .panel-ahora h3:first-child { margin-top: 0; }
   </style>
 </head>
 <body>
@@ -38,6 +62,7 @@
       <button class="secundario" onclick="location.href='index.html'">🏠 Inicio</button>
       <button class="secundario" onclick="location.href='arbol.html'">🌳 Árbol</button>
       <button class="secundario" onclick="location.href='usuarios.html'">👤 Usuarios</button>
+      <button style="background:#dc3545;" onclick="mostrarPanelAhora()">🔴 Ahora</button>
       <button class="secundario" onclick="cerrarSesion()">Cerrar sesión</button>
       <button style="background:#dc3545;" onclick="cerrarPagina()">❌ Cerrar</button>
     </div>
@@ -59,14 +84,18 @@
     </div>
 
     <div class="card">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:8px;">
         <div id="resumen-resultados" class="estado-msg" style="color:#666;"></div>
-        <div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <div class="selector-vista">
+            <button class="secundario activo" id="btn-vista-tabla" onclick="cambiarVista('tabla')">📋 Tabla</button>
+            <button class="secundario" id="btn-vista-timeline" onclick="cambiarVista('timeline')">🕐 Línea de tiempo</button>
+          </div>
           <button class="secundario" onclick="exportar('csv')">⬇ Exportar CSV</button>
           <button class="secundario" onclick="exportar('xlsx')">⬇ Exportar Excel</button>
         </div>
       </div>
-      <div class="contenedor-tabla">
+      <div class="contenedor-tabla" id="vista-tabla-contenedor">
         <table>
           <thead>
             <tr>
@@ -86,11 +115,23 @@
           </tbody>
         </table>
       </div>
-      <div class="paginacion">
+      <ul class="timeline" id="vista-timeline-contenedor" style="display:none;"></ul>
+      <div class="paginacion" id="bloque-paginacion">
         <button class="secundario" id="btn-pag-anterior" onclick="paginaAnterior()">‹ Anterior</button>
         <span id="texto-pagina"></span>
         <button class="secundario" id="btn-pag-siguiente" onclick="paginaSiguiente()">Siguiente ›</button>
       </div>
+    </div>
+
+    <div class="card panel-ahora" id="panel-ahora" style="display:none;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <strong>🔴 Estado en directo — <span id="ahora-actualizado"></span></strong>
+        <div>
+          <button class="secundario" onclick="cargarPanelAhora()">🔄 Actualizar</button>
+          <button class="secundario" onclick="ocultarPanelAhora()">✕ Volver al registro</button>
+        </div>
+      </div>
+      <div id="ahora-contenido">Cargando...</div>
     </div>
   </div>
 
@@ -105,6 +146,25 @@
     let paginaActual = 0;
     let totalFilas = 0;
     let miPerfil = null;
+    let vistaActual = 'tabla';
+
+    const ICONOS_ACCION = {
+      TOMAR_TAREA: '🖐', EMPEZAR: '▶', FINALIZAR: '✔', APROBAR: '✅', RECHAZAR: '❌',
+      ASIGNAR: '👤', SIN_ASIGNAR: '↩️', REINICIAR_TAREA: '🔄',
+      PENDIENTE_DUDAS: '❓', PENDIENTE_CAMBIOS_MODELO: '🔧',
+      CREAR_NODO: '➕', EDITAR_NODO: '✎', DESACTIVAR_NODO: '🗑️', REACTIVAR_NODO: '♻️',
+      LOGIN: '🔓', LOGIN_FALLIDO: '⛔', LOGOUT: '🔒'
+    };
+    function iconoParaAccion(accion) {
+      if (accion === 'INTENTO_FALLIDO' || accion === 'LOGIN_FALLIDO') return '⛔';
+      return ICONOS_ACCION[accion] || '•';
+    }
+    function claseParaAccion(accion) {
+      if (accion === 'INTENTO_FALLIDO' || accion === 'LOGIN_FALLIDO') return 'fallo';
+      if (accion === 'APROBAR') return 'aprobar';
+      if (accion === 'RECHAZAR') return 'rechazar';
+      return '';
+    }
 
     function formatearFecha(iso) {
       const d = new Date(iso);
@@ -246,7 +306,57 @@
       return query;
     }
 
+    function cambiarVista(vista) {
+      vistaActual = vista;
+      document.getElementById('btn-vista-tabla').classList.toggle('activo', vista === 'tabla');
+      document.getElementById('btn-vista-timeline').classList.toggle('activo', vista === 'timeline');
+      document.getElementById('vista-tabla-contenedor').style.display = vista === 'tabla' ? 'block' : 'none';
+      document.getElementById('vista-timeline-contenedor').style.display = vista === 'timeline' ? 'block' : 'none';
+      document.getElementById('bloque-paginacion').style.display = vista === 'tabla' ? 'flex' : 'none';
+      if (vista === 'timeline') cargarTimeline(); else cargarLog();
+    }
+
+    async function cargarTimeline() {
+      const cont = document.getElementById('vista-timeline-contenedor');
+      cont.innerHTML = '<li>Cargando...</li>';
+
+      const LIMITE_TIMELINE = 500;
+      const { data, error, count } = await construirConsultaBase()
+        .order('creado_en', { ascending: true })
+        .range(0, LIMITE_TIMELINE - 1);
+
+      if (error) { cont.innerHTML = `<li style="color:red;">Error: ${error.message}</li>`; return; }
+
+      if (!data || data.length === 0) {
+        cont.innerHTML = '<li>No hay resultados con estos filtros.</li>';
+        document.getElementById('resumen-resultados').textContent = 'Sin resultados.';
+        return;
+      }
+
+      cont.innerHTML = data.map(fila => `
+        <li>
+          <span class="punto-tl ${claseParaAccion(fila.accion)}"></span>
+          <div class="contenido-tl">
+            <div>
+              <strong>${iconoParaAccion(fila.accion)} ${fila.actor_nombre || '—'}</strong>
+              (${etiquetaRol(fila.actor_rol) || '—'})
+              ${fila.node_codigo ? ` — <strong>${fila.node_codigo}</strong>` : ''}
+              <span class="accion-tl">${fila.accion}</span>
+            </div>
+            <div>${fila.descripcion}</div>
+            <div class="fecha-tl">${formatearFecha(fila.creado_en)} · ${formatearHora(fila.creado_en)}</div>
+          </div>
+        </li>
+      `).join('');
+
+      document.getElementById('resumen-resultados').textContent = data.length >= LIMITE_TIMELINE
+        ? `Mostrando los primeros ${LIMITE_TIMELINE} — reduce el rango de fechas para ver el resto en orden.`
+        : `${data.length} hito(s) en orden cronológico.`;
+    }
+
     async function cargarLog() {
+      if (vistaActual === 'timeline') { await cargarTimeline(); return; }
+
       const tbody = document.getElementById('tabla-body');
       tbody.innerHTML = '<tr><td colspan="9">Cargando...</td></tr>';
 
@@ -342,6 +452,100 @@
       }
 
       registrarLog('EXPORT_LOG', `Exportó el registro de actividad a ${formato.toUpperCase()} (${datos.length} filas, con los filtros aplicados en pantalla)`);
+    }
+
+    // -------------------- Panel "Ahora" (estado en directo) --------------------
+
+    function mostrarPanelAhora() {
+      document.getElementById('panel').querySelectorAll(':scope > .card:not(.panel-ahora)').forEach(el => el.style.display = 'none');
+      document.getElementById('panel-ahora').style.display = 'block';
+      cargarPanelAhora();
+    }
+
+    function ocultarPanelAhora() {
+      document.getElementById('panel-ahora').style.display = 'none';
+      document.getElementById('panel').querySelectorAll(':scope > .card:not(.panel-ahora)').forEach(el => el.style.display = 'block');
+    }
+
+    function formatearTranscurrido(iso) {
+      const minutos = Math.floor((new Date() - new Date(iso)) / 60000);
+      const horas = Math.floor(minutos / 60);
+      const mins = minutos % 60;
+      return `hace ${horas}h ${String(mins).padStart(2, '0')}min`;
+    }
+
+    async function cargarPanelAhora() {
+      const cont = document.getElementById('ahora-contenido');
+      cont.innerHTML = 'Cargando...';
+      document.getElementById('ahora-actualizado').textContent = `actualizado a las ${formatearHora(new Date().toISOString())}`;
+
+      const { data: filas, error } = await supabaseClient
+        .from('nodes')
+        .select(`
+          codigo, nombre, tipo, activo,
+          node_workflow ( trabajador_id, revisor_id, trabajo_estado, revision_estado, trabajo_iniciado_en, trabajo_terminado_en )
+        `)
+        .eq('activo', true);
+
+      if (error) { cont.innerHTML = `<p style="color:red;">Error: ${error.message}</p>`; return; }
+
+      const nodos = filas.map(n => {
+        const wf = Array.isArray(n.node_workflow) ? n.node_workflow[0] : n.node_workflow;
+        return { codigo: n.codigo, nombre: n.nombre, ...wf };
+      }).filter(n => n.trabajador_id || n.revisor_id);
+
+      const idsPersonas = [...new Set(nodos.flatMap(n => [n.trabajador_id, n.revisor_id]).filter(Boolean))];
+      let nombres = {};
+      if (idsPersonas.length > 0) {
+        const { data: perfiles } = await supabaseClient.from('profiles').select('id, nombre_completo').in('id', idsPersonas);
+        (perfiles || []).forEach(p => { nombres[p.id] = p.nombre_completo; });
+      }
+
+      function agruparPorPersona(lista, campoPersona) {
+        const grupos = {};
+        lista.forEach(n => {
+          const id = n[campoPersona];
+          if (!id) return;
+          if (!grupos[id]) grupos[id] = [];
+          grupos[id].push(n);
+        });
+        return grupos;
+      }
+
+      function pintarGrupo(grupos, campoFecha, etiquetaVacio) {
+        const ids = Object.keys(grupos);
+        if (ids.length === 0) return `<p style="color:#888; font-size:13px;">${etiquetaVacio}</p>`;
+        return ids.map(id => `
+          <div class="grupo-persona">
+            <div class="nombre-persona">${nombres[id] || '?'}</div>
+            ${grupos[id].map(n => `
+              <div class="tarea-ahora">
+                <span><strong>${n.codigo}</strong> ${n.nombre}</span>
+                <span class="tiempo-transcurrido">${n[campoFecha] ? formatearTranscurrido(n[campoFecha]) : ''}</span>
+              </div>
+            `).join('')}
+          </div>
+        `).join('');
+      }
+
+      const trabajando = nodos.filter(n => n.trabajo_estado === 'EN_TRABAJO');
+      const pendienteRevision = nodos.filter(n => n.revision_estado === 'PENDIENTE' || n.revision_estado === 'EN_REVISION');
+      const dudas = nodos.filter(n => n.trabajo_estado === 'PENDIENTE_DUDAS');
+      const cambiosModelo = nodos.filter(n => n.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO');
+
+      cont.innerHTML = `
+        <h3>🔨 Trabajando ahora mismo (${trabajando.length})</h3>
+        ${pintarGrupo(agruparPorPersona(trabajando, 'trabajador_id'), 'trabajo_iniciado_en', 'Nadie está trabajando en nada ahora mismo.')}
+
+        <h3>⏳ Pendientes de revisión, por supervisor (${pendienteRevision.length})</h3>
+        ${pintarGrupo(agruparPorPersona(pendienteRevision, 'revisor_id'), 'trabajo_terminado_en', 'No hay nada pendiente de revisión ahora mismo.')}
+
+        <h3>❓ Pendientes de dudas (${dudas.length})</h3>
+        ${pintarGrupo(agruparPorPersona(dudas, 'trabajador_id'), 'trabajo_iniciado_en', 'Ninguna ahora mismo.')}
+
+        <h3>🔧 Pendientes de cambios de modelo (${cambiosModelo.length})</h3>
+        ${pintarGrupo(agruparPorPersona(cambiosModelo, 'trabajador_id'), 'trabajo_iniciado_en', 'Ninguna ahora mismo.')}
+      `;
     }
 
     iniciar();
