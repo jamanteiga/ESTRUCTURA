@@ -82,8 +82,9 @@
       <label for="rol-nuevo">Rol</label>
       <select id="rol-nuevo">
         <option value="TRABAJADOR">USUARIO</option>
-        <option value="REVISOR">REVISOR</option>
+        <option value="REVISOR">SUPERVISOR</option>
         <option value="ADMIN">ADMIN</option>
+        <option value="INVITADO">INVITADO (solo consulta)</option>
       </select>
 
       <label for="ubicacion-nuevo">Ubicación</label>
@@ -132,8 +133,9 @@
       <label>Rol</label>
       <select id="editar-rol">
         <option value="TRABAJADOR">USUARIO</option>
-        <option value="REVISOR">REVISOR</option>
+        <option value="REVISOR">SUPERVISOR</option>
         <option value="ADMIN">ADMIN</option>
+        <option value="INVITADO">INVITADO (solo consulta)</option>
       </select>
       <label>Ubicación</label>
       <select id="editar-ubicacion">
@@ -206,6 +208,7 @@
     }
 
     async function cerrarSesion() {
+      await registrarLog('LOGOUT', `Cerró sesión (${miPerfil?.username || ''})`);
       await supabaseClient.auth.signOut();
       window.location.href = 'login.html';
     }
@@ -276,7 +279,7 @@
     }
 
     const ETIQUETAS_UBICACION = { FER: 'Ferrol', BIL: 'Bilbao', CAN: 'Canarias' };
-    const ETIQUETAS_ROL = { TRABAJADOR: 'USUARIO', REVISOR: 'REVISOR', ADMIN: 'ADMIN' };
+    const ETIQUETAS_ROL = { TRABAJADOR: 'USUARIO', REVISOR: 'SUPERVISOR', ADMIN: 'ADMIN', INVITADO: 'INVITADO' };
 
     let perfilesCache = [];
 
@@ -357,7 +360,11 @@
       const cambios = [];
       if (anterior && anterior.rol !== rol) cambios.push(`rol ${anterior.rol}→${rol}`);
       if (anterior && anterior.activo !== activo) cambios.push(activo ? 'reactivado' : 'desactivado');
-      registrarLog('EDITAR_USUARIO', `Editó a "${nombre_completo}"${cambios.length ? ' — ' + cambios.join(', ') : ''}`);
+      if (anterior && anterior.ubicacion !== ubicacion) cambios.push('ubicación');
+      if (anterior && anterior.email_contacto !== email_contacto) cambios.push('email de contacto');
+      if (anterior && anterior.movil !== movil) cambios.push('móvil');
+      if (anterior && anterior.linkedin !== linkedin) cambios.push('LinkedIn');
+      registrarLog('EDITAR_USUARIO', `Editó a "${nombre_completo}"${cambios.length ? ' — cambios: ' + cambios.join(', ') : ' — sin cambios de datos'}`);
 
       cerrarModalEditar();
       cargarUsuarios();

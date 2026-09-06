@@ -249,7 +249,7 @@
       <div class="menu-seccion-contenido">
         <a class="menu-item" href="index.html">🏠 Inicio</a>
         <a class="menu-item" id="menu-link-log" href="log.html" style="display:none;">🗒️ Logs</a>
-        <span class="menu-item" id="menu-item-buque" onclick="abrirModalCrear(null, 'BUQUE')" style="display:none;">+ Añadir Buque</span>
+        <span class="menu-item" id="menu-item-buque" onclick="esInvitado() ? alert('Eres un usuario Invitado: solo puedes consultar, no puedes realizar cambios.') : abrirModalCrear(null, 'BUQUE')" style="display:none;">+ Añadir Buque</span>
         <a class="menu-item" href="resumen.html">📊 Resumen</a>
         <a class="menu-item" id="menu-link-usuarios" href="usuarios.html" style="display:none;">👤 Usuarios</a>
         <span class="menu-item" onclick="cerrarSesion()">🚪 Cerrar sesión</span>
@@ -374,7 +374,7 @@
       <input type="text" id="modal-lote-nombre">
       <label>Trabajador (opcional, se asigna a todos)</label>
       <select id="modal-lote-trabajador"><option value="">— Sin asignar —</option></select>
-      <label>Revisor (opcional, se asigna a todos)</label>
+      <label>Supervisor (opcional, se asigna a todos)</label>
       <select id="modal-lote-revisor"><option value="">— Sin asignar —</option></select>
       <div class="estado-msg" id="modal-lote-estado"></div>
       <div class="overlay-botones">
@@ -386,10 +386,10 @@
 
   <div class="overlay" id="modal-asignar">
     <div class="overlay-caja">
-      <h3>Asignar usuario / revisor</h3>
+      <h3>Asignar usuario / supervisor</h3>
       <label>Usuario</label>
       <select id="modal-asignar-trabajador"><option value="">— Sin asignar —</option></select>
-      <label>Revisor</label>
+      <label>Supervisor</label>
       <select id="modal-asignar-revisor"><option value="">— Sin asignar —</option></select>
       <div class="estado-msg" id="modal-asignar-estado"></div>
       <div class="overlay-botones">
@@ -402,8 +402,8 @@
   <div class="overlay" id="modal-tomar">
     <div class="overlay-caja">
       <h3>Tomar esta tarea</h3>
-      <p style="font-size:13px; color:#666;">Te la asignas a ti mismo. Puedes indicar también quién será el revisor.</p>
-      <label>Revisor</label>
+      <p style="font-size:13px; color:#666;">Te la asignas a ti mismo. Puedes indicar también quién será el supervisor.</p>
+      <label>Supervisor</label>
       <select id="modal-tomar-revisor"><option value="">— Sin asignar —</option></select>
       <div class="estado-msg" id="modal-tomar-estado"></div>
       <div class="overlay-botones">
@@ -456,7 +456,7 @@
       <p id="masivo-contador" style="font-size:13px; color:#666;"></p>
       <label>Usuario</label>
       <select id="masivo-trabajador"><option value="">— Sin asignar —</option></select>
-      <label>Revisor</label>
+      <label>Supervisor</label>
       <select id="masivo-revisor"><option value="">— Sin asignar —</option></select>
       <div class="estado-msg" id="masivo-estado"></div>
       <div class="overlay-botones">
@@ -543,9 +543,9 @@
 
       miPerfil = perfil;
       document.getElementById('texto-usuario').textContent =
-        `${perfil.nombre_completo} (${perfil.username}) — ${perfil.rol === 'TRABAJADOR' ? 'USUARIO' : perfil.rol}`;
+        `${perfil.nombre_completo} (${perfil.username}) — ${perfil.rol === 'TRABAJADOR' ? 'USUARIO' : (perfil.rol === 'REVISOR' ? 'SUPERVISOR' : perfil.rol)}`;
 
-      if (esGestor()) document.getElementById('menu-item-buque').style.display = 'flex';
+      if (pareceGestor()) document.getElementById('menu-item-buque').style.display = 'flex';
 
       if (miPerfil.rol === 'ADMIN') {
         document.querySelectorAll('.menu-seccion-titulo').forEach(t => t.classList.add('abierta'));
@@ -560,14 +560,14 @@
         document.getElementById('menu-link-gantt').style.display = 'flex';
         document.getElementById('menu-link-importar').style.display = 'flex';
       }
-      if (esGestor()) {
+      if (pareceGestor()) {
         document.getElementById('wrap-modo-seleccion').style.display = 'flex';
       }
 
       if (miPerfil.rol === 'TRABAJADOR') {
         document.getElementById('wrap-mis-tareas').style.display = 'flex';
       }
-      if (esGestor()) {
+      if (pareceGestor()) {
         document.getElementById('wrap-desactivados').style.display = 'flex';
       }
 
@@ -594,7 +594,7 @@
 
       await cargarPerfiles();
 
-      if (esGestor()) {
+      if (pareceGestor()) {
         const selUsuario = document.getElementById('sel-filtro-usuario');
         document.getElementById('wrap-filtro-usuario').style.display = 'flex';
         const soloUsuarios = perfilesCache.filter(p => p.rol === 'TRABAJADOR');
@@ -610,6 +610,8 @@
     }
 
     function esGestor() { return miPerfil.rol === 'ADMIN' || miPerfil.rol === 'REVISOR'; }
+    function esInvitado() { return miPerfil.rol === 'INVITADO'; }
+    function pareceGestor() { return esGestor() || esInvitado(); }
 
     async function registrarLog(accion, descripcion, nodeId) {
       try {
@@ -975,7 +977,7 @@
       const puedeOperar = esGestor() || esMio;
       const items = [];
 
-      if (esGestor()) {
+      if (pareceGestor()) {
         items.push({ label: '+ Generar nodo hijo', tip: 'Crea un nuevo nodo dentro de este.', fn: () => abrirModalCrear(nodeId, nodo.tipo) });
         items.push({ label: '+N Crear varios nodos', tip: 'Creación de varios nodos iguales al indicado.', fn: () => abrirModalLote(nodeId, nodo.tipo) });
         items.push({ label: '↔️ Cambiar de nodo', tip: 'Cambia de nodo padre.', fn: () => abrirModalMover(nodeId) });
@@ -1017,7 +1019,7 @@
 
         if (!nodo.trabajador_id) {
           items.push({ separador: true });
-          items.push({ label: '🖐 Tomar esta tarea', tip: 'Te asignas esta tarea (y puedes elegir revisor).', fn: () => abrirModalTomar(nodeId) });
+          items.push({ label: '🖐 Tomar esta tarea', tip: 'Te asignas esta tarea (y puedes elegir supervisor).', fn: () => abrirModalTomar(nodeId) });
         } else if (esMio) {
           items.push({ separador: true });
           items.push({
@@ -1037,6 +1039,15 @@
 
       while (items.length && items[items.length - 1].separador) items.pop();
       if (items.length === 0) return;
+
+      if (esInvitado()) {
+        const avisoInvitado = () => alert('Eres un usuario Invitado: solo puedes consultar la aplicación, no puedes realizar cambios.');
+        items.forEach(it => {
+          if (it.label && (it.label.includes('Expandir') || it.label.includes('Contraer'))) return;
+          if (it.fn) it.fn = avisoInvitado;
+          if (it.subitems) it.subitems.forEach(sub => { sub.fn = avisoInvitado; });
+        });
+      }
 
       const menu = document.getElementById('menu-contextual');
       menu.innerHTML = items.map((it, i) => {
@@ -1136,7 +1147,7 @@
       const selRev = document.getElementById('modal-tomar-revisor');
       const revisores = perfilesCache.filter(p => p.rol === 'REVISOR');
       selRev.innerHTML = '<option value="">— Sin asignar —</option>' +
-        revisores.map(p => `<option value="${p.id}">${p.nombre_completo} (${p.rol})</option>`).join('');
+        revisores.map(p => `<option value="${p.id}">${p.nombre_completo} (SUPERVISOR)</option>`).join('');
       document.getElementById('modal-tomar-estado').textContent = '';
       document.getElementById('modal-tomar').style.display = 'flex';
     }
@@ -1393,7 +1404,7 @@
       const revisores = perfilesCache.filter(p => p.rol === 'REVISOR');
       const selRev = document.getElementById('modal-lote-revisor');
       selRev.innerHTML = '<option value="">— Sin asignar —</option>' +
-        revisores.map(p => `<option value="${p.id}">${p.nombre_completo} (${p.rol})</option>`).join('');
+        revisores.map(p => `<option value="${p.id}">${p.nombre_completo} (SUPERVISOR)</option>`).join('');
 
       document.getElementById('modal-lote').style.display = 'flex';
     }
@@ -1601,7 +1612,7 @@
 
       const revisores = perfilesCache.filter(p => p.rol === 'REVISOR');
       selRev.innerHTML = '<option value="">— Sin asignar —</option>' +
-        revisores.map(p => `<option value="${p.id}" ${p.id === nodo.revisor_id ? 'selected' : ''}>${p.nombre_completo} (${p.rol})</option>`).join('');
+        revisores.map(p => `<option value="${p.id}" ${p.id === nodo.revisor_id ? 'selected' : ''}>${p.nombre_completo} (SUPERVISOR)</option>`).join('');
 
       document.getElementById('modal-asignar-estado').textContent = '';
       document.getElementById('modal-asignar').style.display = 'flex';
@@ -1676,7 +1687,7 @@
 
       const nombreTrab = perfilesCache.find(p => p.id === trabajadorId)?.nombre_completo || 'nadie';
       const nombreRev = perfilesCache.find(p => p.id === revisorId)?.nombre_completo || 'nadie';
-      registrarLog('ASIGNACION_MASIVA', `Asignó en lote ${hechos} de ${ids.length} tareas — usuario: ${nombreTrab}, revisor: ${nombreRev}${fallos ? ` (${fallos} fallaron)` : ''}`);
+      registrarLog('ASIGNACION_MASIVA', `Asignó en lote ${hechos} de ${ids.length} tareas — usuario: ${nombreTrab}, supervisor: ${nombreRev}${fallos ? ` (${fallos} fallaron)` : ''}`);
 
       btn.disabled = false;
       cerrarModalAsignacionMasiva();
@@ -1705,7 +1716,7 @@
 
       const nombreTrab = perfilesCache.find(p => p.id === trabajadorId)?.nombre_completo || 'nadie';
       const nombreRev = perfilesCache.find(p => p.id === revisorId)?.nombre_completo || 'nadie';
-      registrarLog('ASIGNAR', `Asignó "${nodo?.codigo}" — usuario: ${nombreTrab}, revisor: ${nombreRev}`, nodoAsignarActual);
+      registrarLog('ASIGNAR', `Asignó "${nodo?.codigo}" — usuario: ${nombreTrab}, supervisor: ${nombreRev}`, nodoAsignarActual);
 
       cerrarModalAsignar();
       await cargarArbol();
@@ -1832,7 +1843,7 @@
         mostrarAviso('pendiente', '📋 Nueva tarea asignada', 'Te han asignado esta tarea para trabajar en ella.', ruta);
       }
       if (fila.revisor_id === miPerfil.id && filaAnterior.revisor_id !== miPerfil.id) {
-        mostrarAviso('pendiente', '🔍 Nueva asignación de revisión', 'Te han asignado como revisor de este nodo.', ruta);
+        mostrarAviso('pendiente', '🔍 Nueva asignación de revisión', 'Te han asignado como supervisor de este nodo.', ruta);
       }
       if (fila.trabajador_id === miPerfil.id && fila.revision_estado === 'RECHAZADO' && filaAnterior.revision_estado !== 'RECHAZADO') {
         mostrarAviso('rechazo', '✘ Tarea rechazada', fila.comentario_revision ? `Motivo: ${fila.comentario_revision}` : 'Revisa los comentarios.', ruta);

@@ -104,6 +104,7 @@
     const POR_PAGINA = 50;
     let paginaActual = 0;
     let totalFilas = 0;
+    let miPerfil = null;
 
     function formatearFecha(iso) {
       const d = new Date(iso);
@@ -117,6 +118,12 @@
       const h = d.getHours();
       const min = String(d.getMinutes()).padStart(2, '0');
       return `${h}:${min}`;
+    }
+
+    function etiquetaRol(rol) {
+      if (rol === 'TRABAJADOR') return 'USUARIO';
+      if (rol === 'REVISOR') return 'SUPERVISOR';
+      return rol;
     }
 
     function resumirUserAgent(ua) {
@@ -137,7 +144,16 @@
       return `${nav} · ${so}`;
     }
 
+    async function registrarLog(accion, descripcion) {
+      try {
+        await supabaseClient.functions.invoke('bright-processor', { body: { accion, descripcion } });
+      } catch (e) {
+        console.warn('No se pudo registrar el log:', e);
+      }
+    }
+
     async function cerrarSesion() {
+      await registrarLog('LOGOUT', `Cerró sesión (${miPerfil?.username || ''})`);
       await supabaseClient.auth.signOut();
       window.location.href = 'login.html';
     }
@@ -161,6 +177,7 @@
 
       document.getElementById('texto-usuario').textContent = `${perfil.nombre_completo} (${perfil.username}) — ADMIN`;
       document.getElementById('panel').style.display = 'block';
+      miPerfil = perfil;
 
       const { data: perfiles } = await supabaseClient.from('profiles').select('id, nombre_completo').order('nombre_completo');
       const selUsuario = document.getElementById('filtro-usuario');
@@ -247,7 +264,7 @@
               <td class="col-fecha">${formatearFecha(fila.creado_en)}</td>
               <td class="col-fecha">${formatearHora(fila.creado_en)}</td>
               <td>${fila.actor_nombre || '—'}</td>
-              <td>${fila.actor_rol || '—'}</td>
+              <td>${etiquetaRol(fila.actor_rol) || '—'}</td>
               <td><span class="col-accion">${fila.accion}</span></td>
               <td>${fila.node_codigo || '—'}</td>
               <td>${fila.descripcion}</td>
@@ -287,7 +304,7 @@
         Fecha: formatearFecha(fila.creado_en),
         Hora: formatearHora(fila.creado_en),
         Usuario: fila.actor_nombre || '',
-        Rol: fila.actor_rol || '',
+        Rol: etiquetaRol(fila.actor_rol) || '',
         Accion: fila.accion,
         Nodo: fila.node_codigo || '',
         Descripcion: fila.descripcion,
@@ -323,6 +340,8 @@
         XLSX.utils.book_append_sheet(libro, hoja, 'Registro');
         XLSX.writeFile(libro, `registro-actividad-${fechaArchivo}.xlsx`);
       }
+
+      registrarLog('EXPORT_LOG', `Exportó el registro de actividad a ${formato.toUpperCase()} (${datos.length} filas, con los filtros aplicados en pantalla)`);
     }
 
     iniciar();

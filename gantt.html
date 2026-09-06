@@ -451,7 +451,7 @@
 
         const nombreTrab = nodo.trabajador_id ? (mapaNombresPerfil[nodo.trabajador_id] || '?') : null;
         const nombreRev = nodo.revisor_id ? (mapaNombresPerfil[nodo.revisor_id] || '?') : null;
-        const sufijoPersonas = [nombreTrab ? `Usuario: ${nombreTrab}` : null, nombreRev ? `Revisor: ${nombreRev}` : null].filter(Boolean).join(' · ');
+        const sufijoPersonas = [nombreTrab ? `Usuario: ${nombreTrab}` : null, nombreRev ? `Supervisor: ${nombreRev}` : null].filter(Boolean).join(' · ');
 
         let barrasHtml = '';
         if (rango.tieneDato) {

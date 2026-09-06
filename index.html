@@ -59,6 +59,15 @@
     const SUPABASE_URL = 'https://wuarkraddnndmgvfnkmm.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    let miPerfil = null;
+
+    async function registrarLog(accion, descripcion) {
+      try {
+        await supabaseClient.functions.invoke('bright-processor', { body: { accion, descripcion } });
+      } catch (e) {
+        console.warn('No se pudo registrar el log:', e);
+      }
+    }
 
     async function iniciar() {
       const { data: { session } } = await supabaseClient.auth.getSession();
@@ -84,8 +93,10 @@
         return;
       }
 
+      miPerfil = perfil;
+
       document.getElementById('texto-usuario').textContent =
-        `${perfil.nombre_completo} (${perfil.username}) — ${perfil.rol === 'TRABAJADOR' ? 'USUARIO' : perfil.rol}`;
+        `${perfil.nombre_completo} (${perfil.username}) — ${perfil.rol === 'TRABAJADOR' ? 'USUARIO' : (perfil.rol === 'REVISOR' ? 'SUPERVISOR' : perfil.rol)}`;
 
       if (perfil.rol === 'ADMIN') {
         document.getElementById('tarjeta-usuarios').style.display = 'block';
@@ -96,6 +107,7 @@
     }
 
     async function cerrarSesion() {
+      await registrarLog('LOGOUT', `Cerró sesión (${miPerfil?.username || ''})`);
       await supabaseClient.auth.signOut();
       window.location.href = 'login.html';
     }
