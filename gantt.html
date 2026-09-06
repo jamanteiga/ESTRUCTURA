@@ -52,9 +52,11 @@
     .estado-msg { font-size: 13px; color: #666; }
 
     @media print {
+      @page { size: A3 landscape; margin: 10mm; }
       .no-imprimir { display: none !important; }
-      body { margin: 0; max-width: 100%; }
-      .gantt-scroll { overflow: visible; border: none; }
+      body { margin: 0; padding: 0; max-width: 100%; width: 100%; }
+      .gantt-scroll { overflow: visible; border: none; max-height: none; width: 100%; }
+      .card.filtros, .card.leyenda { break-inside: avoid; }
     }
   </style>
 </head>
@@ -66,7 +68,7 @@
       <div class="subtitulo" id="subtitulo-fecha"></div>
     </div>
     <div>
-      <button class="secundario" onclick="exportarExcel()">⬇ Exportar a Project (Excel)</button>
+      <button class="secundario" onclick="exportarExcel()">⬇ Exportar a Excel</button>
       <button class="secundario" onclick="window.print()">⬇ Exportar a PDF</button>
       <button class="peligro" onclick="cerrarPagina()">❌ Cerrar</button>
     </div>
