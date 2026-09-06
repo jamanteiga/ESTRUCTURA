@@ -39,6 +39,11 @@
     ul.arbol.raiz { padding-left: 0; }
     li.nodo { margin: 2px 0; }
     .fila-nodo { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 4px; flex-wrap: wrap; }
+    .fila-nodo[draggable="true"] { cursor: grab; }
+    .fila-nodo.arrastrando { opacity: 0.4; }
+    .fila-nodo.dragover-antes { box-shadow: inset 0 3px 0 0 #007bff; }
+    .fila-nodo.dragover-despues { box-shadow: inset 0 -3px 0 0 #007bff; }
+    .fila-nodo.dragover-hijo { background: rgba(0,123,255,0.15) !important; outline: 2px dashed #007bff; outline-offset: -2px; }
     .fila-nodo:hover { background: rgba(0,123,255,0.14); }
     .toggle { width: 16px; cursor: pointer; text-align: center; user-select: none; color: #666; font-size: 11px; }
     .toggle.vacio { visibility: hidden; }
@@ -906,7 +911,12 @@
 
       return `
         <li class="nodo" id="li-${nodo.id}">
-          <div class="fila-nodo" oncontextmenu="mostrarMenuContextual(event, '${nodo.id}'); return false;">
+          <div class="fila-nodo"
+               oncontextmenu="mostrarMenuContextual(event, '${nodo.id}'); return false;"
+               ${esGestor() ? `draggable="true" ondragstart="iniciarArrastre(event, '${nodo.id}')" ondragend="finalizarArrastre(event)"` : ''}
+               ondragover="sobreArrastre(event, '${nodo.id}')"
+               ondragleave="salirArrastre(event)"
+               ondrop="soltarArrastre(event, '${nodo.id}')">
             ${checkboxSeleccion}
             <span class="toggle ${tieneHijos ? '' : 'vacio'}" onclick="toggleNodo('${nodo.id}')">${abierto ? '▼' : '▶'}</span>
             <span class="flecha ${claseColor}" title="${estado}">${simboloFlecha}</span>
@@ -952,6 +962,143 @@
       nodosAbiertos.delete(nodeId);
       obtenerDescendientesIds(nodeId).forEach(id => nodosAbiertos.delete(id));
       cargarArbol();
+    }
+
+    // -------------------- Arrastrar y soltar --------------------
+
+    let nodoArrastradoId = null;
+    let filaObjetivoModoActual = null;
+    let filaObjetivoElementoActual = null;
+
+    function iniciarArrastre(evento, nodeId) {
+      if (!esGestor()) { evento.preventDefault(); return; }
+      nodoArrastradoId = nodeId;
+      evento.dataTransfer.effectAllowed = 'move';
+      evento.dataTransfer.setData('text/plain', nodeId);
+      evento.currentTarget.classList.add('arrastrando');
+    }
+
+    function sobreArrastre(evento, nodeIdDestino) {
+      if (!nodoArrastradoId || nodoArrastradoId === nodeIdDestino) return;
+      if (esDescendiente(nodeIdDestino, nodoArrastradoId)) return;
+
+      evento.preventDefault();
+      evento.dataTransfer.dropEffect = 'move';
+
+      const fila = evento.currentTarget;
+      const rect = fila.getBoundingClientRect();
+      const offsetX = evento.clientX - rect.left;
+      const offsetY = evento.clientY - rect.top;
+
+      const modo = offsetX > rect.width * 0.7 ? 'hijo' : (offsetY < rect.height / 2 ? 'antes' : 'despues');
+
+      if (filaObjetivoElementoActual && filaObjetivoElementoActual !== fila) {
+        filaObjetivoElementoActual.classList.remove('dragover-antes', 'dragover-despues', 'dragover-hijo');
+      }
+      fila.classList.remove('dragover-antes', 'dragover-despues', 'dragover-hijo');
+      fila.classList.add('dragover-' + modo);
+      filaObjetivoElementoActual = fila;
+      filaObjetivoModoActual = modo;
+    }
+
+    function salirArrastre(evento) {
+      if (!evento.currentTarget.contains(evento.relatedTarget)) {
+        evento.currentTarget.classList.remove('dragover-antes', 'dragover-despues', 'dragover-hijo');
+      }
+    }
+
+    function limpiarIndicadoresArrastre() {
+      document.querySelectorAll('.dragover-antes, .dragover-despues, .dragover-hijo').forEach(el => {
+        el.classList.remove('dragover-antes', 'dragover-despues', 'dragover-hijo');
+      });
+      filaObjetivoElementoActual = null;
+      filaObjetivoModoActual = null;
+    }
+
+    function finalizarArrastre(evento) {
+      evento.currentTarget.classList.remove('arrastrando');
+      limpiarIndicadoresArrastre();
+      nodoArrastradoId = null;
+    }
+
+    async function soltarArrastre(evento, nodeIdDestino) {
+      evento.preventDefault();
+      evento.stopPropagation();
+      const modo = filaObjetivoModoActual;
+      limpiarIndicadoresArrastre();
+
+      const origenId = nodoArrastradoId;
+      nodoArrastradoId = null;
+      if (!origenId) return;
+      if (origenId === nodeIdDestino) return;
+
+      const nodoOrigen = mapaNodoPorId[origenId];
+      const nodoDestino = mapaNodoPorId[nodeIdDestino];
+      if (!nodoOrigen || !nodoDestino || !modo) return;
+
+      const nuevoParentId = modo === 'hijo' ? nodeIdDestino : nodoDestino.parent_id;
+
+      if (nuevoParentId === origenId || (nuevoParentId && esDescendiente(nuevoParentId, origenId))) {
+        alert('No se puede mover ahí: crearía un bucle (algo no puede acabar colgando de sí mismo).');
+        return;
+      }
+
+      const parentCambiado = nuevoParentId !== nodoOrigen.parent_id;
+
+      if (parentCambiado) {
+        const tipoNuevoPadre = nuevoParentId ? mapaNodoPorId[nuevoParentId]?.tipo : null;
+        const { data: reglas } = await supabaseClient
+          .from('node_type_rules').select('parent_type').eq('child_type', nodoOrigen.tipo);
+        const tiposPadreValidos = new Set((reglas || []).map(r => r.parent_type));
+        if (!tiposPadreValidos.has(tipoNuevoPadre)) {
+          alert(`No se puede colocar ahí: un "${nodoOrigen.tipo}" no puede ir dentro de un "${tipoNuevoPadre}".`);
+          return;
+        }
+      }
+
+      await ejecutarMovimientoArrastre(nodoOrigen, nuevoParentId, modo, nodeIdDestino, parentCambiado);
+    }
+
+    async function ejecutarMovimientoArrastre(nodoOrigen, nuevoParentId, modo, nodeIdDestino, parentCambiado) {
+      const claveNueva = nuevoParentId || '__raiz__';
+      let hermanos = [...(mapaHijosPorPadre[claveNueva] || [])].filter(n => n.id !== nodoOrigen.id);
+
+      let indiceInsercion;
+      if (modo === 'hijo') {
+        indiceInsercion = hermanos.length;
+      } else {
+        const idxDestino = hermanos.findIndex(n => n.id === nodeIdDestino);
+        indiceInsercion = modo === 'antes' ? idxDestino : idxDestino + 1;
+        if (indiceInsercion < 0) indiceInsercion = hermanos.length;
+      }
+
+      hermanos.splice(indiceInsercion, 0, nodoOrigen);
+
+      let huboError = null;
+      for (let i = 0; i < hermanos.length; i++) {
+        const cambios = {};
+        if (hermanos[i].orden !== i) cambios.orden = i;
+        if (hermanos[i].id === nodoOrigen.id && parentCambiado) cambios.parent_id = nuevoParentId;
+        if (Object.keys(cambios).length > 0) {
+          const { error } = await supabaseClient.from('nodes').update(cambios).eq('id', hermanos[i].id);
+          if (error) huboError = error;
+        }
+      }
+
+      if (huboError) {
+        alert('Error: ' + huboError.message);
+        registrarLog('INTENTO_FALLIDO', `Intento de mover "${nodoOrigen.codigo}" con arrastrar y soltar denegado: ${huboError.message}`, nodoOrigen.id);
+        await cargarArbol();
+        return;
+      }
+
+      const descripcion = parentCambiado
+        ? `Movió "${nodoOrigen.codigo}" (arrastrar y soltar) dentro de "${mapaNodoPorId[nuevoParentId]?.codigo || 'raíz'}"`
+        : `Reordenó "${nodoOrigen.codigo}" (arrastrar y soltar)`;
+      registrarLog(parentCambiado ? 'CAMBIAR_NODO_PADRE' : 'REORDENAR_NODO', descripcion, nodoOrigen.id);
+
+      if (parentCambiado && nuevoParentId) nodosAbiertos.add(nuevoParentId);
+      await cargarArbol();
     }
 
     async function reordenar(nodeId, direccion) {
