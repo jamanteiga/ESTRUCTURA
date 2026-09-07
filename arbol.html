@@ -161,6 +161,8 @@
       padding: 8px 14px; cursor: pointer; display: flex; align-items: center; gap: 8px;
     }
     #menu-contextual .mc-item:hover, #menu-submenu-flotante .mc-item:hover { background: #eef3ff; }
+    #menu-contextual .mc-item.mc-solo-lectura { cursor: default; color: #888; font-style: italic; font-size: 12px; }
+    #menu-contextual .mc-item.mc-solo-lectura:hover { background: transparent; }
     #menu-contextual .mc-separador { border-top: 1px solid #eee; margin: 4px 0; }
     #menu-contextual .mc-titulo { padding: 6px 14px; font-size: 11px; color: #888; text-transform: uppercase; font-weight: bold; }
     #menu-contextual .mc-item.mc-padre::after { content: '▸'; float: right; color: #999; margin-left: 10px; }
@@ -478,6 +480,17 @@
       <select id="masivo-trabajador"><option value="">— Sin asignar —</option></select>
       <label>Supervisor</label>
       <select id="masivo-revisor"><option value="">— Sin asignar —</option></select>
+      <label>Estado tarea (opcional)</label>
+      <select id="masivo-estado-tarea">
+        <option value="">— No cambiar —</option>
+        <option value="pendiente_de_hacer">Pendiente de hacer</option>
+        <option value="en_proceso">En proceso</option>
+        <option value="pendiente_revision">Pendiente de revisión</option>
+        <option value="pendiente_dudas">Pendiente de dudas</option>
+        <option value="pendiente_cambios_modelo">Pendiente cambios en modelo</option>
+        <option value="aprobado">Aprobado</option>
+        <option value="rechazado">Rechazado</option>
+      </select>
       <div class="estado-msg" id="masivo-estado"></div>
       <div class="overlay-botones">
         <button class="secundario" onclick="cerrarModalAsignacionMasiva()">Cancelar</button>
@@ -1251,6 +1264,16 @@
               { label: 'Pendiente cambios en modelo', tip: 'Pendiente por cambios en el modelo.', fn: () => accionMarcarPendienteCambiosModelo(nodeId) }
             ]
           });
+        } else {
+          const ETIQUETAS_ESTADO_MENU = {
+            asignada_sin_empezar: 'Pendiente de hacer', en_proceso: 'En proceso', pendiente_revision: 'Pendiente de revisión',
+            pendiente_dudas: 'Pendiente de dudas', pendiente_cambios_modelo: 'Pendiente cambios en modelo',
+            aprobado: 'Aprobado', rechazado: 'Rechazado', mezcla: 'Estados mezclados'
+          };
+          const estadoActual = calcularEstadoPropio(nodo);
+          const nombreTrabajadorOtro = perfilesCache.find(p => p.id === nodo.trabajador_id)?.nombre_completo || 'otro usuario';
+          items.push({ separador: true });
+          items.push({ label: `📌 Estado: ${ETIQUETAS_ESTADO_MENU[estadoActual] || estadoActual} (de ${nombreTrabajadorOtro})`, tip: 'Solo puedes consultarlo — es tarea de otra persona.', soloLectura: true });
         }
       }
 
@@ -1272,12 +1295,18 @@
         if (it.submenu) {
           return `<div class="mc-item mc-padre" data-idx="${i}">${it.label}</div>`;
         }
-        return `<div class="mc-item" data-idx="${i}">${it.label}</div>`;
+        return `<div class="mc-item ${it.soloLectura ? 'mc-solo-lectura' : ''}" data-idx="${i}">${it.label}</div>`;
       }).join('');
 
       // Items normales
       menu.querySelectorAll('.mc-item[data-idx]:not(.mc-padre)').forEach(el => {
         const it = items[parseInt(el.dataset.idx, 10)];
+        if (it.soloLectura) {
+          el.addEventListener('mouseenter', (e) => mostrarTooltipMenu(e, it.tip));
+          el.addEventListener('mousemove', (e) => posicionarTooltipMenu(e));
+          el.addEventListener('mouseleave', ocultarTooltipMenu);
+          return;
+        }
         el.addEventListener('click', (e) => { e.stopPropagation(); cerrarMenuContextual(); it.fn(); });
         el.addEventListener('mouseenter', (e) => mostrarTooltipMenu(e, it.tip));
         el.addEventListener('mousemove', (e) => posicionarTooltipMenu(e));
@@ -1985,6 +2014,7 @@
       document.getElementById('masivo-revisor').innerHTML = '<option value="">— Sin asignar —</option>' +
         revisores.map(p => `<option value="${p.id}">${p.nombre_completo}</option>`).join('');
 
+      document.getElementById('masivo-estado-tarea').value = '';
       document.getElementById('masivo-estado').textContent = '';
       document.getElementById('modal-asignar-masivo').style.display = 'flex';
     }
@@ -1998,24 +2028,63 @@
       const btn = document.querySelector('#modal-asignar-masivo .overlay-botones button:last-child');
       const trabajadorId = document.getElementById('masivo-trabajador').value || null;
       const revisorId = document.getElementById('masivo-revisor').value || null;
+      const estadoElegido = document.getElementById('masivo-estado-tarea').value;
       const ids = [...nodosSeleccionados];
 
+      let comentarioRechazoMasivo = null;
+      if (estadoElegido === 'rechazado') {
+        comentarioRechazoMasivo = prompt('Motivo del rechazo para todas las seleccionadas (obligatorio):');
+        if (!comentarioRechazoMasivo || !comentarioRechazoMasivo.trim()) return;
+      }
+
       btn.disabled = true;
-      let hechos = 0, fallos = 0;
+      let hechos = 0;
+      const errores = [];
 
       for (const id of ids) {
-        estadoEl.textContent = `Asignando (${hechos + fallos + 1}/${ids.length})...`;
+        estadoEl.textContent = `Asignando (${hechos + errores.length + 1}/${ids.length})...`;
+        const nodo = mapaNodoPorId[id];
         const { error } = await supabaseClient.rpc('asignar_trabajo', {
           p_node_id: id, p_trabajador_id: trabajadorId, p_revisor_id: revisorId
         });
-        if (error) fallos++; else hechos++;
+        if (error) {
+          errores.push(`${nodo?.codigo || id}: ${error.message}`);
+          continue;
+        }
+
+        if (estadoElegido) {
+          const accionesEstado = {
+            pendiente_de_hacer: () => supabaseClient.rpc('reiniciar_tarea', { p_node_id: id }),
+            en_proceso: () => supabaseClient.rpc('marcar_en_trabajo', { p_node_id: id }),
+            pendiente_revision: () => supabaseClient.rpc('marcar_terminado', { p_node_id: id }),
+            pendiente_dudas: () => supabaseClient.rpc('marcar_pendiente_dudas', { p_node_id: id }),
+            pendiente_cambios_modelo: () => supabaseClient.rpc('marcar_pendiente_cambios_modelo', { p_node_id: id }),
+            aprobado: () => supabaseClient.rpc('revisar_nodo', { p_node_id: id, p_aprobado: true, p_comentario: null }),
+            rechazado: () => supabaseClient.rpc('revisar_nodo', { p_node_id: id, p_aprobado: false, p_comentario: comentarioRechazoMasivo })
+          };
+          if (accionesEstado[estadoElegido]) {
+            const { error: errorEstado } = await accionesEstado[estadoElegido]();
+            if (errorEstado) { errores.push(`${nodo?.codigo || id} (estado): ${errorEstado.message}`); continue; }
+          }
+        }
+
+        hechos++;
       }
 
       const nombreTrab = perfilesCache.find(p => p.id === trabajadorId)?.nombre_completo || 'nadie';
       const nombreRev = perfilesCache.find(p => p.id === revisorId)?.nombre_completo || 'nadie';
-      registrarLog('ASIGNACION_MASIVA', `Asignó en lote ${hechos} de ${ids.length} tareas — usuario: ${nombreTrab}, supervisor: ${nombreRev}${fallos ? ` (${fallos} fallaron)` : ''}`);
+      registrarLog('ASIGNACION_MASIVA', `Asignó en lote ${hechos} de ${ids.length} tareas — usuario: ${nombreTrab}, supervisor: ${nombreRev}${estadoElegido ? `, estado: ${estadoElegido}` : ''}${errores.length ? ` (${errores.length} fallaron)` : ''}`);
 
       btn.disabled = false;
+
+      if (errores.length > 0) {
+        estadoEl.innerHTML = `Hecho ${hechos} de ${ids.length}. Fallaron ${errores.length}:<br>` + errores.map(e => `• ${e}`).join('<br>');
+        estadoEl.className = 'estado-msg error';
+        await cargarArbol();
+        return;
+      }
+
+      estadoEl.textContent = '';
       cerrarModalAsignacionMasiva();
       nodosSeleccionados.clear();
       modoSeleccion = false;
