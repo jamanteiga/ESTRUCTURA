@@ -4,11 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ESTRUCTURA - Resumen</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#007bff">
   <style>
     body { font-family: Arial, sans-serif; max-width: 1050px; margin: 30px auto; padding: 0 20px; color: #333; }
     h1 { font-size: 22px; }
     h2 { font-size: 15px; margin-top: 0; }
     .card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    body.vista-movil .solo-escritorio { display: none !important; }
     body.tema-oscuro { background: #1a1d21; color: #e0e0e0; }
     body.tema-oscuro .card { background: #24282e; border-color: #3a3f47; }
     body.tema-oscuro h1, body.tema-oscuro h2 { color: #f0f0f0; }
@@ -138,6 +141,9 @@
     const SUPABASE_URL = 'https://wuarkraddnndmgvfnkmm.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const esMovil = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || window.innerWidth < 768;
+    document.body.classList.toggle('vista-movil', esMovil);
 
     const TIPOS_SIN_ASIGNACION = new Set(['BUQUE']);
 
@@ -628,7 +634,7 @@
           </ul>
         </div>
 
-        <div class="card">
+        <div class="card solo-escritorio">
           <h2>Por usuario</h2>
           <table>
             <thead>
@@ -668,6 +674,10 @@
         document.querySelectorAll('.overlay').forEach(ov => { if (ov.style.display === 'flex') ov.style.display = 'none'; });
       }
     });
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    }
 
     iniciar();
   </script>

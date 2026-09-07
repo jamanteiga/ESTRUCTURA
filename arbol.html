@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ESTRUCTURA - Árbol</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#007bff">
   <style>
     body { font-family: Arial, sans-serif; max-width: 1050px; margin: 30px auto; padding: 0 20px; color: #333; }
     h1 { font-size: 22px; }
@@ -173,6 +175,21 @@
       font-size: 13px;
     }
 
+    /* ---- Vista móvil ---- */
+    body.vista-movil .solo-escritorio { display: none !important; }
+    body.vista-movil .fila-nodo { flex-wrap: wrap; padding: 8px 6px; gap: 8px; }
+    body.vista-movil .toggle { width: 24px; font-size: 16px; }
+    body.vista-movil .flecha { width: 26px; font-size: 24px; }
+    body.vista-movil .codigo, body.vista-movil .tipo-tag { font-size: 13px; }
+    body.vista-movil button { padding: 8px 12px; font-size: 14px; }
+    body.vista-movil .btn-mas-movil {
+      display: inline-flex !important; align-items: center; justify-content: center;
+      width: 34px; height: 34px; border-radius: 50%; background: #eef1f4; color: #333;
+      font-weight: bold; font-size: 18px; margin-left: auto; cursor: pointer; user-select: none;
+    }
+    .btn-mas-movil { display: none; }
+    body.vista-movil.tema-oscuro .btn-mas-movil { background: #3a3f47; color: #e0e0e0; }
+
     /* ---- Tema oscuro ---- */
     body.tema-oscuro { background: #1a1d21; color: #e0e0e0; }
     body.tema-oscuro .card { background: #24282e; border-color: #3a3f47; }
@@ -256,10 +273,10 @@
       <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Navegación <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
         <a class="menu-item" href="index.html">🏠 Inicio</a>
-        <a class="menu-item" id="menu-link-log" href="log.html" style="display:none;">🗒️ Logs</a>
-        <span class="menu-item" id="menu-item-buque" onclick="esInvitado() ? mostrarAvisoModal('Eres un usuario Invitado: solo puedes consultar, no puedes realizar cambios.') : abrirModalCrear(null, 'BUQUE')" style="display:none;">+ Añadir Buque</span>
+        <a class="menu-item solo-escritorio" id="menu-link-log" href="log.html" style="display:none;">🗒️ Logs</a>
+        <span class="menu-item solo-escritorio" id="menu-item-buque" onclick="esInvitado() ? mostrarAvisoModal('Eres un usuario Invitado: solo puedes consultar, no puedes realizar cambios.') : abrirModalCrear(null, 'BUQUE')" style="display:none;">+ Añadir Buque</span>
         <a class="menu-item" href="resumen.html">📊 Resumen</a>
-        <a class="menu-item" id="menu-link-usuarios" href="usuarios.html" style="display:none;">👤 Usuarios</a>
+        <a class="menu-item solo-escritorio" id="menu-link-usuarios" href="usuarios.html" style="display:none;">👤 Usuarios</a>
         <span class="menu-item" onclick="cerrarSesion()">🚪 Cerrar sesión</span>
       </div>
 
@@ -299,8 +316,8 @@
         </label>
       </div>
 
-      <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Herramientas <span class="flecha-menu">›</span></div>
-      <div class="menu-seccion-contenido">
+      <div class="menu-seccion-titulo solo-escritorio" onclick="toggleSeccionMenu(this)">Herramientas <span class="flecha-menu">›</span></div>
+      <div class="menu-seccion-contenido solo-escritorio">
         <label class="menu-item" id="wrap-modo-seleccion" style="display:none;">
           <input type="checkbox" id="chk-modo-seleccion" onchange="toggleModoSeleccion()"> ☑️ Selección múltiple
         </label>
@@ -550,6 +567,9 @@
     const SUPABASE_URL = 'https://wuarkraddnndmgvfnkmm.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const esMovil = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || window.innerWidth < 768;
+    document.body.classList.toggle('vista-movil', esMovil);
 
     const TIPOS_SIN_ASIGNACION = new Set(['BUQUE']);
 
@@ -1015,6 +1035,7 @@
             <span class="acciones">${acciones}</span>
             ${motivoRechazo}
             ${notaDudas}
+            <span class="btn-mas-movil" onclick="event.stopPropagation(); mostrarMenuContextual(event, '${nodo.id}');">⋯</span>
           </div>
           <ul class="arbol hijos ${abierto ? 'abierto' : ''}" id="hijos-${nodo.id}">
             ${tieneHijos ? hijos.map(h => renderizarNodo(h)).join('') : ''}
@@ -1227,18 +1248,22 @@
       const items = [];
 
       if (pareceGestor()) {
-        items.push({ label: '+ Generar nodo hijo', tip: 'Crea un nuevo nodo dentro de este.', fn: () => abrirModalCrear(nodeId, nodo.tipo) });
-        items.push({ label: '+N Crear varios nodos', tip: 'Creación de varios nodos iguales al indicado.', fn: () => abrirModalLote(nodeId, nodo.tipo) });
-        items.push({ label: '↔️ Cambiar de nodo', tip: 'Cambia de nodo padre.', fn: () => abrirModalMover(nodeId) });
-        items.push({ label: '✎ Editar', tip: 'Edita código, nombre y descripción del nodo.', fn: () => abrirModalEditar(nodeId) });
+        if (!esMovil) {
+          items.push({ label: '+ Generar nodo hijo', tip: 'Crea un nuevo nodo dentro de este.', fn: () => abrirModalCrear(nodeId, nodo.tipo) });
+          items.push({ label: '+N Crear varios nodos', tip: 'Creación de varios nodos iguales al indicado.', fn: () => abrirModalLote(nodeId, nodo.tipo) });
+          items.push({ label: '↔️ Cambiar de nodo', tip: 'Cambia de nodo padre.', fn: () => abrirModalMover(nodeId) });
+          items.push({ label: '✎ Editar', tip: 'Edita código, nombre y descripción del nodo.', fn: () => abrirModalEditar(nodeId) });
+        }
         if ((mapaHijosPorPadre[nodeId] || []).length > 0) {
           items.push({ label: '⏬ Expandir', tip: 'Despliega todos los nodos dentro de este.', fn: () => expandirRama(nodeId) });
           items.push({ label: '⏫ Contraer', tip: 'Pliega todos los nodos dentro de este.', fn: () => encogerRama(nodeId) });
         }
-        items.push({ label: '▲ Mover arriba', tip: 'Se mueve nodo hacia arriba.', fn: () => reordenar(nodeId, -1) });
-        items.push({ label: '▼ Mover abajo', tip: 'Se mueve nodo hacia abajo.', fn: () => reordenar(nodeId, 1) });
-        if (nodo.tipo === 'BLOQUE') {
-          items.push({ label: '⧉ Duplicar', tip: 'Se duplica el nodo seleccionado.', fn: () => abrirModalDuplicar(nodeId) });
+        if (!esMovil) {
+          items.push({ label: '▲ Mover arriba', tip: 'Se mueve nodo hacia arriba.', fn: () => reordenar(nodeId, -1) });
+          items.push({ label: '▼ Mover abajo', tip: 'Se mueve nodo hacia abajo.', fn: () => reordenar(nodeId, 1) });
+          if (nodo.tipo === 'BLOQUE') {
+            items.push({ label: '⧉ Duplicar', tip: 'Se duplica el nodo seleccionado.', fn: () => abrirModalDuplicar(nodeId) });
+          }
         }
         if (!sinAsignacion) {
           items.push({ label: '👤 Asignar usuario', tip: 'Asignación de tarea a un usuario.', fn: () => abrirModalAsignar(nodeId) });
@@ -1258,7 +1283,9 @@
             ]
           });
         }
-        items.push({ label: '🗑️ Desactivar', tip: 'Desactivación de un nodo o tarea.', fn: () => desactivarNodo(nodeId) });
+        if (!esMovil) {
+          items.push({ label: '🗑️ Desactivar', tip: 'Desactivación de un nodo o tarea.', fn: () => desactivarNodo(nodeId) });
+        }
         if (miPerfil.rol === 'ADMIN') {
           items.push({ label: '🗒️ Historial', tip: 'Ver el registro de actividad de este nodo.', fn: () => window.open(`log.html?nodo=${encodeURIComponent(nodo.codigo)}`, '_blank') });
         }
@@ -2377,6 +2404,10 @@
         if (buscador) { e.preventDefault(); buscador.focus(); }
       }
     });
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    }
 
     iniciar();
   </script>
