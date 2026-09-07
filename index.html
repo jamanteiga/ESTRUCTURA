@@ -47,6 +47,15 @@
       </a>
     </div>
 
+    <div class="pie" id="pref-inicio-wrap" style="display:none; margin-bottom:14px;">
+      <label style="font-size:12px; color:#666;">Al entrar, ir directo a:
+        <select id="sel-pref-inicio" onchange="guardarPrefInicio()" style="padding:4px; border-radius:4px; border:1px solid #ccc;">
+          <option value="">Esta pantalla</option>
+          <option value="resumen">Mis tareas (Resumen)</option>
+        </select>
+      </label>
+    </div>
+
     <div class="pie">
       <button onclick="cerrarSesion()">Cerrar sesión</button>
     </div>
@@ -95,6 +104,16 @@
 
       miPerfil = perfil;
 
+      if (perfil.rol === 'TRABAJADOR') {
+        const pref = localStorage.getItem('estructura_inicio_' + perfil.id);
+        if (pref === 'resumen') {
+          window.location.href = 'resumen.html';
+          return;
+        }
+        document.getElementById('pref-inicio-wrap').style.display = 'block';
+        document.getElementById('sel-pref-inicio').value = pref || '';
+      }
+
       document.getElementById('texto-usuario').textContent =
         `${perfil.nombre_completo} (${perfil.username}) — ${perfil.rol === 'TRABAJADOR' ? 'USUARIO' : (perfil.rol === 'REVISOR' ? 'SUPERVISOR' : perfil.rol)}`;
 
@@ -104,6 +123,12 @@
 
       document.getElementById('estado-carga').style.display = 'none';
       document.getElementById('contenido').style.display = 'block';
+    }
+
+    function guardarPrefInicio() {
+      const valor = document.getElementById('sel-pref-inicio').value;
+      if (valor) localStorage.setItem('estructura_inicio_' + miPerfil.id, valor);
+      else localStorage.removeItem('estructura_inicio_' + miPerfil.id);
     }
 
     async function cerrarSesion() {

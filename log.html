@@ -8,6 +8,18 @@
     body { font-family: Arial, sans-serif; max-width: 1100px; margin: 30px auto; padding: 0 20px; color: #333; }
     h1 { font-size: 22px; }
     .card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    body.tema-oscuro { background: #1a1d21; color: #e0e0e0; }
+    body.tema-oscuro .card { background: #24282e; border-color: #3a3f47; }
+    body.tema-oscuro h1 { color: #f0f0f0; }
+    body.tema-oscuro table { color: #e0e0e0; }
+    body.tema-oscuro th { background: #14395c; }
+    body.tema-oscuro td { border-color: #3a3f47; }
+    body.tema-oscuro select, body.tema-oscuro input { background: #1a1d21; color: #e0e0e0; border-color: #4a4f57; }
+    body.tema-oscuro .timeline li { border-color: #3a3f47; }
+    body.tema-oscuro .fecha-tl { color: #a0a0a0; }
+    body.tema-oscuro .accion-tl { background: #14395c; }
+    body.tema-oscuro .panel-ahora .grupo-persona { background: #24282e; border-color: #3a3f47; }
+    body.tema-oscuro .panel-ahora .tarea-ahora { border-top-color: #3a3f47; }
     .header-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
     button { padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; }
     button.secundario { background: #6c757d; }
@@ -59,6 +71,7 @@
     <h1>🗒️ Registro de actividad</h1>
     <div>
       <span id="texto-usuario" class="estado-msg"></span>
+      <button class="secundario" onclick="alternarTema()">🌙/☀️</button>
       <button class="secundario" onclick="location.href='index.html'">🏠 Inicio</button>
       <button class="secundario" onclick="location.href='arbol.html'">🌳 Árbol</button>
       <button class="secundario" onclick="location.href='usuarios.html'">👤 Usuarios</button>
@@ -80,6 +93,7 @@
       <input type="date" id="filtro-hasta" title="Hasta">
       <input type="text" id="filtro-nodo" placeholder="Nodo (código)..." style="max-width:140px;">
       <input type="text" id="filtro-texto" placeholder="Buscar en la descripción...">
+      <button class="secundario" id="btn-solo-estructura" onclick="toggleFiltroEstructura()">🏗️ Solo cambios de estructura</button>
       <button class="secundario" onclick="limpiarFiltros()">✕ Limpiar</button>
     </div>
 
@@ -223,6 +237,15 @@
       setTimeout(() => { history.back(); }, 150);
     }
 
+    function aplicarTema(tema) {
+      document.body.classList.toggle('tema-oscuro', tema === 'oscuro');
+      localStorage.setItem('estructura_tema', tema);
+    }
+    function alternarTema() {
+      aplicarTema(document.body.classList.contains('tema-oscuro') ? 'claro' : 'oscuro');
+    }
+    aplicarTema(localStorage.getItem('estructura_tema') || 'claro');
+
     async function iniciar() {
       const { data: { session } } = await supabaseClient.auth.getSession();
       if (!session) { window.location.href = 'login.html?next=log.html'; return; }
@@ -249,7 +272,13 @@
       if (nodoUrl) document.getElementById('filtro-nodo').value = nodoUrl;
 
       ['filtro-usuario', 'filtro-accion', 'filtro-desde', 'filtro-hasta'].forEach(id => {
-        document.getElementById(id).addEventListener('change', () => { paginaActual = 0; cargarLog(); });
+        document.getElementById(id).addEventListener('change', () => {
+          if (id === 'filtro-accion' && document.getElementById(id).value) {
+            filtroSoloEstructura = false;
+            document.getElementById('btn-solo-estructura').classList.remove('activo');
+          }
+          paginaActual = 0; cargarLog();
+        });
       });
       let debounceTexto = null;
       document.getElementById('filtro-texto').addEventListener('input', () => {
@@ -281,12 +310,25 @@
       document.getElementById('filtro-hasta').value = '';
       document.getElementById('filtro-texto').value = '';
       document.getElementById('filtro-nodo').value = '';
+      filtroSoloEstructura = false;
+      document.getElementById('btn-solo-estructura').classList.remove('activo');
       paginaActual = 0;
       cargarLog();
     }
 
     function paginaAnterior() { if (paginaActual > 0) { paginaActual--; cargarLog(); } }
     function paginaSiguiente() { if ((paginaActual + 1) * POR_PAGINA < totalFilas) { paginaActual++; cargarLog(); } }
+
+    let filtroSoloEstructura = false;
+    const ACCIONES_ESTRUCTURA = ['CREAR_NODO', 'EDITAR_NODO', 'DESACTIVAR_NODO', 'REACTIVAR_NODO', 'CAMBIAR_NODO_PADRE', 'REORDENAR_NODO', 'ELIMINAR_DEFINITIVO', 'IMPORTAR_EXCEL'];
+
+    function toggleFiltroEstructura() {
+      filtroSoloEstructura = !filtroSoloEstructura;
+      document.getElementById('btn-solo-estructura').classList.toggle('activo', filtroSoloEstructura);
+      if (filtroSoloEstructura) document.getElementById('filtro-accion').value = '';
+      paginaActual = 0;
+      cargarLog();
+    }
 
     function construirConsultaBase() {
       const usuarioId = document.getElementById('filtro-usuario').value;
@@ -298,7 +340,8 @@
 
       let query = supabaseClient.from('audit_log').select('*', { count: 'exact' }).order('creado_en', { ascending: false });
       if (usuarioId) query = query.eq('actor_id', usuarioId);
-      if (accion) query = query.eq('accion', accion);
+      if (filtroSoloEstructura) query = query.in('accion', ACCIONES_ESTRUCTURA);
+      else if (accion) query = query.eq('accion', accion);
       if (desde) query = query.gte('creado_en', desde + 'T00:00:00');
       if (hasta) query = query.lte('creado_en', hasta + 'T23:59:59');
       if (texto) query = query.ilike('descripcion', `%${texto}%`);
@@ -547,6 +590,12 @@
         ${pintarGrupo(agruparPorPersona(cambiosModelo, 'trabajador_id'), 'trabajo_iniciado_en', 'Ninguna ahora mismo.')}
       `;
     }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        document.querySelectorAll('.overlay').forEach(ov => { if (ov.style.display === 'flex') ov.style.display = 'none'; });
+      }
+    });
 
     iniciar();
   </script>

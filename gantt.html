@@ -10,6 +10,17 @@
     .subtitulo { color: #666; font-size: 13px; margin-top: 2px; }
     .header-bar { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
     .card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 14px; margin-bottom: 14px; }
+    body.tema-oscuro { background: #1a1d21; color: #e0e0e0; }
+    body.tema-oscuro .card { background: #24282e; border-color: #3a3f47; }
+    body.tema-oscuro h1 { color: #f0f0f0; }
+    body.tema-oscuro .subtitulo { color: #a0a0a0; }
+    body.tema-oscuro .gantt-scroll { background: #24282e; border-color: #3a3f47; }
+    body.tema-oscuro .gantt-fila { border-bottom-color: #33373d; }
+    body.tema-oscuro .col-info { background: #24282e; border-right-color: #3a3f47; }
+    body.tema-oscuro .gantt-fila:hover .col-info { background: #2f343b; }
+    body.tema-oscuro .gantt-cabecera, body.tema-oscuro .gantt-cabecera .col-info { background: #14395c; }
+    body.tema-oscuro .gantt-dia { border-right-color: #3a3f47; color: #b0b0b0; }
+    body.tema-oscuro select { background: #1a1d21; color: #e0e0e0; border-color: #4a4f57; }
     button { padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; }
     button.secundario { background: #6c757d; }
     button.secundario:hover { background: #5a6268; }
@@ -72,7 +83,8 @@
       <h1 id="titulo-pagina">🗓️ Gantt</h1>
       <div class="subtitulo" id="subtitulo-fecha"></div>
     </div>
-    <div>
+    <div class="no-imprimir">
+      <button class="secundario" onclick="alternarTema()">🌙/☀️</button>
       <button class="secundario" onclick="exportarExcel()">⬇ Exportar a Excel</button>
       <button class="secundario" onclick="window.print()">⬇ Exportar a PDF</button>
       <button class="peligro" onclick="cerrarPagina()">❌ Cerrar</button>
@@ -182,6 +194,15 @@
       document.getElementById('titulo-pagina').textContent = `🗓️ ${texto}`;
       document.getElementById('titulo-pagina-print').textContent = `Gantt — ${texto}`;
     }
+
+    function aplicarTema(tema) {
+      document.body.classList.toggle('tema-oscuro', tema === 'oscuro');
+      localStorage.setItem('estructura_tema', tema);
+    }
+    function alternarTema() {
+      aplicarTema(document.body.classList.contains('tema-oscuro') ? 'claro' : 'oscuro');
+    }
+    aplicarTema(localStorage.getItem('estructura_tema') || 'claro');
 
     async function iniciar() {
       const { data: { session } } = await supabaseClient.auth.getSession();
@@ -531,6 +552,12 @@
       XLSX.writeFile(libro, `gantt-wbs-${buqueCodigo}-${new Date().toISOString().slice(0,10)}.xlsx`);
       registrarLog('EXPORT_GANTT', `Exportó el Gantt WBS de "${buqueCodigo}" a Excel/Project (${filasParaExportar.length} filas)`);
     }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        document.querySelectorAll('.overlay').forEach(ov => { if (ov.style.display === 'flex') ov.style.display = 'none'; });
+      }
+    });
 
     iniciar();
   </script>

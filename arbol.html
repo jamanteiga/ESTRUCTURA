@@ -237,8 +237,8 @@
     <span><span class="flecha f-pendiente_revision">▶</span>Pendiente de revisión</span>
     <span><span class="flecha f-pendiente_dudas">▶</span>Pendiente de dudas</span>
     <span><span class="flecha f-pendiente_cambios_modelo">▶</span>Pendiente de cambios de modelo</span>
-    <span><span class="flecha f-aprobado">▶</span>Aprobado</span>
-    <span><span class="flecha f-rechazado">▶</span>Rechazado</span>
+    <span><span class="flecha f-aprobado">✔</span>Aprobado</span>
+    <span><span class="flecha f-rechazado">✘</span>Rechazado</span>
     <span><span class="flecha f-mezcla">▶</span>Estados mezclados</span>
   </div>
 
@@ -462,9 +462,11 @@
   </div>
 
   <div id="contenedor-avisos"></div>
-  <div id="barra-seleccion" style="display:none; position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#222; color:white; padding:12px 20px; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.35); z-index:3000; gap:12px; align-items:center;">
+  <div id="barra-seleccion" style="display:none; position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#222; color:white; padding:12px 20px; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.35); z-index:3000; gap:12px; align-items:center; flex-wrap:wrap; max-width:95vw;">
     <span id="texto-seleccion" style="font-size:13px;"></span>
     <button onclick="abrirModalAsignacionMasiva()">👤 Asignar seleccionadas</button>
+    <button id="btn-aprobar-masivo" style="background:#28a745; display:none;" onclick="confirmarAprobarMasivo()">✔ Aprobar seleccionadas</button>
+    <button id="btn-rechazar-masivo" style="background:#dc3545; display:none;" onclick="confirmarRechazarMasivo()">✘ Rechazar seleccionadas</button>
     <button class="secundario" onclick="cancelarSeleccion()">✕ Cancelar</button>
   </div>
 
@@ -888,7 +890,7 @@
       const tieneHijos = hijos.length > 0;
       const abierto = nodosAbiertos.has(nodo.id);
       const estado = calcularEstadoConsenso(nodo);
-      const simboloFlecha = '▶';
+      const simboloFlecha = estado === 'aprobado' ? '✔' : (estado === 'rechazado' ? '✘' : '▶');
       const claseColor = `f-${estado}`;
       const sinAsignacion = TIPOS_SIN_ASIGNACION.has(nodo.tipo);
       const inactivo = !nodo.activo;
@@ -1569,6 +1571,9 @@
       return partes.join(' › ');
     }
 
+    let inactivosCacheados = [];
+    let filtroTextoPapelera = '';
+
     async function cargarPapelera() {
       const raiz = document.getElementById('arbol-raiz');
       raiz.innerHTML = '<li>Cargando papelera...</li>';
@@ -1579,17 +1584,40 @@
       mapaTodoParaPapelera = {};
       data.forEach(n => { mapaTodoParaPapelera[n.id] = n; });
 
-      const inactivos = data.filter(n => !n.activo).sort((a, b) => a.codigo.localeCompare(b.codigo, 'es'));
+      inactivosCacheados = data.filter(n => !n.activo).sort((a, b) => a.codigo.localeCompare(b.codigo, 'es'));
+      pintarPapelera();
+    }
 
-      const cabeceraPapelera = (inactivos.length > 0 && miPerfil.rol === 'ADMIN')
+    function filtrarPapelera(texto) {
+      filtroTextoPapelera = texto.trim().toLowerCase();
+      pintarPapelera();
+    }
+
+    function pintarPapelera() {
+      const raiz = document.getElementById('arbol-raiz');
+      const inactivos = filtroTextoPapelera
+        ? inactivosCacheados.filter(n =>
+            n.codigo.toLowerCase().includes(filtroTextoPapelera) || n.nombre.toLowerCase().includes(filtroTextoPapelera))
+        : inactivosCacheados;
+
+      const buscadorPapelera = `
+        <li style="list-style:none; margin-bottom:8px;">
+          <input type="text" id="input-buscar-papelera" placeholder="🔍 Buscar en la papelera..."
+                 value="${filtroTextoPapelera}" oninput="filtrarPapelera(this.value)"
+                 style="width:100%; padding:6px 10px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box;">
+        </li>`;
+
+      const cabeceraPapelera = (inactivosCacheados.length > 0 && miPerfil.rol === 'ADMIN')
         ? `<li style="list-style:none; display:flex; justify-content:flex-end; margin-bottom:6px;">
-             <button class="peligro" onclick="confirmarEliminarTodaPapelera()">🗑️ Eliminar todo (${inactivos.length})</button>
+             <button class="peligro" onclick="confirmarEliminarTodaPapelera()">🗑️ Eliminar todo (${inactivosCacheados.length})</button>
            </li>`
         : '';
 
-      raiz.innerHTML = inactivos.length === 0
-        ? '<li>La papelera está vacía.</li>'
-        : cabeceraPapelera + inactivos.map(n => `
+      if (inactivosCacheados.length === 0) { raiz.innerHTML = '<li>La papelera está vacía.</li>'; return; }
+
+      raiz.innerHTML = buscadorPapelera + cabeceraPapelera + (inactivos.length === 0
+        ? '<li>Nada coincide con la búsqueda.</li>'
+        : inactivos.map(n => `
             <li class="nodo">
               <div class="fila-nodo">
                 <span class="tipo-tag">${n.tipo}</span>
@@ -1602,7 +1630,7 @@
                 </span>
               </div>
             </li>
-          `).join('');
+          `).join(''));
     }
 
     function confirmarEliminarTodaPapelera() {
@@ -1935,6 +1963,8 @@
       const barra = document.getElementById('barra-seleccion');
       if (!modoSeleccion || nodosSeleccionados.size === 0) { barra.classList.remove('visible'); return; }
       document.getElementById('texto-seleccion').textContent = `${nodosSeleccionados.size} tarea(s) seleccionada(s)`;
+      document.getElementById('btn-aprobar-masivo').style.display = esGestor() ? 'inline-block' : 'none';
+      document.getElementById('btn-rechazar-masivo').style.display = esGestor() ? 'inline-block' : 'none';
       barra.classList.add('visible');
     }
 
@@ -1993,6 +2023,37 @@
       actualizarBarraSeleccion();
       await cargarArbol();
     }
+
+    async function confirmarAprobarMasivo() {
+      if (!mostrarConfirmacion(`¿Aprobar las ${nodosSeleccionados.size} tareas seleccionadas?`)) return;
+      await ejecutarRevisionMasiva(true, null);
+    }
+
+    async function confirmarRechazarMasivo() {
+      const comentario = prompt(`Motivo del rechazo para las ${nodosSeleccionados.size} tareas seleccionadas (obligatorio):`);
+      if (!comentario || !comentario.trim()) return;
+      await ejecutarRevisionMasiva(false, comentario);
+    }
+
+    async function ejecutarRevisionMasiva(aprobado, comentario) {
+      const ids = [...nodosSeleccionados];
+      let hechos = 0, fallos = 0;
+
+      for (const id of ids) {
+        const { error } = await supabaseClient.rpc('revisar_nodo', { p_node_id: id, p_aprobado: aprobado, p_comentario: comentario });
+        if (error) fallos++; else hechos++;
+      }
+
+      registrarLog(aprobado ? 'APROBAR' : 'RECHAZAR', `${aprobado ? 'Aprobó' : 'Rechazó'} en lote ${hechos} de ${ids.length} tareas${fallos ? ` (${fallos} fallaron)` : ''}${comentario ? ` — motivo: ${comentario}` : ''}`);
+
+      nodosSeleccionados.clear();
+      modoSeleccion = false;
+      document.getElementById('chk-modo-seleccion').checked = false;
+      actualizarBarraSeleccion();
+      await cargarArbol();
+    }
+
+    function mostrarConfirmacion(mensaje) { return confirm(mensaje); }
 
     async function guardarAsignacion() {
       const estadoEl = document.getElementById('modal-asignar-estado');
@@ -2088,6 +2149,9 @@
       if (!aprobado) {
         comentario = prompt('Motivo del rechazo (obligatorio):');
         if (!comentario || !comentario.trim()) return;
+      } else {
+        comentario = prompt('Comentario opcional (déjalo en blanco si no quieres añadir nada):');
+        if (comentario !== null && !comentario.trim()) comentario = null;
       }
       const nodo = mapaNodoPorId[nodeId];
       const { error } = await supabaseClient.rpc('revisar_nodo', { p_node_id: nodeId, p_aprobado: aprobado, p_comentario: comentario });
@@ -2096,7 +2160,7 @@
         registrarLog('INTENTO_FALLIDO', `Intento de ${aprobado ? 'aprobar' : 'rechazar'} "${nodo?.codigo}" denegado: ${error.message}`, nodeId);
         return;
       }
-      registrarLog(aprobado ? 'APROBAR' : 'RECHAZAR', `${aprobado ? 'Aprobó' : 'Rechazó'} "${nodo?.codigo}"${comentario ? ` — motivo: ${comentario}` : ''}`, nodeId);
+      registrarLog(aprobado ? 'APROBAR' : 'RECHAZAR', `${aprobado ? 'Aprobó' : 'Rechazó'} "${nodo?.codigo}"${comentario ? ` — ${aprobado ? 'comentario' : 'motivo'}: ${comentario}` : ''}`, nodeId);
       await cargarArbol();
     }
 
@@ -2170,6 +2234,17 @@
 
       await cargarArbol();
     }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        document.querySelectorAll('.overlay').forEach(ov => { if (ov.style.display === 'flex') ov.style.display = 'none'; });
+        cerrarMenuContextual();
+      }
+      if (e.ctrlKey && e.key.toLowerCase() === 'f') {
+        const buscador = document.getElementById('buscador');
+        if (buscador) { e.preventDefault(); buscador.focus(); }
+      }
+    });
 
     iniciar();
   </script>

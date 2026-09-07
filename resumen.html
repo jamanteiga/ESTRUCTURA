@@ -9,6 +9,15 @@
     h1 { font-size: 22px; }
     h2 { font-size: 15px; margin-top: 0; }
     .card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    body.tema-oscuro { background: #1a1d21; color: #e0e0e0; }
+    body.tema-oscuro .card { background: #24282e; border-color: #3a3f47; }
+    body.tema-oscuro h1, body.tema-oscuro h2 { color: #f0f0f0; }
+    body.tema-oscuro table { color: #e0e0e0; }
+    body.tema-oscuro th { background: #14395c; }
+    body.tema-oscuro td { border-color: #3a3f47; }
+    body.tema-oscuro .ruta-nodo { color: #a0a0a0; }
+    body.tema-oscuro .overlay-caja { background: #24282e; color: #e0e0e0; }
+    body.tema-oscuro select, body.tema-oscuro input { background: #1a1d21; color: #e0e0e0; border-color: #4a4f57; }
     .header-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
     button { padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; }
     button.secundario { background: #6c757d; }
@@ -86,6 +95,14 @@
     <h1>📊 Resumen</h1>
     <div>
       <span id="texto-usuario" class="estado-msg"></span>
+      <span id="pref-inicio-wrap-resumen" style="display:none; font-size:12px; color:#666;">
+        Al entrar, ir directo a:
+        <select id="sel-pref-inicio-resumen" onchange="guardarPrefInicioResumen()" style="padding:3px; border-radius:4px; border:1px solid #ccc;">
+          <option value="">Inicio</option>
+          <option value="resumen">Mis tareas (Resumen)</option>
+        </select>
+      </span>
+      <button class="secundario" onclick="alternarTema()">🌙/☀️</button>
       <button class="secundario" onclick="location.href='index.html'">🏠 Inicio</button>
       <button class="secundario" onclick="location.href='arbol.html'">🌳 Árbol</button>
       <button class="secundario" id="btn-usuarios" onclick="location.href='usuarios.html'" style="display:none;">👤 Usuarios</button>
@@ -212,7 +229,7 @@
         const estado = calcularEstadoPropio(n);
         return `
           <li ${permitirAsignar ? `oncontextmenu="mostrarMenuAsignarResumen(event, '${n.id}'); return false;" style="cursor:context-menu;"` : ''}>
-            <span class="flecha f-${estado}">▶</span>
+            <span class="flecha f-${estado}">${estado === 'aprobado' ? '✔' : (estado === 'rechazado' ? '✘' : '▶')}</span>
             <div>
               <div><strong>${n.codigo}</strong> ${n.nombre} ${n.trabajador_nombre ? `— 👷 ${n.trabajador_nombre}` : ''}</div>
               <div class="ruta-nodo">${rutaCompleta(n)}${n.comentario_revision ? ' · ' + n.comentario_revision : ''}</div>
@@ -346,6 +363,15 @@
       await recargarDatos();
     }
 
+    function aplicarTema(tema) {
+      document.body.classList.toggle('tema-oscuro', tema === 'oscuro');
+      localStorage.setItem('estructura_tema', tema);
+    }
+    function alternarTema() {
+      aplicarTema(document.body.classList.contains('tema-oscuro') ? 'claro' : 'oscuro');
+    }
+    aplicarTema(localStorage.getItem('estructura_tema') || 'claro');
+
     async function iniciar() {
       const { data: { session } } = await supabaseClient.auth.getSession();
       if (!session) { window.location.href = 'login.html?next=resumen.html'; return; }
@@ -363,10 +389,21 @@
         `${perfil.nombre_completo} (${perfil.username}) — ${perfil.rol === 'TRABAJADOR' ? 'USUARIO' : (perfil.rol === 'REVISOR' ? 'SUPERVISOR' : perfil.rol)}`;
       if (perfil.rol === 'ADMIN') document.getElementById('btn-usuarios').style.display = 'inline-block';
 
+      if (perfil.rol === 'TRABAJADOR') {
+        document.getElementById('pref-inicio-wrap-resumen').style.display = 'inline';
+        document.getElementById('sel-pref-inicio-resumen').value = localStorage.getItem('estructura_inicio_' + perfil.id) || '';
+      }
+
       if (pareceGestor()) await cargarPerfilesResumen();
 
       await recargarDatos();
       suscribirseARealtime();
+    }
+
+    function guardarPrefInicioResumen() {
+      const valor = document.getElementById('sel-pref-inicio-resumen').value;
+      if (valor) localStorage.setItem('estructura_inicio_' + miPerfil.id, valor);
+      else localStorage.removeItem('estructura_inicio_' + miPerfil.id);
     }
 
     async function recargarDatos() {
@@ -417,12 +454,38 @@
       pintarVistaUsuario();
     }
 
+    function calcularJornadaHoy(nodos) {
+      const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+      let minutosHoy = 0;
+      const tareasHoy = new Set();
+
+      nodos.forEach(n => {
+        if (n.trabajo_iniciado_en) {
+          const inicio = new Date(n.trabajo_iniciado_en);
+          const fin = n.trabajo_terminado_en ? new Date(n.trabajo_terminado_en) : new Date();
+          const inicioEfectivo = inicio > hoy ? inicio : hoy;
+          if (fin > inicioEfectivo) {
+            minutosHoy += Math.floor((fin - inicioEfectivo) / 60000);
+            tareasHoy.add(n.id);
+          }
+        }
+        if (n.trabajo_terminado_en && new Date(n.trabajo_terminado_en) >= hoy) tareasHoy.add(n.id);
+        if (n.revisado_en && new Date(n.revisado_en) >= hoy) tareasHoy.add(n.id);
+      });
+
+      const horas = Math.floor(minutosHoy / 60);
+      const mins = minutosHoy % 60;
+      return { texto: `${horas}h ${String(mins).padStart(2, '0')}min`, tareas: tareasHoy.size };
+    }
+
     function pintarVistaUsuario() {
       const conteo = {};
       misNodosActual.forEach(n => {
         const e = calcularEstadoPropio(n);
         conteo[e] = (conteo[e] || 0) + 1;
       });
+
+      const jornada = calcularJornadaHoy(misNodosActual);
 
       const nodosDetalle = filtroDetalleEstado
         ? misNodosActual.filter(n => calcularEstadoPropio(n) === filtroDetalleEstado)
@@ -433,6 +496,10 @@
         : 'Detalle';
 
       document.getElementById('contenido').innerHTML = `
+        <div class="card">
+          <h2>☀️ Tu jornada de hoy</h2>
+          <p style="font-size:13px;">Tiempo trabajado hoy: <strong>${jornada.texto}</strong> · Tareas con movimiento hoy: <strong>${jornada.tareas}</strong></p>
+        </div>
         <div class="card">
           <h2>Tus tareas asignadas (${misNodosActual.length})</h2>
           <p style="font-size:11px; color:#888; margin:-4px 0 8px;">Pulsa un estado para ver solo esas tareas abajo.</p>
@@ -507,6 +574,31 @@
       const cambiosModelo = nodos.filter(n => n.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO');
       const sinAsignar = nodos.filter(n => calcularEstadoPropio(n) === 'sin_asignar');
 
+      const colaRevision = nodos
+        .filter(n => n.revision_estado === 'PENDIENTE' || n.revision_estado === 'EN_REVISION')
+        .filter(n => n.trabajo_terminado_en)
+        .sort((a, b) => new Date(a.trabajo_terminado_en) - new Date(b.trabajo_terminado_en));
+
+      function formatearEspera(iso) {
+        const minutos = Math.floor((new Date() - new Date(iso)) / 60000);
+        const horas = Math.floor(minutos / 60);
+        const dias = Math.floor(horas / 24);
+        if (dias > 0) return `${dias}d ${horas % 24}h esperando`;
+        return `${horas}h ${String(minutos % 60).padStart(2, '0')}min esperando`;
+      }
+
+      const filasColaRevision = colaRevision.length === 0
+        ? '<li>Nada pendiente de revisión ahora mismo.</li>'
+        : colaRevision.map(n => `
+            <li ${'oncontextmenu="mostrarMenuAsignarResumen(event, \'' + n.id + '\'); return false;" style="cursor:context-menu;"'}>
+              <span class="flecha f-pendiente_revision">▶</span>
+              <div>
+                <div><strong>${n.codigo}</strong> ${n.nombre} ${n.trabajador_nombre ? `— 👷 ${n.trabajador_nombre}` : ''}</div>
+                <div class="ruta-nodo">${rutaCompleta(n)} · <strong style="color:#b36b00;">${formatearEspera(n.trabajo_terminado_en)}</strong></div>
+              </div>
+            </li>
+          `).join('');
+
       const nodosDetalle = filtroDetalleEstado ? nodos.filter(n => calcularEstadoPropio(n) === filtroDetalleEstado) : [];
       const tituloDetalle = filtroDetalleEstado
         ? `Detalle — ${ETIQUETAS_ESTADO[filtroDetalleEstado]} <button class="secundario" style="margin-left:8px; padding:2px 10px; font-size:11px;" onclick="limpiarFiltroDetalle()">✕ Cerrar</button>`
@@ -527,6 +619,14 @@
             </ul>
           </div>
         ` : ''}
+
+        <div class="card">
+          <h2>⏳ Cola de revisión, por antigüedad (${colaRevision.length})</h2>
+          <p style="font-size:11px; color:#888; margin:-4px 0 8px;">La que más tiempo lleva esperando, arriba del todo.</p>
+          <ul class="lista-nodos" style="max-height:300px; overflow-y:auto;">
+            ${filasColaRevision}
+          </ul>
+        </div>
 
         <div class="card">
           <h2>Por usuario</h2>
@@ -562,6 +662,12 @@
         </div>
       `;
     }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        document.querySelectorAll('.overlay').forEach(ov => { if (ov.style.display === 'flex') ov.style.display = 'none'; });
+      }
+    });
 
     iniciar();
   </script>
