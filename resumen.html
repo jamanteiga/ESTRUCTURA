@@ -409,6 +409,8 @@
     }
 
     let misNodosActual = [];
+    let nodosGestorActual = [];
+    let idsUsuariosGestor = new Set();
 
     function renderVistaUsuario(nodos) {
       misNodosActual = nodos.filter(n => n.trabajador_id === miPerfil.id);
@@ -447,35 +449,40 @@
 
     function filtrarDetallePorEstado(estado) {
       filtroDetalleEstado = (filtroDetalleEstado === estado) ? null : estado;
-      pintarVistaUsuario();
+      if (pareceGestor()) pintarVistaGestor(); else pintarVistaUsuario();
     }
 
     function limpiarFiltroDetalle() {
       filtroDetalleEstado = null;
-      pintarVistaUsuario();
+      if (pareceGestor()) pintarVistaGestor(); else pintarVistaUsuario();
     }
 
     async function renderVistaGestor(nodos) {
+      nodosGestorActual = nodos;
+
+      const idsConTarea = [...new Set(nodos.filter(n => n.trabajador_id).map(n => n.trabajador_id))];
+      idsUsuariosGestor = new Set();
+      if (idsConTarea.length > 0) {
+        const { data: perfiles } = await supabaseClient
+          .from('profiles').select('id, rol').in('id', idsConTarea);
+        idsUsuariosGestor = new Set((perfiles || []).filter(p => p.rol === 'TRABAJADOR').map(p => p.id));
+      }
+
+      pintarVistaGestor();
+    }
+
+    function pintarVistaGestor() {
+      const nodos = nodosGestorActual;
+
       const conteoGeneral = {};
       nodos.forEach(n => {
         const e = calcularEstadoPropio(n);
         conteoGeneral[e] = (conteoGeneral[e] || 0) + 1;
       });
 
-      // Averiguar qué trabajador_id corresponden a rol TRABAJADOR (para
-      // excluir a ADMIN/REVISOR del desglose por persona, aunque tengan
-      // alguna tarea de prueba asignada).
-      const idsConTarea = [...new Set(nodos.filter(n => n.trabajador_id).map(n => n.trabajador_id))];
-      let idsUsuarios = new Set();
-      if (idsConTarea.length > 0) {
-        const { data: perfiles } = await supabaseClient
-          .from('profiles').select('id, rol').in('id', idsConTarea);
-        idsUsuarios = new Set((perfiles || []).filter(p => p.rol === 'TRABAJADOR').map(p => p.id));
-      }
-
       const conteoPorUsuario = {};
       nodos.forEach(n => {
-        if (n.trabajador_id && idsUsuarios.has(n.trabajador_id)) {
+        if (n.trabajador_id && idsUsuariosGestor.has(n.trabajador_id)) {
           if (!conteoPorUsuario[n.trabajador_id]) {
             conteoPorUsuario[n.trabajador_id] = { nombre: n.trabajador_nombre };
             ESTADOS_ORDEN.forEach(e => conteoPorUsuario[n.trabajador_id][e] = 0);
@@ -500,11 +507,26 @@
       const cambiosModelo = nodos.filter(n => n.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO');
       const sinAsignar = nodos.filter(n => calcularEstadoPropio(n) === 'sin_asignar');
 
+      const nodosDetalle = filtroDetalleEstado ? nodos.filter(n => calcularEstadoPropio(n) === filtroDetalleEstado) : [];
+      const tituloDetalle = filtroDetalleEstado
+        ? `Detalle — ${ETIQUETAS_ESTADO[filtroDetalleEstado]} <button class="secundario" style="margin-left:8px; padding:2px 10px; font-size:11px;" onclick="limpiarFiltroDetalle()">✕ Cerrar</button>`
+        : '';
+
       document.getElementById('contenido').innerHTML = `
         <div class="card">
           <h2>Estado general (${nodos.length} nodos)</h2>
-          ${renderContadores(conteoGeneral)}
+          <p style="font-size:11px; color:#888; margin:-4px 0 8px;">Pulsa un estado para ver el detalle de esas tareas.</p>
+          ${renderContadores(conteoGeneral, true, nodos.length)}
         </div>
+
+        ${filtroDetalleEstado ? `
+          <div class="card">
+            <h2>${tituloDetalle}</h2>
+            <ul class="lista-nodos" style="max-height:340px; overflow-y:auto;">
+              ${renderListaNodos(nodosDetalle, 'No hay tareas en este estado.', true)}
+            </ul>
+          </div>
+        ` : ''}
 
         <div class="card">
           <h2>Por usuario</h2>
