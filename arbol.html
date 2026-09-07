@@ -972,8 +972,8 @@
             <span>${resaltarCoincidencia(nodo.nombre)}</span>
             <span class="tipo-tag">${nodo.tipo}</span>
             ${badgeAvance}
-            ${badgeTiempos}
             ${asignadosTexto ? `<span class="asignados">${asignadosTexto}</span>` : ''}
+            ${badgeTiempos}
             <span class="acciones">${acciones}</span>
             ${motivoRechazo}
             ${notaDudas}
@@ -1581,9 +1581,15 @@
 
       const inactivos = data.filter(n => !n.activo).sort((a, b) => a.codigo.localeCompare(b.codigo, 'es'));
 
+      const cabeceraPapelera = (inactivos.length > 0 && miPerfil.rol === 'ADMIN')
+        ? `<li style="list-style:none; margin-bottom:10px;">
+             <button class="peligro" onclick="confirmarEliminarTodaPapelera()">🗑️ Eliminar todo (${inactivos.length})</button>
+           </li>`
+        : '';
+
       raiz.innerHTML = inactivos.length === 0
         ? '<li>La papelera está vacía.</li>'
-        : inactivos.map(n => `
+        : cabeceraPapelera + inactivos.map(n => `
             <li class="nodo">
               <div class="fila-nodo">
                 <span class="tipo-tag">${n.tipo}</span>
@@ -1599,6 +1605,43 @@
           `).join('');
     }
 
+    function confirmarEliminarTodaPapelera() {
+      const inactivos = Object.values(mapaTodoParaPapelera).filter(n => !n.activo);
+      document.getElementById('modal-eliminar-texto').textContent =
+        `¿Eliminar definitivamente TODO lo que hay en la papelera (${inactivos.length} nodos, contando ramas enteras)? No se puede deshacer.`;
+      document.getElementById('modal-eliminar-estado').textContent = '';
+      nodoAEliminarDefinitivo = '__todo__';
+      document.getElementById('modal-eliminar').style.display = 'flex';
+    }
+
+    async function eliminarTodaPapelera() {
+      const estadoEl = document.getElementById('modal-eliminar-estado');
+      const todos = Object.values(mapaTodoParaPapelera).filter(n => !n.activo);
+
+      // Solo se eliminan las "raíces" de cada rama inactiva (nodos cuyo padre
+      // ya está activo, o no tienen padre) — sus descendientes inactivos se
+      // borran solos en cascada al eliminar la raíz, evitando intentar borrar
+      // dos veces lo mismo.
+      const raices = todos.filter(n => {
+        if (!n.parent_id) return true;
+        const padre = mapaTodoParaPapelera[n.parent_id];
+        return !padre || padre.activo;
+      });
+
+      let hechos = 0, fallos = 0;
+      for (const nodo of raices) {
+        estadoEl.textContent = `Eliminando (${hechos + fallos + 1}/${raices.length})...`;
+        const { error } = await supabaseClient.rpc('eliminar_nodo_definitivo', { p_node_id: nodo.id });
+        if (error) { fallos++; console.warn(`Error al eliminar ${nodo.codigo}:`, error.message); }
+        else hechos++;
+      }
+
+      registrarLog('ELIMINAR_DEFINITIVO', `Eliminó toda la papelera: ${hechos} rama(s) borrada(s) de ${raices.length}${fallos ? `, ${fallos} con error` : ''}`);
+
+      cerrarModalEliminar();
+      await cargarPapelera();
+    }
+
     function confirmarEliminarDefinitivo(nodeId) {
       const nodo = mapaTodoParaPapelera[nodeId];
       nodoAEliminarDefinitivo = nodeId;
@@ -1611,6 +1654,8 @@
     function cerrarModalEliminar() { document.getElementById('modal-eliminar').style.display = 'none'; }
 
     async function confirmarEliminarDefinitivoAhora() {
+      if (nodoAEliminarDefinitivo === '__todo__') { await eliminarTodaPapelera(); return; }
+
       const estadoEl = document.getElementById('modal-eliminar-estado');
       const nodo = mapaTodoParaPapelera[nodoAEliminarDefinitivo];
       const { error } = await supabaseClient.rpc('eliminar_nodo_definitivo', { p_node_id: nodoAEliminarDefinitivo });
