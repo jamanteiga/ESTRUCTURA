@@ -467,8 +467,7 @@
   <div id="barra-seleccion" style="display:none; position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#222; color:white; padding:12px 20px; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.35); z-index:3000; gap:12px; align-items:center; flex-wrap:wrap; max-width:95vw;">
     <span id="texto-seleccion" style="font-size:13px;"></span>
     <button onclick="abrirModalAsignacionMasiva()">👤 Asignar seleccionadas</button>
-    <button id="btn-aprobar-masivo" style="background:#28a745; display:none;" onclick="confirmarAprobarMasivo()">✔ Aprobar seleccionadas</button>
-    <button id="btn-rechazar-masivo" style="background:#dc3545; display:none;" onclick="confirmarRechazarMasivo()">✘ Rechazar seleccionadas</button>
+    <button id="btn-estado-masivo" style="display:none;" onclick="abrirModalEstadoMasivo()">📋 Estado tareas</button>
     <button class="secundario" onclick="cancelarSeleccion()">✕ Cancelar</button>
   </div>
 
@@ -495,6 +494,30 @@
       <div class="overlay-botones">
         <button class="secundario" onclick="cerrarModalAsignacionMasiva()">Cancelar</button>
         <button onclick="confirmarAsignacionMasiva()">Asignar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="modal-estado-masivo">
+    <div class="overlay-caja">
+      <h3>📋 Estado tareas</h3>
+      <p id="estadomasivo-contador" style="font-size:13px; color:#666;"></p>
+      <label>Nuevo estado para todas las seleccionadas</label>
+      <select id="estadomasivo-select">
+        <option value="">— Elige un estado —</option>
+        <option value="sin_asignar">Sin asignar</option>
+        <option value="pendiente_de_hacer">Pendiente de hacer</option>
+        <option value="en_proceso">En proceso</option>
+        <option value="pendiente_revision">Pendiente de revisión</option>
+        <option value="pendiente_dudas">Pendiente de dudas</option>
+        <option value="pendiente_cambios_modelo">Pendiente cambios en modelo</option>
+        <option value="aprobado">Aprobado</option>
+        <option value="rechazado">Rechazado</option>
+      </select>
+      <div class="estado-msg" id="estadomasivo-estado"></div>
+      <div class="overlay-botones">
+        <button class="secundario" onclick="cerrarModalEstadoMasivo()">Cancelar</button>
+        <button onclick="confirmarEstadoMasivo()">Aplicar</button>
       </div>
     </div>
   </div>
@@ -1992,8 +2015,7 @@
       const barra = document.getElementById('barra-seleccion');
       if (!modoSeleccion || nodosSeleccionados.size === 0) { barra.classList.remove('visible'); return; }
       document.getElementById('texto-seleccion').textContent = `${nodosSeleccionados.size} tarea(s) seleccionada(s)`;
-      document.getElementById('btn-aprobar-masivo').style.display = esGestor() ? 'inline-block' : 'none';
-      document.getElementById('btn-rechazar-masivo').style.display = esGestor() ? 'inline-block' : 'none';
+      document.getElementById('btn-estado-masivo').style.display = esGestor() ? 'inline-block' : 'none';
       barra.classList.add('visible');
     }
 
@@ -2093,36 +2115,77 @@
       await cargarArbol();
     }
 
-    async function confirmarAprobarMasivo() {
-      if (!mostrarConfirmacion(`¿Aprobar las ${nodosSeleccionados.size} tareas seleccionadas?`)) return;
-      await ejecutarRevisionMasiva(true, null);
+    function abrirModalEstadoMasivo() {
+      document.getElementById('estadomasivo-contador').textContent = `Se aplicará a ${nodosSeleccionados.size} tarea(s) seleccionada(s).`;
+      document.getElementById('estadomasivo-select').value = '';
+      document.getElementById('estadomasivo-estado').textContent = '';
+      document.getElementById('modal-estado-masivo').style.display = 'flex';
     }
 
-    async function confirmarRechazarMasivo() {
-      const comentario = prompt(`Motivo del rechazo para las ${nodosSeleccionados.size} tareas seleccionadas (obligatorio):`);
-      if (!comentario || !comentario.trim()) return;
-      await ejecutarRevisionMasiva(false, comentario);
+    function cerrarModalEstadoMasivo() {
+      document.getElementById('modal-estado-masivo').style.display = 'none';
     }
 
-    async function ejecutarRevisionMasiva(aprobado, comentario) {
-      const ids = [...nodosSeleccionados];
-      let hechos = 0, fallos = 0;
+    async function confirmarEstadoMasivo() {
+      const estadoEl = document.getElementById('estadomasivo-estado');
+      const btn = document.querySelector('#modal-estado-masivo .overlay-botones button:last-child');
+      const estadoElegido = document.getElementById('estadomasivo-select').value;
 
-      for (const id of ids) {
-        const { error } = await supabaseClient.rpc('revisar_nodo', { p_node_id: id, p_aprobado: aprobado, p_comentario: comentario });
-        if (error) fallos++; else hechos++;
+      if (!estadoElegido) {
+        estadoEl.textContent = 'Elige un estado de la lista.';
+        estadoEl.className = 'estado-msg error';
+        return;
       }
 
-      registrarLog(aprobado ? 'APROBAR' : 'RECHAZAR', `${aprobado ? 'Aprobó' : 'Rechazó'} en lote ${hechos} de ${ids.length} tareas${fallos ? ` (${fallos} fallaron)` : ''}${comentario ? ` — motivo: ${comentario}` : ''}`);
+      let comentarioRechazo = null;
+      if (estadoElegido === 'rechazado') {
+        comentarioRechazo = prompt('Motivo del rechazo para todas las seleccionadas (obligatorio):');
+        if (!comentarioRechazo || !comentarioRechazo.trim()) return;
+      }
 
+      const accionesEstado = {
+        sin_asignar: (id) => supabaseClient.rpc('desasignar_trabajador', { p_node_id: id }),
+        pendiente_de_hacer: (id) => supabaseClient.rpc('reiniciar_tarea', { p_node_id: id }),
+        en_proceso: (id) => supabaseClient.rpc('marcar_en_trabajo', { p_node_id: id }),
+        pendiente_revision: (id) => supabaseClient.rpc('marcar_terminado', { p_node_id: id }),
+        pendiente_dudas: (id) => supabaseClient.rpc('marcar_pendiente_dudas', { p_node_id: id }),
+        pendiente_cambios_modelo: (id) => supabaseClient.rpc('marcar_pendiente_cambios_modelo', { p_node_id: id }),
+        aprobado: (id) => supabaseClient.rpc('revisar_nodo', { p_node_id: id, p_aprobado: true, p_comentario: null }),
+        rechazado: (id) => supabaseClient.rpc('revisar_nodo', { p_node_id: id, p_aprobado: false, p_comentario: comentarioRechazo })
+      };
+
+      const ids = [...nodosSeleccionados];
+      btn.disabled = true;
+      let hechos = 0;
+      const errores = [];
+
+      for (const id of ids) {
+        estadoEl.textContent = `Aplicando (${hechos + errores.length + 1}/${ids.length})...`;
+        const nodo = mapaNodoPorId[id];
+        const { error } = await accionesEstado[estadoElegido](id);
+        if (error) errores.push(`${nodo?.codigo || id}: ${error.message}`);
+        else hechos++;
+      }
+
+      registrarLog('ESTADO_MASIVO', `Cambió estado en lote a "${estadoElegido}" — ${hechos} de ${ids.length} tareas${errores.length ? ` (${errores.length} fallaron)` : ''}`);
+
+      btn.disabled = false;
+
+      if (errores.length > 0) {
+        estadoEl.innerHTML = `Hecho ${hechos} de ${ids.length}. Fallaron ${errores.length}:<br>` + errores.map(e => `• ${e}`).join('<br>');
+        estadoEl.className = 'estado-msg error';
+        await cargarArbol();
+        return;
+      }
+
+      estadoEl.textContent = '';
+      cerrarModalEstadoMasivo();
       nodosSeleccionados.clear();
       modoSeleccion = false;
       document.getElementById('chk-modo-seleccion').checked = false;
       actualizarBarraSeleccion();
       await cargarArbol();
     }
-
-    function mostrarConfirmacion(mensaje) { return confirm(mensaje); }
 
     async function guardarAsignacion() {
       const estadoEl = document.getElementById('modal-asignar-estado');
