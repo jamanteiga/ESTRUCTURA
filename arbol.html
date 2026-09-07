@@ -1022,7 +1022,10 @@
                ${esGestor() ? `draggable="true" ondragstart="iniciarArrastre(event, '${nodo.id}')" ondragend="finalizarArrastre(event)"` : ''}
                ondragover="sobreArrastre(event, '${nodo.id}')"
                ondragleave="salirArrastre(event)"
-               ondrop="soltarArrastre(event, '${nodo.id}')">
+               ondrop="soltarArrastre(event, '${nodo.id}')"
+               ontouchstart="iniciarPulsacionLarga(event, '${nodo.id}')"
+               ontouchend="cancelarPulsacionLarga()"
+               ontouchmove="cancelarPulsacionLarga()">
             ${checkboxSeleccion}
             <span class="toggle ${tieneHijos ? '' : 'vacio'}" onclick="toggleNodo('${nodo.id}')">${abierto ? '▼' : '▶'}</span>
             <span class="flecha ${claseColor}" title="${estado}">${simboloFlecha}</span>
@@ -1077,6 +1080,31 @@
     let nodoArrastradoId = null;
     let filaObjetivoModoActual = null;
     let filaObjetivoElementoActual = null;
+
+    // -------------------- Pulsación larga (móvil) --------------------
+
+    let temporizadorPulsacionLarga = null;
+    let pulsacionLargaDisparada = false;
+
+    function iniciarPulsacionLarga(evento, nodeId) {
+      if (evento.touches.length !== 1) return;
+      const touch = evento.touches[0];
+      const xInicial = touch.clientX, yInicial = touch.clientY;
+      pulsacionLargaDisparada = false;
+      clearTimeout(temporizadorPulsacionLarga);
+      temporizadorPulsacionLarga = setTimeout(() => {
+        pulsacionLargaDisparada = true;
+        if (navigator.vibrate) navigator.vibrate(25);
+        mostrarMenuContextual(
+          { preventDefault() {}, stopPropagation() {}, clientX: xInicial, clientY: yInicial },
+          nodeId
+        );
+      }, 500);
+    }
+
+    function cancelarPulsacionLarga() {
+      clearTimeout(temporizadorPulsacionLarga);
+    }
 
     function iniciarArrastre(evento, nodeId) {
       if (!esGestor()) { evento.preventDefault(); return; }
