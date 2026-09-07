@@ -101,7 +101,7 @@
 
     async function registrarLog(accion, descripcion, nodeId) {
       try {
-        await supabaseClient.functions.invoke('bright-processor', { body: { accion, descripcion, node_id: nodeId || null } });
+        await supabaseClient.from('audit_log').insert({ accion, descripcion, node_id: nodeId || null, user_agent: navigator.userAgent });
       } catch (e) {
         console.warn('No se pudo registrar el log:', e);
       }

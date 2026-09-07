@@ -67,7 +67,20 @@
         btn.textContent = 'Entrar';
         estadoEl.textContent = 'Usuario o contraseña incorrectos';
         estadoEl.className = 'estado error';
+        try {
+          await supabaseClient.functions.invoke('login-log', { body: { username } });
+        } catch (e) {
+          console.warn('No se pudo registrar el intento fallido:', e);
+        }
         return;
+      }
+
+      try {
+        await supabaseClient.from('audit_log').insert({
+          accion: 'LOGIN', descripcion: `Inicio de sesión de "${username}"`, user_agent: navigator.userAgent
+        });
+      } catch (e) {
+        console.warn('No se pudo registrar el login:', e);
       }
 
       const { data: perfil } = await supabaseClient
