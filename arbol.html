@@ -1582,7 +1582,7 @@
       const inactivos = data.filter(n => !n.activo).sort((a, b) => a.codigo.localeCompare(b.codigo, 'es'));
 
       const cabeceraPapelera = (inactivos.length > 0 && miPerfil.rol === 'ADMIN')
-        ? `<li style="list-style:none; margin-bottom:10px;">
+        ? `<li style="list-style:none; display:flex; justify-content:flex-end; margin-bottom:6px;">
              <button class="peligro" onclick="confirmarEliminarTodaPapelera()">🗑️ Eliminar todo (${inactivos.length})</button>
            </li>`
         : '';
