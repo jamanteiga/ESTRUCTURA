@@ -9,6 +9,11 @@
     h1 { font-size: 22px; }
     h2 { font-size: 16px; margin-top: 30px; }
     .card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 20px; }
+    .spinner-carga {
+      display: inline-block; width: 16px; height: 16px; border: 2px solid #ccc; border-top-color: #007bff;
+      border-radius: 50%; animation: girar 0.7s linear infinite; vertical-align: middle; margin-right: 8px;
+    }
+    @keyframes girar { to { transform: rotate(360deg); } }
     label { display: block; font-weight: bold; font-size: 12px; margin-bottom: 4px; margin-top: 10px; }
     input, select { padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 14px; }
     input[type="text"], input[type="url"], input[type="tel"] { width: 100%; }
@@ -58,6 +63,23 @@
     <button onclick="cerrarSesion()" style="margin-left:10px;">Cerrar sesión</button>
   </div>
 
+  <div class="overlay" id="modal-aviso-usuarios" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.55); align-items:center; justify-content:center; z-index:5000;">
+    <div style="background:white; border-radius:8px; padding:22px; max-width:400px; width:90%; text-align:center;">
+      <p id="modal-aviso-usuarios-texto" style="font-size:14px; margin:10px 0 18px; white-space:pre-line;"></p>
+      <button onclick="document.getElementById('modal-aviso-usuarios').style.display='none';">Aceptar</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="modal-confirmacion-usuarios" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.55); align-items:center; justify-content:center; z-index:5000;">
+    <div style="background:white; border-radius:8px; padding:22px; max-width:400px; width:90%; text-align:center;">
+      <p id="modal-confirmacion-usuarios-texto" style="font-size:14px; margin:10px 0 18px; white-space:pre-line;"></p>
+      <div style="display:flex; justify-content:center; gap:8px;">
+        <button style="background:#6c757d;" id="confirmacion-usuarios-no">Cancelar</button>
+        <button id="confirmacion-usuarios-si">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
   <div id="panel-admin">
     <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
       <span id="texto-sesion-activa" class="estado ok"></span>
@@ -93,6 +115,7 @@
         <option value="FER">Ferrol (FER)</option>
         <option value="BIL">Bilbao (BIL)</option>
         <option value="CAN">Canarias (CAN)</option>
+        <option value="MAD">Madrid (MAD)</option>
       </select>
 
       <label for="password-nuevo">Contraseña inicial (déjalo en blanco para que se genere una)</label>
@@ -117,7 +140,7 @@
             </tr>
           </thead>
           <tbody id="tabla-usuarios-body">
-            <tr><td colspan="6">Cargando...</td></tr>
+            <tr><td colspan="6"><span class="spinner-carga"></span>Cargando...</td></tr>
           </tbody>
         </table>
       </div>
@@ -143,6 +166,7 @@
         <option value="FER">Ferrol (FER)</option>
         <option value="BIL">Bilbao (BIL)</option>
         <option value="CAN">Canarias (CAN)</option>
+        <option value="MAD">Madrid (MAD)</option>
       </select>
       <label>Email de contacto</label>
       <input type="text" id="editar-email">
@@ -182,6 +206,36 @@
         console.warn('No se pudo registrar el log:', e);
       }
     }
+
+    function mostrarAvisoModal(mensaje) {
+      document.getElementById('modal-aviso-usuarios-texto').textContent = mensaje;
+      document.getElementById('modal-aviso-usuarios').style.display = 'flex';
+    }
+
+    function mostrarConfirmacion(mensaje) {
+      return new Promise((resolve) => {
+        document.getElementById('modal-confirmacion-usuarios-texto').textContent = mensaje;
+        document.getElementById('modal-confirmacion-usuarios').style.display = 'flex';
+        const btnSi = document.getElementById('confirmacion-usuarios-si');
+        const btnNo = document.getElementById('confirmacion-usuarios-no');
+        const limpiar = () => { btnSi.onclick = null; btnNo.onclick = null; document.getElementById('modal-confirmacion-usuarios').style.display = 'none'; };
+        btnSi.onclick = () => { limpiar(); resolve(true); };
+        btnNo.onclick = () => { limpiar(); resolve(false); };
+      });
+    }
+
+    function traducirError(mensaje) {
+      if (!mensaje) return 'Ha ocurrido un error inesperado.';
+      const m = mensaje.toLowerCase();
+      if (m.includes('duplicate key')) return 'Ya existe un usuario con ese mismo dato — no se puede repetir.';
+      if (m.includes('violates foreign key constraint')) return 'No se puede completar: hace referencia a algo que ya no existe.';
+      if (m.includes('new row violates row-level security') || m.includes('permission denied')) return 'No tienes permiso para hacer esto.';
+      if (m.includes('failed to fetch') || m.includes('networkerror')) return 'No se pudo conectar — comprueba tu conexión a internet.';
+      if (m.includes('jwt') || m.includes('token') || m.includes('session')) return 'Tu sesión ha caducado — vuelve a iniciar sesión.';
+      if (m.includes('password')) return 'La contraseña no cumple los requisitos mínimos.';
+      return mensaje;
+    }
+
     let miPerfil = null;
     let idEditando = null;
 
@@ -241,7 +295,7 @@
       const estadoEl = document.getElementById('estado-crear');
       const btn = document.getElementById('btn-crear');
 
-      if (!username || !nombre_completo) { alert('Rellena usuario y nombre completo'); return; }
+      if (!username || !nombre_completo) { mostrarAvisoModal('Rellena usuario y nombre completo'); return; }
 
       btn.disabled = true; btn.textContent = 'Creando...';
       estadoEl.textContent = ''; estadoEl.className = 'estado';
@@ -254,7 +308,7 @@
       btn.disabled = false; btn.textContent = 'Crear usuario';
 
       if (error || (data && data.error)) {
-        estadoEl.textContent = 'Error: ' + (data?.error || error.message);
+        estadoEl.textContent = 'Error: ' + traducirError(data?.error || error.message);
         estadoEl.className = 'estado error';
         registrarLog('INTENTO_FALLIDO', `Intento de crear usuario "${username}" denegado: ${data?.error || error.message}`);
         return;
@@ -285,12 +339,12 @@
 
     async function cargarUsuarios() {
       const tbody = document.getElementById('tabla-usuarios-body');
-      tbody.innerHTML = '<tr><td colspan="6">Cargando...</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6"><span class="spinner-carga"></span>Cargando...</td></tr>';
 
       const { data, error } = await supabaseClient
         .from('profiles').select('*');
 
-      if (error) { tbody.innerHTML = `<tr><td colspan="6" style="color:red;">Error: ${error.message}</td></tr>`; return; }
+      if (error) { tbody.innerHTML = `<tr><td colspan="6" style="color:red;">Error: ${traducirError(error.message)}</td></tr>`; return; }
 
       perfilesCache = (data || []).sort((a, b) =>
         (a.nombre_completo || '').localeCompare(b.nombre_completo || '', 'es', { sensitivity: 'base' })
@@ -344,7 +398,7 @@
       if (!nombre_completo) { estadoEl.textContent = 'El nombre no puede quedar vacío'; estadoEl.className = 'estado error'; return; }
 
       if (idEditando === miPerfil.id && (!activo || rol !== 'ADMIN')) {
-        if (!confirm('Vas a quitarte a ti mismo el rol ADMIN o desactivar tu cuenta. ¿Continuar?')) return;
+        if (!await mostrarConfirmacion('Vas a quitarte a ti mismo el rol ADMIN o desactivar tu cuenta. ¿Continuar?')) return;
       }
 
       const { error } = await supabaseClient.from('profiles').update({
@@ -352,7 +406,7 @@
       }).eq('id', idEditando);
 
       if (error) {
-        estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado error';
+        estadoEl.textContent = 'Error: ' + traducirError(error.message); estadoEl.className = 'estado error';
         registrarLog('INTENTO_FALLIDO', `Intento de editar a "${nombre_completo}" denegado: ${error.message}`);
         return;
       }
@@ -373,12 +427,12 @@
     async function resetearPasswordDesdeModal() {
       const p = perfilesCache.find(x => x.id === idEditando);
       if (!p) return;
-      if (!confirm(`¿Resetear la contraseña de "${p.username}"? Se generará una nueva y tendrá que cambiarla al entrar.`)) return;
+      if (!await mostrarConfirmacion(`¿Resetear la contraseña de "${p.username}"? Se generará una nueva y tendrá que cambiarla al entrar.`)) return;
 
       const { data, error } = await supabaseClient.functions.invoke('admin-reset-password', { body: { user_id: idEditando } });
 
       if (error || (data && data.error)) {
-        alert('Error: ' + (data?.error || error.message));
+        mostrarAvisoModal('Error: ' + traducirError(data?.error || error.message));
         registrarLog('INTENTO_FALLIDO', `Intento de resetear contraseña de "${p.username}" denegado: ${data?.error || error.message}`);
         return;
       }

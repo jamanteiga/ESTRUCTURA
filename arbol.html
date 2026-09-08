@@ -31,8 +31,8 @@
     .f-pendiente_revision { color: rgb(209,239,251); filter: drop-shadow(0 0 1px #7bb6c9) drop-shadow(0 0 1px #7bb6c9); }
     .f-pendiente_dudas { color: rgb(0,176,240); }
     .f-pendiente_cambios_modelo { color: rgb(255,192,0); }
-    .f-aprobado { color: rgb(146,208,80); }
-    .f-rechazado { color: rgb(255,0,0); }
+    .f-aprobado { color: rgb(146,208,80); font-size: 26px; width: 26px; }
+    .f-rechazado { color: rgb(255,0,0); font-size: 26px; width: 26px; }
     .f-mezcla { color: rgb(228,158,221); }
 
     .barra-global { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -129,8 +129,8 @@
     .menu-cerrar { position: absolute; top: 12px; right: 14px; font-size: 20px; color: #999; cursor: pointer; background:none; border:none; }
 
     .menu-seccion-titulo {
-      display: flex; justify-content: space-between; align-items: center; padding: 14px 16px;
-      font-weight: bold; color: #003399; font-size: 13px; letter-spacing: 0.5px; cursor: pointer;
+      display: flex; justify-content: space-between; align-items: center; padding: 8px 16px;
+      font-weight: bold; color: #003399; font-size: 12px; letter-spacing: 0.5px; cursor: pointer;
       border-top: 1px solid #ddd; text-transform: uppercase;
     }
     .menu-seccion-titulo .flecha-menu { transition: transform 0.15s; color: #007bff; }
@@ -138,12 +138,12 @@
     .menu-seccion-contenido { display: none; }
     .menu-seccion-contenido.abierta { display: block; }
     .menu-item {
-      display: flex; align-items: center; gap: 8px; padding: 10px 16px; font-size: 13px; color: #333;
-      border-bottom: 1px solid #f0f0f0; cursor: pointer; text-decoration: none;
+      display: flex; align-items: center; gap: 8px; padding: 6px 16px; font-size: 12.5px; color: #333;
+      border-bottom: 1px solid #f0f0f0; cursor: pointer; text-decoration: none; line-height: 1.3;
     }
     .menu-item:hover { background: #f5f8ff; }
     .menu-item input[type="checkbox"] { width: auto; }
-    .menu-item select { flex: 1; padding: 5px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; }
+    .menu-item select { flex: 1; padding: 3px; border: 1px solid #ccc; border-radius: 4px; font-size: 11.5px; }
 
     body.modo-menu-fijo { padding-left: 320px; }
     body.modo-menu-fijo .btn-hamburguesa { display: none; }
@@ -174,6 +174,13 @@
       border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.25); min-width: 280px; padding: 4px 0;
       font-size: 13px;
     }
+
+    .spinner-carga {
+      display: inline-block; width: 16px; height: 16px; border: 2px solid #ccc; border-top-color: #007bff;
+      border-radius: 50%; animation: girar 0.7s linear infinite; vertical-align: middle; margin-right: 8px;
+    }
+    @keyframes girar { to { transform: rotate(360deg); } }
+    body.tema-oscuro .spinner-carga { border-color: #4a4f57; border-top-color: #4da3ff; }
 
     /* ---- Vista móvil ---- */
     body.vista-movil .solo-escritorio { display: none !important; }
@@ -355,7 +362,7 @@
 
   <div class="card" id="card-arbol">
     <ul class="arbol raiz" id="arbol-raiz">
-      <li>Cargando...</li>
+      <li><span class="spinner-carga"></span>Cargando...</li>
     </ul>
   </div>
 
@@ -543,6 +550,27 @@
     <div class="overlay-caja" style="max-width:400px; text-align:center;">
       <p id="modal-aviso-texto" style="font-size:14px; margin:10px 0 18px; white-space:pre-line;"></p>
       <button onclick="cerrarAviso()">Aceptar</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="modal-confirmacion" style="z-index:5000;">
+    <div class="overlay-caja" style="max-width:400px; text-align:center;">
+      <p id="modal-confirmacion-texto" style="font-size:14px; margin:10px 0 18px; white-space:pre-line;"></p>
+      <div class="overlay-botones" style="justify-content:center;">
+        <button class="secundario" id="confirmacion-no">Cancelar</button>
+        <button id="confirmacion-si">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="modal-pedirtexto" style="z-index:5000;">
+    <div class="overlay-caja" style="max-width:420px;">
+      <p id="modal-pedirtexto-texto" style="font-size:14px; margin:10px 0 10px; white-space:pre-line;"></p>
+      <textarea id="pedirtexto-input" rows="3" style="width:100%; box-sizing:border-box; padding:8px; border:1px solid #ccc; border-radius:4px; font-family:inherit; font-size:13px;"></textarea>
+      <div class="overlay-botones">
+        <button class="secundario" id="pedirtexto-cancel">Cancelar</button>
+        <button id="pedirtexto-ok">Aceptar</button>
+      </div>
     </div>
   </div>
 
@@ -749,8 +777,9 @@
       const contenedor = document.getElementById('card-arbol');
       if (!contenedor) return;
       const espacioSuperior = contenedor.getBoundingClientRect().top;
-      const margenInferior = 20;
-      const alturaDisponible = window.innerHeight - espacioSuperior - margenInferior;
+      const margenInferiorBody = parseFloat(getComputedStyle(document.body).marginBottom) || 0;
+      const margenInferior = 10;
+      const alturaDisponible = window.innerHeight - espacioSuperior - margenInferior - margenInferiorBody;
       contenedor.style.maxHeight = Math.max(200, alturaDisponible) + 'px';
     }
     window.addEventListener('resize', ajustarAlturaArbol);
@@ -862,8 +891,17 @@
       const raiz = document.getElementById('arbol-raiz');
       const nodosRaiz = (mapaHijosPorPadre['__raiz__'] || []).filter(n => !nodosVisiblesActual || nodosVisiblesActual.has(n.id));
 
+      let mensajeVacio;
+      if (todosLosNodos.length === 0) {
+        mensajeVacio = pareceGestor()
+          ? '<li>Todavía no hay ningún Buque. Usa "+ Añadir Buque" en el menú (☰) para crear el primero.</li>'
+          : '<li>Todavía no hay ningún Buque creado.</li>';
+      } else {
+        mensajeVacio = '<li>Nada coincide con la búsqueda o los filtros activos — prueba a ajustarlos o límpialos desde el menú (☰).</li>';
+      }
+
       raiz.innerHTML = nodosRaiz.length === 0
-        ? '<li>No hay ningún Buque que coincida.</li>'
+        ? mensajeVacio
         : nodosRaiz.map(n => renderizarNodo(n)).join('');
 
       ajustarAlturaArbol();
@@ -914,6 +952,11 @@
 
     function toggleAvance() {
       modoAvance = document.getElementById('chk-avance').checked;
+      if (modoAvance) {
+        todosLosNodos.forEach(n => {
+          if (n.tipo === 'SUBBLOQUE') nodosAbiertos.delete(n.id); else nodosAbiertos.add(n.id);
+        });
+      }
       renderizarArbolCompleto();
     }
 
@@ -1490,7 +1533,7 @@
       });
 
       if (error) {
-        estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado-msg error';
+        estadoEl.textContent = 'Error: ' + traducirError(error.message); estadoEl.className = 'estado-msg error';
         registrarLog('INTENTO_FALLIDO', `Intento de tomar la tarea "${nodo?.codigo}" denegado: ${error.message}`, nodoTomarActual);
         return;
       }
@@ -1502,11 +1545,11 @@
     }
 
     async function accionDesasignarTrabajador(nodeId) {
-      if (!confirm('¿Quitar el usuario asignado y dejar esta tarea sin asignar?')) return;
+      if (!await mostrarConfirmacion('¿Quitar el usuario asignado y dejar esta tarea sin asignar?')) return;
       const nodo = mapaNodoPorId[nodeId];
       const { error } = await supabaseClient.rpc('desasignar_trabajador', { p_node_id: nodeId });
       if (error) {
-        mostrarAvisoModal('Error: ' + error.message);
+        mostrarAvisoModal('Error: ' + traducirError(error.message));
         registrarLog('INTENTO_FALLIDO', `Intento de dejar sin asignar "${nodo?.codigo}" denegado: ${error.message}`, nodeId);
         return;
       }
@@ -1515,11 +1558,11 @@
     }
 
     async function accionReiniciarTarea(nodeId) {
-      if (!confirm('¿Reiniciar esta tarea a "Pendiente de hacer"? Se mantiene el usuario asignado.')) return;
+      if (!await mostrarConfirmacion('¿Reiniciar esta tarea a "Pendiente de hacer"? Se mantiene el usuario asignado.')) return;
       const nodo = mapaNodoPorId[nodeId];
       const { error } = await supabaseClient.rpc('reiniciar_tarea', { p_node_id: nodeId });
       if (error) {
-        mostrarAvisoModal('Error: ' + error.message);
+        mostrarAvisoModal('Error: ' + traducirError(error.message));
         registrarLog('INTENTO_FALLIDO', `Intento de reiniciar "${nodo?.codigo}" denegado: ${error.message}`, nodeId);
         return;
       }
@@ -1592,7 +1635,7 @@
       }).select().single();
 
       if (error) {
-        estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado-msg error';
+        estadoEl.textContent = 'Error: ' + traducirError(error.message); estadoEl.className = 'estado-msg error';
         registrarLog('INTENTO_FALLIDO', `Intento de crear ${tipo} "${codigo}" denegado: ${error.message}`, nodoCrearPadre ? nodoCrearPadre.id : null);
         return;
       }
@@ -1621,7 +1664,7 @@
         .update({ codigo, nombre, descripcion: descripcion || null, orden }).eq('id', nodeId);
 
       if (error) {
-        estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado-msg error';
+        estadoEl.textContent = 'Error: ' + traducirError(error.message); estadoEl.className = 'estado-msg error';
         registrarLog('INTENTO_FALLIDO', `Intento de editar "${codigo}" denegado: ${error.message}`, nodeId);
         return;
       }
@@ -1637,11 +1680,11 @@
       if ((mapaHijosPorPadre[nodeId] || []).length > 0) {
         mostrarAvisoModal('Este nodo tiene hijos. Desactívalos primero.'); return;
       }
-      if (!confirm(`¿Desactivar "${nodo.codigo} - ${nodo.nombre}"? No se borra, solo deja de aparecer.`)) return;
+      if (!await mostrarConfirmacion(`¿Desactivar "${nodo.codigo} - ${nodo.nombre}"? No se borra, solo deja de aparecer.`)) return;
 
       const { error } = await supabaseClient.from('nodes').update({ activo: false }).eq('id', nodeId);
       if (error) {
-        mostrarAvisoModal('Error: ' + error.message);
+        mostrarAvisoModal('Error: ' + traducirError(error.message));
         registrarLog('INTENTO_FALLIDO', `Intento de desactivar "${nodo.codigo}" denegado: ${error.message}`, nodeId);
         return;
       }
@@ -1653,7 +1696,7 @@
       const nodo = mapaNodoPorId[nodeId] || mapaTodoParaPapelera[nodeId];
       const { error } = await supabaseClient.from('nodes').update({ activo: true }).eq('id', nodeId);
       if (error) {
-        mostrarAvisoModal('Error: ' + error.message);
+        mostrarAvisoModal('Error: ' + traducirError(error.message));
         registrarLog('INTENTO_FALLIDO', `Intento de reactivar "${nodo?.codigo || nodeId}" denegado: ${error.message}`, nodeId);
         return;
       }
@@ -1683,7 +1726,7 @@
 
     async function cargarPapelera() {
       const raiz = document.getElementById('arbol-raiz');
-      raiz.innerHTML = '<li>Cargando papelera...</li>';
+      raiz.innerHTML = '<li><span class="spinner-carga"></span>Cargando papelera...</li>';
 
       const { data, error } = await supabaseClient.from('nodes').select('*');
       if (error) { raiz.innerHTML = `<li style="color:red;">Error: ${error.message}</li>`; return; }
@@ -1720,7 +1763,7 @@
            </li>`
         : '';
 
-      if (inactivosCacheados.length === 0) { raiz.innerHTML = '<li>La papelera está vacía.</li>'; return; }
+      if (inactivosCacheados.length === 0) { raiz.innerHTML = '<li>La papelera está vacía — aquí aparecerá cualquier nodo o tarea que desactives.</li>'; return; }
 
       raiz.innerHTML = buscadorPapelera + cabeceraPapelera + (inactivos.length === 0
         ? '<li>Nada coincide con la búsqueda.</li>'
@@ -1796,7 +1839,7 @@
       const { error } = await supabaseClient.rpc('eliminar_nodo_definitivo', { p_node_id: nodoAEliminarDefinitivo });
 
       if (error) {
-        estadoEl.textContent = 'Error: ' + error.message;
+        estadoEl.textContent = 'Error: ' + traducirError(error.message);
         estadoEl.className = 'estado-msg error';
         registrarLog('INTENTO_FALLIDO', `Intento de eliminar definitivamente "${nodo?.codigo}" denegado: ${error.message}`, nodoAEliminarDefinitivo);
         return;
@@ -1949,7 +1992,7 @@
         cerrarModalDuplicar();
         await cargarArbol();
       } catch (err) {
-        estadoEl.textContent = 'Error: ' + err.message;
+        estadoEl.textContent = 'Error: ' + traducirError(err.message);
         estadoEl.className = 'estado-msg error';
         registrarLog('INTENTO_FALLIDO', `Intento de duplicar "${nodoDuplicarActual.codigo}" denegado: ${err.message}`, nodoDuplicarActual.id);
       }
@@ -2011,6 +2054,54 @@
     }
     function cerrarAviso() { document.getElementById('modal-aviso').style.display = 'none'; }
 
+    function mostrarConfirmacion(mensaje) {
+      return new Promise((resolve) => {
+        document.getElementById('modal-confirmacion-texto').textContent = mensaje;
+        document.getElementById('modal-confirmacion').style.display = 'flex';
+        const btnSi = document.getElementById('confirmacion-si');
+        const btnNo = document.getElementById('confirmacion-no');
+        const limpiar = () => {
+          btnSi.onclick = null; btnNo.onclick = null;
+          document.getElementById('modal-confirmacion').style.display = 'none';
+        };
+        btnSi.onclick = () => { limpiar(); resolve(true); };
+        btnNo.onclick = () => { limpiar(); resolve(false); };
+      });
+    }
+
+    function pedirTexto(mensaje, valorInicial) {
+      return new Promise((resolve) => {
+        document.getElementById('modal-pedirtexto-texto').textContent = mensaje;
+        const input = document.getElementById('pedirtexto-input');
+        input.value = valorInicial || '';
+        document.getElementById('modal-pedirtexto').style.display = 'flex';
+        setTimeout(() => input.focus(), 50);
+        const btnOk = document.getElementById('pedirtexto-ok');
+        const btnCancel = document.getElementById('pedirtexto-cancel');
+        const limpiar = () => {
+          btnOk.onclick = null; btnCancel.onclick = null;
+          document.getElementById('modal-pedirtexto').style.display = 'none';
+        };
+        btnOk.onclick = () => { const v = input.value; limpiar(); resolve(v); };
+        btnCancel.onclick = () => { limpiar(); resolve(null); };
+      });
+    }
+
+    function traducirError(mensaje) {
+      if (!mensaje) return 'Ha ocurrido un error inesperado.';
+      const m = mensaje.toLowerCase();
+      if (m.includes('duplicate key') && (m.includes('parent') || m.includes('codigo'))) return 'Ya existe un nodo con ese código en este mismo sitio.';
+      if (m.includes('duplicate key')) return 'Ya existe un registro con ese mismo dato — no se puede repetir.';
+      if (m.includes('violates foreign key constraint')) return 'No se puede completar: hace referencia a algo que ya no existe.';
+      if (m.includes('new row violates row-level security') || m.includes('permission denied')) return 'No tienes permiso para hacer esto.';
+      if (m.includes('failed to fetch') || m.includes('networkerror') || m.includes('load failed')) return 'No se pudo conectar — comprueba tu conexión a internet e inténtalo de nuevo.';
+      if (m.includes('jwt') || m.includes('token') || m.includes('session')) return 'Tu sesión ha caducado — vuelve a iniciar sesión.';
+      if (m.includes('violates not-null constraint')) return 'Falta rellenar un campo obligatorio.';
+      if (m.includes('invalid input syntax')) return 'El formato de algún dato no es válido.';
+      if (m.includes('timeout')) return 'La operación ha tardado demasiado — inténtalo de nuevo.';
+      return mensaje;
+    }
+
     function cerrarModalMover() { document.getElementById('modal-mover').style.display = 'none'; }
 
     async function confirmarMover() {
@@ -2019,7 +2110,7 @@
 
       const { error } = await supabaseClient.from('nodes').update({ parent_id: parentIdSeleccionadoParaMover }).eq('id', nodoMoverActual.id);
       if (error) {
-        estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado-msg error';
+        estadoEl.textContent = 'Error: ' + traducirError(error.message); estadoEl.className = 'estado-msg error';
         registrarLog('INTENTO_FALLIDO', `Intento de cambiar de nodo padre "${nodoMoverActual.codigo}" denegado: ${error.message}`, nodoMoverActual.id);
         return;
       }
@@ -2110,7 +2201,7 @@
 
       let comentarioRechazoMasivo = null;
       if (estadoElegido === 'rechazado') {
-        comentarioRechazoMasivo = prompt('Motivo del rechazo para todas las seleccionadas (obligatorio):');
+        comentarioRechazoMasivo = await pedirTexto('Motivo del rechazo para todas las seleccionadas (obligatorio):');
         if (!comentarioRechazoMasivo || !comentarioRechazoMasivo.trim()) return;
       }
 
@@ -2194,7 +2285,7 @@
 
       let comentarioRechazo = null;
       if (estadoElegido === 'rechazado') {
-        comentarioRechazo = prompt('Motivo del rechazo para todas las seleccionadas (obligatorio):');
+        comentarioRechazo = await pedirTexto('Motivo del rechazo para todas las seleccionadas (obligatorio):');
         if (!comentarioRechazo || !comentarioRechazo.trim()) return;
       }
 
@@ -2255,7 +2346,7 @@
       });
 
       if (error) {
-        estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado-msg error';
+        estadoEl.textContent = 'Error: ' + traducirError(error.message); estadoEl.className = 'estado-msg error';
         registrarLog('INTENTO_FALLIDO', `Intento de asignar "${nodo?.codigo}" denegado: ${error.message}`, nodeId);
         return;
       }
@@ -2286,7 +2377,7 @@
       const nodo = mapaNodoPorId[nodeId];
       const { error } = await supabaseClient.rpc('marcar_en_trabajo', { p_node_id: nodeId });
       if (error) {
-        mostrarAvisoModal('Error: ' + error.message);
+        mostrarAvisoModal('Error: ' + traducirError(error.message));
         registrarLog('INTENTO_FALLIDO', `Intento de empezar "${nodo?.codigo}" denegado: ${error.message}`, nodeId);
         return;
       }
@@ -2298,7 +2389,7 @@
       const nodo = mapaNodoPorId[nodeId];
       const { error } = await supabaseClient.rpc('marcar_pendiente_dudas', { p_node_id: nodeId });
       if (error) {
-        mostrarAvisoModal('Error: ' + error.message);
+        mostrarAvisoModal('Error: ' + traducirError(error.message));
         registrarLog('INTENTO_FALLIDO', `Intento de marcar dudas en "${nodo?.codigo}" denegado: ${error.message}`, nodeId);
         return;
       }
@@ -2310,7 +2401,7 @@
       const nodo = mapaNodoPorId[nodeId];
       const { error } = await supabaseClient.rpc('marcar_pendiente_cambios_modelo', { p_node_id: nodeId });
       if (error) {
-        mostrarAvisoModal('Error: ' + error.message);
+        mostrarAvisoModal('Error: ' + traducirError(error.message));
         registrarLog('INTENTO_FALLIDO', `Intento de marcar cambios de modelo en "${nodo?.codigo}" denegado: ${error.message}`, nodeId);
         return;
       }
@@ -2319,11 +2410,11 @@
     }
 
     async function accionMarcarTerminado(nodeId) {
-      if (!confirm('¿Marcar este trabajo como terminado y enviarlo a revisión?')) return;
+      if (!await mostrarConfirmacion('¿Marcar este trabajo como terminado y enviarlo a revisión?')) return;
       const nodo = mapaNodoPorId[nodeId];
       const { error } = await supabaseClient.rpc('marcar_terminado', { p_node_id: nodeId });
       if (error) {
-        mostrarAvisoModal('Error: ' + error.message);
+        mostrarAvisoModal('Error: ' + traducirError(error.message));
         registrarLog('INTENTO_FALLIDO', `Intento de finalizar "${nodo?.codigo}" denegado: ${error.message}`, nodeId);
         return;
       }
@@ -2334,16 +2425,17 @@
     async function accionRevisar(nodeId, aprobado) {
       let comentario = null;
       if (!aprobado) {
-        comentario = prompt('Motivo del rechazo (obligatorio):');
+        comentario = await pedirTexto('Motivo del rechazo (obligatorio):');
         if (!comentario || !comentario.trim()) return;
       } else {
-        comentario = prompt('Comentario opcional (déjalo en blanco si no quieres añadir nada):');
-        if (comentario !== null && !comentario.trim()) comentario = null;
+        comentario = await pedirTexto('Comentario opcional (déjalo en blanco si no quieres añadir nada):');
+        if (comentario === null) return;
+        if (!comentario.trim()) comentario = null;
       }
       const nodo = mapaNodoPorId[nodeId];
       const { error } = await supabaseClient.rpc('revisar_nodo', { p_node_id: nodeId, p_aprobado: aprobado, p_comentario: comentario });
       if (error) {
-        mostrarAvisoModal('Error: ' + error.message);
+        mostrarAvisoModal('Error: ' + traducirError(error.message));
         registrarLog('INTENTO_FALLIDO', `Intento de ${aprobado ? 'aprobar' : 'rechazar'} "${nodo?.codigo}" denegado: ${error.message}`, nodeId);
         return;
       }
