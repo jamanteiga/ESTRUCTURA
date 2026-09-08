@@ -337,6 +337,7 @@
         <a class="menu-item" id="menu-link-gantt" href="gantt.html" target="_blank" style="display:none;">🗓️ Gantt</a>
         <a class="menu-item" id="menu-link-importar" href="importar.html" target="_blank" style="display:none;">📥 Importar Excel</a>
         <a class="menu-item" id="menu-link-duplicados" href="duplicados.html" target="_blank" style="display:none;">🔍 Comprobar duplicados</a>
+        <span class="menu-item" id="menu-item-exportar-excel" onclick="exportarArbolExcel()" style="display:none;">⬇ Exportar árbol a Excel</span>
         <label class="menu-item" id="wrap-papelera" style="display:none;">
           <input type="checkbox" id="chk-papelera" onchange="togglePapelera()"> 🗑️ Ver papelera
         </label>
@@ -591,6 +592,7 @@
   <div id="mc-tooltip"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script>
     const SUPABASE_URL = 'https://wuarkraddnndmgvfnkmm.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
@@ -700,6 +702,7 @@
         document.getElementById('menu-link-gantt').style.display = 'flex';
         document.getElementById('menu-link-importar').style.display = 'flex';
         document.getElementById('menu-link-duplicados').style.display = 'flex';
+        document.getElementById('menu-item-exportar-excel').style.display = 'flex';
       }
       if (pareceGestor()) {
         document.getElementById('wrap-modo-seleccion').style.display = 'flex';
@@ -958,6 +961,40 @@
         });
       }
       renderizarArbolCompleto();
+    }
+
+    async function exportarArbolExcel() {
+      const { data, error } = await supabaseClient.from('nodes').select('*').eq('activo', true).order('orden', { ascending: true });
+      if (error) { mostrarAvisoModal('Error: ' + traducirError(error.message)); return; }
+
+      const mapaPorId = {};
+      data.forEach(n => { mapaPorId[n.id] = n; });
+      const hijosPorPadre = {};
+      data.forEach(n => {
+        const clave = n.parent_id || '__raiz__';
+        if (!hijosPorPadre[clave]) hijosPorPadre[clave] = [];
+        hijosPorPadre[clave].push(n);
+      });
+
+      const filas = [];
+      function recorrer(nodeId, nivel) {
+        const nodo = mapaPorId[nodeId];
+        filas.push({
+          Nivel: nivel, Tipo: nodo.tipo, Codigo: nodo.codigo, Nombre: nodo.nombre,
+          Descripcion: nodo.descripcion || '', Orden: nodo.orden || 0
+        });
+        (hijosPorPadre[nodeId] || []).forEach(h => recorrer(h.id, nivel + 1));
+      }
+      (hijosPorPadre['__raiz__'] || []).forEach(n => recorrer(n.id, 1));
+
+      if (filas.length === 0) { mostrarAvisoModal('No hay ningún nodo activo que exportar.'); return; }
+
+      const hoja = XLSX.utils.json_to_sheet(filas);
+      const libro = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(libro, hoja, 'Estructura');
+      XLSX.writeFile(libro, `estructura-completa-${new Date().toISOString().slice(0, 10)}.xlsx`);
+
+      registrarLog('EXPORTAR_EXCEL', `Exportó el árbol completo a Excel (${filas.length} nodos)`);
     }
 
     function toggleTiempos() {
@@ -2502,6 +2539,7 @@
       }
       if (fila.trabajador_id === miPerfil.id && fila.revision_estado === 'RECHAZADO' && filaAnterior.revision_estado !== 'RECHAZADO') {
         mostrarAviso('rechazo', '✘ Tarea rechazada', fila.comentario_revision ? `Motivo: ${fila.comentario_revision}` : 'Revisa los comentarios.', ruta);
+        mostrarAvisoModal(`✘ Te han rechazado una tarea\n\n${ruta}\n\n${fila.comentario_revision ? 'Motivo: ' + fila.comentario_revision : 'Revisa los comentarios.'}`);
       }
       if (fila.trabajador_id === miPerfil.id && fila.revision_estado === 'APROBADO' && filaAnterior.revision_estado !== 'APROBADO') {
         mostrarAviso('aprobado', '✔ Tarea aprobada', '¡Bien hecho!', ruta);
