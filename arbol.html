@@ -59,6 +59,8 @@
     .asignados { font-size: 11px; color: #888; }
     .asignados .fecha { color: #aaa; font-size: 10px; }
     .motivo-rechazo { font-size: 11px; color: #dc3545; font-style: italic; width: 100%; padding-left: 26px; }
+    .link-comentarios { text-decoration: underline; cursor: pointer; }
+    .link-comentarios:hover { opacity: 0.75; }
     .acciones { display: flex; gap: 3px; margin-left: auto; flex-wrap: wrap; }
     .hijos { display: none; }
     .hijos.abierto { display: block; }
@@ -454,6 +456,20 @@
       <div class="overlay-botones">
         <button class="secundario" onclick="cerrarModalTomar()">Cancelar</button>
         <button onclick="confirmarTomarTarea()">Tomar tarea</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="modal-comentarios-modelo">
+    <div class="overlay-caja">
+      <h3 id="modal-comentarios-titulo">Pendiente cambios en modelo</h3>
+      <div id="comentarios-modelo-lista" style="max-height:260px; overflow-y:auto; margin-bottom:10px; font-size:13px;"></div>
+      <label>Nuevo comentario</label>
+      <textarea id="comentarios-modelo-nuevo" rows="2" placeholder="Ej: Cambio de varias planchas"></textarea>
+      <div class="estado-msg" id="comentarios-modelo-estado"></div>
+      <div class="overlay-botones">
+        <button class="secundario" onclick="cerrarModalComentariosModelo()">Cerrar</button>
+        <button id="comentarios-modelo-anadir" onclick="anadirComentarioModelo()">+ Añadir comentario</button>
       </div>
     </div>
   </div>
@@ -1089,6 +1105,12 @@
       const notaDudas = (!sinAsignacion && !vistaSimplificada && nodo.trabajo_estado === 'PENDIENTE_DUDAS')
         ? `<div class="motivo-rechazo" style="color:rgb(0,176,240);">❓ Pendiente de dudas</div>` : '';
 
+      const notaCambiosModelo = (!sinAsignacion && !vistaSimplificada && nodo.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO')
+        ? `<div class="motivo-rechazo" style="color:rgb(255,192,0);">🛠 Pendiente cambios en modelo —
+             <span class="link-comentarios" onclick="event.stopPropagation(); accionAbrirComentariosModelo('${nodo.id}','GHE');">Ghenova</span> ·
+             <span class="link-comentarios" onclick="event.stopPropagation(); accionAbrirComentariosModelo('${nodo.id}','NAV');">Navantia</span>
+           </div>` : '';
+
       const motivoRechazo = (!sinAsignacion && !vistaSimplificada && nodo.revision_estado === 'RECHAZADO' && nodo.comentario_revision)
         ? `<div class="motivo-rechazo">✘ Motivo: ${nodo.comentario_revision}</div>` : '';
 
@@ -1133,6 +1155,7 @@
             <span class="acciones">${acciones}</span>
             ${motivoRechazo}
             ${notaDudas}
+            ${notaCambiosModelo}
             <span class="btn-mas-movil" onclick="event.stopPropagation(); mostrarMenuContextual(event, '${nodo.id}');">⋯</span>
           </div>
           <ul class="arbol hijos ${abierto ? 'abierto' : ''}" id="hijos-${nodo.id}">
@@ -1402,7 +1425,8 @@
               { label: 'En proceso', tip: 'Se da por iniciada la tarea.', fn: () => accionMarcarEnTrabajo(nodeId) },
               { label: 'Pendiente de revisión', tip: 'Dar tarea por finalizada, a la espera de revisión.', fn: () => accionMarcarTerminado(nodeId) },
               { label: 'Pendiente de dudas', tip: 'Pendiente por dudas.', fn: () => accionMarcarPendienteDudas(nodeId) },
-              { label: 'Pendiente cambios en modelo', tip: 'Pendiente por cambios en el modelo.', fn: () => accionMarcarPendienteCambiosModelo(nodeId) }
+              { label: 'Pendiente cambios en modelo (Ghenova)', tip: 'Pendiente por cambios en el modelo — comentarios GHE01, GHE02...', fn: () => accionAbrirComentariosModelo(nodeId, 'GHE') },
+              { label: 'Pendiente cambios en modelo (Navantia)', tip: 'Pendiente por cambios en el modelo — comentarios NAV01, NAV02...', fn: () => accionAbrirComentariosModelo(nodeId, 'NAV') }
             ]
           });
         }
@@ -1434,7 +1458,8 @@
               { label: 'En proceso', tip: 'Comenzar a trabajar en una tarea.', fn: () => accionMarcarEnTrabajo(nodeId) },
               { label: 'Pendiente de revisión', tip: 'Dar tarea por finalizada.', fn: () => accionMarcarTerminado(nodeId) },
               { label: 'Pendiente de dudas', tip: 'Pendiente por dudas.', fn: () => accionMarcarPendienteDudas(nodeId) },
-              { label: 'Pendiente cambios en modelo', tip: 'Pendiente por cambios en el modelo.', fn: () => accionMarcarPendienteCambiosModelo(nodeId) }
+              { label: 'Pendiente cambios en modelo (Ghenova)', tip: 'Pendiente por cambios en el modelo — comentarios GHE01, GHE02...', fn: () => accionAbrirComentariosModelo(nodeId, 'GHE') },
+              { label: 'Pendiente cambios en modelo (Navantia)', tip: 'Pendiente por cambios en el modelo — comentarios NAV01, NAV02...', fn: () => accionAbrirComentariosModelo(nodeId, 'NAV') }
             ]
           });
         } else {
@@ -2458,6 +2483,69 @@
         return;
       }
       registrarLog('PENDIENTE_CAMBIOS_MODELO', `Marcó "${nodo?.codigo}" como Pendiente de cambios de modelo`, nodeId);
+      await cargarArbol();
+    }
+
+    // -------------------- Comentarios GHE/NAV de "Pendiente cambios en modelo" --------------------
+
+    let comentariosModeloNodoActual = null;
+    let comentariosModeloOrigenActual = null;
+
+    async function accionAbrirComentariosModelo(nodeId, origen) {
+      comentariosModeloNodoActual = nodeId;
+      comentariosModeloOrigenActual = origen;
+      document.getElementById('modal-comentarios-titulo').textContent =
+        `Pendiente cambios en modelo — ${origen === 'GHE' ? 'Ghenova' : 'Navantia'}`;
+      document.getElementById('comentarios-modelo-nuevo').value = '';
+      document.getElementById('comentarios-modelo-estado').textContent = '';
+      await cargarComentariosModelo();
+      document.getElementById('modal-comentarios-modelo').style.display = 'flex';
+    }
+
+    function cerrarModalComentariosModelo() {
+      document.getElementById('modal-comentarios-modelo').style.display = 'none';
+    }
+
+    async function cargarComentariosModelo() {
+      const lista = document.getElementById('comentarios-modelo-lista');
+      lista.innerHTML = '<p style="color:#666;">Cargando...</p>';
+      const { data, error } = await supabaseClient.rpc('listar_comentarios_modelo', {
+        p_node_id: comentariosModeloNodoActual, p_origen: comentariosModeloOrigenActual
+      });
+      if (error) {
+        lista.innerHTML = `<p style="color:#dc3545;">Error: ${traducirError(error.message)}</p>`;
+        return;
+      }
+      lista.innerHTML = (data || []).length === 0
+        ? '<p style="color:#666;">Todavía no hay comentarios.</p>'
+        : data.map(c => `<div style="padding:4px 0; border-bottom:1px solid #eee;"><b>${comentariosModeloOrigenActual}${String(c.numero).padStart(2, '0')}</b> — ${c.texto}</div>`).join('');
+    }
+
+    async function anadirComentarioModelo() {
+      const input = document.getElementById('comentarios-modelo-nuevo');
+      const estadoEl = document.getElementById('comentarios-modelo-estado');
+      const texto = input.value.trim();
+      if (!texto) { estadoEl.textContent = 'Escribe un comentario.'; estadoEl.className = 'estado-msg error'; return; }
+
+      const btn = document.getElementById('comentarios-modelo-anadir');
+      btn.disabled = true;
+      const nodo = mapaNodoPorId[comentariosModeloNodoActual];
+      const { error } = await supabaseClient.rpc('anadir_comentario_modelo', {
+        p_node_id: comentariosModeloNodoActual, p_origen: comentariosModeloOrigenActual, p_texto: texto
+      });
+      btn.disabled = false;
+
+      if (error) {
+        estadoEl.textContent = 'Error: ' + traducirError(error.message);
+        estadoEl.className = 'estado-msg error';
+        registrarLog('INTENTO_FALLIDO', `Intento de añadir comentario ${comentariosModeloOrigenActual} en "${nodo?.codigo}" denegado: ${error.message}`, comentariosModeloNodoActual);
+        return;
+      }
+
+      estadoEl.textContent = '';
+      input.value = '';
+      registrarLog('PENDIENTE_CAMBIOS_MODELO', `Añadió comentario ${comentariosModeloOrigenActual} en "${nodo?.codigo}"`, comentariosModeloNodoActual);
+      await cargarComentariosModelo();
       await cargarArbol();
     }
 
