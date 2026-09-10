@@ -945,12 +945,27 @@
       return resultado;
     }
 
+    const AVANCE_POR_ESTADO = {
+      sin_asignar: 0,
+      asignada_sin_empezar: 0,
+      en_proceso: 5,
+      pendiente_revision: 90,
+      rechazado: 95,
+      aprobado: 100
+      // pendiente_dudas y pendiente_cambios_modelo no llevan porcentaje:
+      // se excluyen del cálculo (ver filtro más abajo), no cuentan como 0.
+    };
+
     function calcularPorcentajeAvance(nodeId) {
       const idsSubarbol = [nodeId, ...obtenerDescendientesIds(nodeId)];
-      const relevantes = idsSubarbol.map(id => mapaNodoPorId[id]).filter(n => n && !TIPOS_SIN_ASIGNACION.has(n.tipo));
+      const relevantes = idsSubarbol
+        .map(id => mapaNodoPorId[id])
+        .filter(n => n && !TIPOS_SIN_ASIGNACION.has(n.tipo))
+        .map(n => calcularEstadoPropio(n))
+        .filter(estado => estado !== 'pendiente_dudas' && estado !== 'pendiente_cambios_modelo');
       if (relevantes.length === 0) return null;
-      const aprobados = relevantes.filter(n => n.revision_estado === 'APROBADO').length;
-      return Math.round((aprobados / relevantes.length) * 100);
+      const suma = relevantes.reduce((acc, estado) => acc + AVANCE_POR_ESTADO[estado], 0);
+      return Math.round(suma / relevantes.length);
     }
 
     function toggleAvance() {
