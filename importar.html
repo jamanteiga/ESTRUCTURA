@@ -164,11 +164,11 @@
 
     function descargarPlantilla() {
       const datos = [
-        { Nivel: 1, Tipo: 'SUBBLOQUE', Codigo: 'SB9', Nombre: 'Subbloque 9', Descripcion: '', Orden: 0 },
+        { Nivel: 1, Tipo: 'SB', Codigo: 'SB9', Nombre: 'Subbloque 9', Descripcion: '', Orden: 0 },
         { Nivel: 2, Tipo: 'PANELES', Codigo: 'PANELES', Nombre: 'Paneles', Descripcion: '', Orden: 0 },
-        { Nivel: 2, Tipo: 'UNIDAD_ABIERTA', Codigo: 'UA1', Nombre: 'Unidad abierta 1', Descripcion: '', Orden: 1 },
-        { Nivel: 3, Tipo: 'UNIDAD_ABIERTA', Codigo: 'UA1B', Nombre: 'Sub-unidad de UA1', Descripcion: '', Orden: 0 },
-        { Nivel: 1, Tipo: 'SUBBLOQUE', Codigo: 'SB10', Nombre: 'Subbloque 10', Descripcion: '', Orden: 2 }
+        { Nivel: 2, Tipo: 'UA', Codigo: 'UA1', Nombre: 'Unidad abierta 1', Descripcion: '', Orden: 1 },
+        { Nivel: 3, Tipo: 'UA', Codigo: 'UA1B', Nombre: 'Sub-unidad de UA1', Descripcion: '', Orden: 0 },
+        { Nivel: 1, Tipo: 'SB', Codigo: 'SB10', Nombre: 'Subbloque 10', Descripcion: '', Orden: 2 }
       ];
       const hoja = XLSX.utils.json_to_sheet(datos);
       const libro = XLSX.utils.book_new();

@@ -126,7 +126,7 @@
     function ancestroDeReferencia(nodo) {
       let actual = nodo.parent_id ? mapaNodoPorId[nodo.parent_id] : null;
       while (actual) {
-        if (['SUBBLOQUE', 'BLOQUE', 'BUQUE'].includes(actual.tipo)) return actual.id;
+        if (['SB', 'BLOQUE', 'BUQUE'].includes(actual.tipo)) return actual.id;
         actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
       }
       return nodo.parent_id || 'raiz';

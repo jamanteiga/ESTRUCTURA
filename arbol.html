@@ -957,7 +957,7 @@
       modoAvance = document.getElementById('chk-avance').checked;
       if (modoAvance) {
         todosLosNodos.forEach(n => {
-          if (n.tipo === 'SUBBLOQUE') nodosAbiertos.delete(n.id); else nodosAbiertos.add(n.id);
+          if (n.tipo === 'SB') nodosAbiertos.delete(n.id); else nodosAbiertos.add(n.id);
         });
       }
       renderizarArbolCompleto();
@@ -1066,7 +1066,7 @@
       }
 
       let acciones = '';
-      if (nodo.tipo === 'BUQUE' || nodo.tipo === 'BLOQUE' || nodo.tipo === 'SUBBLOQUE') {
+      if (nodo.tipo === 'BUQUE' || nodo.tipo === 'BLOQUE' || nodo.tipo === 'SB') {
         acciones += `<button class="pequeno secundario" onclick="expandirRama('${nodo.id}')" title="Expandir esta rama">⏬</button>`;
         acciones += `<button class="pequeno secundario" onclick="encogerRama('${nodo.id}')" title="Encoger esta rama">⏫</button>`;
       }
@@ -1077,7 +1077,7 @@
       const motivoRechazo = (!sinAsignacion && !vistaSimplificada && nodo.revision_estado === 'RECHAZADO' && nodo.comentario_revision)
         ? `<div class="motivo-rechazo">✘ Motivo: ${nodo.comentario_revision}</div>` : '';
 
-      const badgeAvance = (modoAvance && (nodo.tipo === 'BUQUE' || nodo.tipo === 'BLOQUE' || nodo.tipo === 'SUBBLOQUE'))
+      const badgeAvance = (modoAvance && (nodo.tipo === 'BUQUE' || nodo.tipo === 'BLOQUE' || nodo.tipo === 'SB'))
         ? (() => { const pct = calcularPorcentajeAvance(nodo.id); return pct !== null ? `<span class="badge-avance">${pct}%</span>` : ''; })()
         : '';
 
@@ -1139,7 +1139,7 @@
     function expandirTodo() { todosLosNodos.forEach(n => nodosAbiertos.add(n.id)); cargarArbol(); }
     function expandirSinSubbloques() {
       todosLosNodos.forEach(n => {
-        if (n.tipo === 'SUBBLOQUE') nodosAbiertos.delete(n.id); else nodosAbiertos.add(n.id);
+        if (n.tipo === 'SB') nodosAbiertos.delete(n.id); else nodosAbiertos.add(n.id);
       });
       cargarArbol();
     }
