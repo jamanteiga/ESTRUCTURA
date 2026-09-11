@@ -1506,8 +1506,8 @@
 
       if (pareceGestor()) {
         if (!esMovil) {
-          if (nodo.tipo === 'BLOQUE') {
-            items.push({ label: '🏗️ Generar estructura mínima', tip: 'Crea de golpe AN, PI y todo lo que cuelga de ellos (sin numerar) dentro de este Bloque.', fn: () => accionGenerarEstructuraMinima(nodeId) });
+          if (nodo.tipo in ESTRUCTURA_MINIMA_POR_TIPO) {
+            items.push({ label: '🏗️ Generar estructura mínima', tip: 'Crea de golpe lo mínimo que cuelga de este tipo (sin numerar), como ya lo tienes definido.', fn: () => accionGenerarEstructuraMinima(nodeId) });
           }
           items.push({ label: '+ Generar nodo hijo', tip: 'Crea un nuevo nodo dentro de este.', fn: () => abrirModalCrear(nodeId, nodo.tipo) });
           items.push({ label: '+N Crear varios nodos', tip: 'Creación de varios nodos iguales al indicado.', fn: () => abrirModalLote(nodeId, nodo.tipo) });
@@ -1819,40 +1819,43 @@
 
     // -------------------- Generar estructura mínima --------------------
 
-    const ESTRUCTURA_MINIMA = [
-      { tipo: 'ANIDADOS', hijos: [
-          { tipo: 'PL', hijos: [
-              { tipo: 'PLANCHA_1000', codigo: 'PL1000' },
-              { tipo: 'PLANCHA_2000', codigo: 'PL2000' },
-              { tipo: 'PLANCHA_3000', codigo: 'PL3000' }
-          ]},
-          { tipo: 'PERF', hijos: [
-              { tipo: 'PERFIL_4000', codigo: 'PERF4000' },
-              { tipo: 'PERFIL_6000', codigo: 'PERF6000' }
-          ]}
-      ]},
-      { tipo: 'PI', hijos: [
-          { tipo: 'SB', hijos: [
-              { tipo: 'UA', hijos: [
-                  { tipo: 'GR', hijos: [
-                      { tipo: 'UL', hijos: [
-                          { tipo: 'NL' },
-                          { tipo: 'PS' },
-                          { tipo: 'PT' },
-                          { tipo: 'PM' }
-                      ]}
-                  ]},
-                  { tipo: 'PS' },
-                  { tipo: 'PM' }
-              ]}
-          ]},
-          { tipo: 'PM' },
-          { tipo: 'PS' },
-          { tipo: 'UC', hijos: [
-              { tipo: 'NC' }
-          ]}
-      ]}
-    ];
+    // Ramas reutilizables: cada una es el fragmento que cuelga de un tipo concreto.
+    const RAMA_UL = { tipo: 'UL', hijos: [
+        { tipo: 'NL' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' }
+    ]};
+    const RAMA_GR = { tipo: 'GR', hijos: [ RAMA_UL ] };
+    const RAMA_UA = { tipo: 'UA', hijos: [ RAMA_GR, { tipo: 'PS' }, { tipo: 'PM' } ] };
+    const RAMA_SB = { tipo: 'SB', hijos: [ RAMA_UA ] };
+    const RAMA_UC = { tipo: 'UC', hijos: [ { tipo: 'NC' } ] };
+    const RAMA_PL = { tipo: 'PL', hijos: [
+        { tipo: 'PLANCHA_1000', codigo: 'PL1000' },
+        { tipo: 'PLANCHA_2000', codigo: 'PL2000' },
+        { tipo: 'PLANCHA_3000', codigo: 'PL3000' }
+    ]};
+    const RAMA_PERF = { tipo: 'PERF', hijos: [
+        { tipo: 'PERFIL_4000', codigo: 'PERF4000' },
+        { tipo: 'PERFIL_6000', codigo: 'PERF6000' }
+    ]};
+    const RAMA_ANIDADOS = { tipo: 'ANIDADOS', hijos: [ RAMA_PL, RAMA_PERF ] };
+    const RAMA_PI = { tipo: 'PI', hijos: [ RAMA_SB, { tipo: 'PM' }, { tipo: 'PS' }, RAMA_UC ] };
+
+    // Qué genera "Generar estructura mínima" según el tipo del nodo donde se invoca.
+    // Un array vacío = el tipo participa del menú pero no tiene nada definido debajo (aviso en vez de crear).
+    // NL no aparece aquí a propósito: esa rama se genera siempre a mano.
+    const ESTRUCTURA_MINIMA_POR_TIPO = {
+      BLOQUE:   [ RAMA_ANIDADOS, RAMA_PI ],
+      ANIDADOS: RAMA_ANIDADOS.hijos,
+      PI:       RAMA_PI.hijos,
+      SB:       RAMA_SB.hijos,
+      UA:       RAMA_UA.hijos,
+      GR:       RAMA_GR.hijos,
+      UL:       RAMA_UL.hijos,
+      PS:       [],
+      PT:       [],
+      PE:       [],
+      UC:       RAMA_UC.hijos,
+      NC:       []
+    };
 
     async function crearRamaMinima(spec, parentId, orden) {
       const codigo = spec.codigo || spec.tipo;
@@ -1869,20 +1872,26 @@
       return nuevoNodo;
     }
 
-    async function accionGenerarEstructuraMinima(bloqueId) {
-      const nodo = mapaNodoPorId[bloqueId];
-      if (!await mostrarConfirmacion(`¿Generar la estructura mínima completa dentro de "${nodo.codigo} - ${nodo.nombre}"? Se crean de golpe AN, PI y todo lo que cuelga de ellos (sin números en el código, salvo Planchas/Perfiles).`)) return;
+    async function accionGenerarEstructuraMinima(nodeId) {
+      const nodo = mapaNodoPorId[nodeId];
+      const hijos = ESTRUCTURA_MINIMA_POR_TIPO[nodo.tipo];
+
+      if (!hijos || hijos.length === 0) {
+        mostrarAvisoModal(`No hay una estructura mínima definida por debajo de ${ETIQUETAS_TIPO[nodo.tipo] || nodo.tipo} — no se crea nada.`);
+        return;
+      }
+      if (!await mostrarConfirmacion(`¿Generar la estructura mínima dentro de "${nodo.codigo} - ${nodo.nombre}"? Se crean varios nodos nuevos de golpe (sin números en el código, salvo Planchas/Perfiles).`)) return;
 
       try {
-        for (let i = 0; i < ESTRUCTURA_MINIMA.length; i++) {
-          await crearRamaMinima(ESTRUCTURA_MINIMA[i], bloqueId, i);
+        for (let i = 0; i < hijos.length; i++) {
+          await crearRamaMinima(hijos[i], nodeId, i);
         }
-        registrarLog('CREAR_LOTE', `Generó la estructura mínima dentro de "${nodo.codigo}"`, bloqueId);
-        nodosAbiertos.add(bloqueId);
+        registrarLog('CREAR_LOTE', `Generó la estructura mínima dentro de "${nodo.codigo}"`, nodeId);
+        nodosAbiertos.add(nodeId);
         await cargarArbol();
       } catch (e) {
         mostrarAvisoModal('Error generando la estructura mínima: ' + traducirError(e.message));
-        registrarLog('INTENTO_FALLIDO', `Intento de generar estructura mínima en "${nodo.codigo}" denegado: ${e.message}`, bloqueId);
+        registrarLog('INTENTO_FALLIDO', `Intento de generar estructura mínima en "${nodo.codigo}" denegado: ${e.message}`, nodeId);
         await cargarArbol();
       }
     }
