@@ -1506,8 +1506,11 @@
 
       if (pareceGestor()) {
         if (!esMovil) {
-          if (nodo.tipo in ESTRUCTURA_MINIMA_POR_TIPO) {
-            items.push({ label: '🏗️ Generar estructura mínima', tip: 'Crea de golpe lo mínimo que cuelga de este tipo (sin numerar), como ya lo tienes definido.', fn: () => accionGenerarEstructuraMinima(nodeId) });
+          if (nodo.tipo in ESTRUCTURA_MINIMA_POR_TIPO || nodo.tipo === 'BUQUE') {
+            const tipGenerarMinima = nodo.tipo === 'BUQUE'
+              ? 'Crea un Bloque nuevo (pidiendo código y nombre) con toda su estructura mínima ya montada dentro, limpia.'
+              : 'Crea de golpe lo mínimo que cuelga de este tipo (sin numerar), como ya lo tienes definido.';
+            items.push({ label: '🏗️ Generar estructura mínima', tip: tipGenerarMinima, fn: () => accionGenerarEstructuraMinima(nodeId) });
           }
           items.push({ label: '+ Generar nodo hijo', tip: 'Crea un nuevo nodo dentro de este.', fn: () => abrirModalCrear(nodeId, nodo.tipo) });
           items.push({ label: '+N Crear varios nodos', tip: 'Creación de varios nodos iguales al indicado.', fn: () => abrirModalLote(nodeId, nodo.tipo) });
@@ -1859,7 +1862,7 @@
 
     async function crearRamaMinima(spec, parentId, orden) {
       const codigo = spec.codigo || spec.tipo;
-      const nombre = ETIQUETAS_TIPO[spec.tipo] || spec.tipo;
+      const nombre = spec.nombre || ETIQUETAS_TIPO[spec.tipo] || spec.tipo;
       const { data: nuevoNodo, error } = await supabaseClient.from('nodes').insert({
         parent_id: parentId, tipo: spec.tipo, codigo, nombre, orden
       }).select().single();
@@ -1874,6 +1877,15 @@
 
     async function accionGenerarEstructuraMinima(nodeId) {
       const nodo = mapaNodoPorId[nodeId];
+
+      // Desde un Buque no se sabe todavía el código del Bloque nuevo (no es
+      // fijo como SB/PI/etc.), así que aquí se pide y se crea el Bloque +
+      // toda su cascada de golpe, limpio (por eso no choca con nada existente).
+      if (nodo.tipo === 'BUQUE') {
+        abrirModalCrearBloqueMinimo(nodeId);
+        return;
+      }
+
       const hijos = ESTRUCTURA_MINIMA_POR_TIPO[nodo.tipo];
 
       if (!hijos || hijos.length === 0) {
@@ -1893,6 +1905,56 @@
         mostrarAvisoModal('Error generando la estructura mínima: ' + traducirError(e.message));
         registrarLog('INTENTO_FALLIDO', `Intento de generar estructura mínima en "${nodo.codigo}" denegado: ${e.message}`, nodeId);
         await cargarArbol();
+      }
+    }
+
+    // Caso especial: generar un Bloque nuevo (código/nombre a elegir) con
+    // toda su estructura mínima ya montada dentro, en un solo paso desde el Buque.
+    function abrirModalCrearBloqueMinimo(buqueId) {
+      nodoCrearPadre = { id: buqueId, tipo: 'BUQUE' };
+      document.getElementById('modal-nodo-titulo').textContent = 'Nuevo Bloque + estructura mínima';
+      document.getElementById('modal-nodo-codigo').value = 'B';
+      document.getElementById('modal-nodo-nombre').value = '';
+      document.getElementById('modal-nodo-descripcion').value = '';
+      document.getElementById('modal-nodo-orden').value = '0';
+      document.getElementById('modal-nodo-estado').textContent = '';
+      document.getElementById('modal-nodo-guardar').onclick = () => guardarBloqueMinimo(buqueId);
+
+      const selectTipo = document.getElementById('modal-nodo-tipo');
+      const wrapTipo = document.getElementById('modal-nodo-tipo-wrap');
+      selectTipo.innerHTML = '<option value="BLOQUE">BLOQUE</option>';
+      wrapTipo.style.display = 'none';
+
+      document.getElementById('modal-nodo').style.display = 'flex';
+    }
+
+    async function guardarBloqueMinimo(buqueId) {
+      const estadoEl = document.getElementById('modal-nodo-estado');
+      const codigo = document.getElementById('modal-nodo-codigo').value.trim();
+      const nombre = document.getElementById('modal-nodo-nombre').value.trim();
+      const descripcion = document.getElementById('modal-nodo-descripcion').value.trim();
+      const orden = parseInt(document.getElementById('modal-nodo-orden').value, 10) || 0;
+
+      if (!codigo || !nombre) {
+        estadoEl.textContent = 'Rellena código y nombre del Bloque.'; estadoEl.className = 'estado-msg error'; return;
+      }
+
+      try {
+        const nuevoBloque = await crearRamaMinima(
+          { tipo: 'BLOQUE', codigo, nombre, hijos: [RAMA_ANIDADOS, RAMA_PI] },
+          buqueId, orden
+        );
+        if (descripcion) {
+          await supabaseClient.from('nodes').update({ descripcion }).eq('id', nuevoBloque.id);
+        }
+        registrarLog('CREAR_LOTE', `Generó el Bloque "${codigo}" con su estructura mínima dentro de "${mapaNodoPorId[buqueId]?.codigo || ''}"`, nuevoBloque.id);
+        cerrarModalNodo();
+        nodosAbiertos.add(buqueId);
+        nodosAbiertos.add(nuevoBloque.id);
+        await cargarArbol();
+      } catch (e) {
+        estadoEl.textContent = 'Error: ' + traducirError(e.message); estadoEl.className = 'estado-msg error';
+        registrarLog('INTENTO_FALLIDO', `Intento de generar Bloque "${codigo}" con estructura mínima denegado: ${e.message}`, buqueId);
       }
     }
 
