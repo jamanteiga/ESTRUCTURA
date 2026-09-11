@@ -291,9 +291,10 @@
 
       <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Bloques <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
-        <span class="menu-item" onclick="expandirTodo()">⏬ Expandir</span>
-        <span class="menu-item" onclick="encogerTodo()">⏫ Contraer</span>
+        <span class="menu-item" onclick="encogerTodo()">⏫ Contraer todo</span>
+        <span class="menu-item" onclick="expandirTodo()">⏬ Expandir todo</span>
         <span class="menu-item" onclick="expandirSinSubbloques()">⏬ Expandir (sin Subbloques)</span>
+        <span class="menu-item" onclick="abrirModalExpandirPorBloque()">⏬ Expandir por bloque</span>
         <label class="menu-item">
           <input type="checkbox" id="chk-vista-simple" onchange="toggleVistaSimplificada()"> 🎨 Vista simplificada (solo colores)
         </label>
@@ -484,6 +485,18 @@
       <div class="overlay-botones">
         <button class="secundario" onclick="cerrarModalMover()">Cancelar</button>
         <button onclick="confirmarMover()">Mover aquí</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="modal-expandir-bloque">
+    <div class="overlay-caja">
+      <h3>Expandir por bloque</h3>
+      <p style="font-size:12px; color:#666;">Elige un bloque: se despliega entero y el resto del árbol se contrae.</p>
+      <input type="text" id="modal-expandir-bloque-buscar" placeholder="Buscar bloque por código o nombre...">
+      <div class="lista-mover" id="modal-expandir-bloque-lista"></div>
+      <div class="overlay-botones">
+        <button class="secundario" onclick="cerrarModalExpandirPorBloque()">Cancelar</button>
       </div>
     </div>
   </div>
@@ -1240,6 +1253,46 @@
       cargarArbol();
     }
     function encogerTodo() { nodosAbiertos.clear(); cargarArbol(); }
+
+    function abrirModalExpandirPorBloque() {
+      cerrarMenu();
+      document.getElementById('modal-expandir-bloque-buscar').value = '';
+      pintarListaExpandirPorBloque('');
+      document.getElementById('modal-expandir-bloque-buscar').oninput = (e) => pintarListaExpandirPorBloque(e.target.value);
+      document.getElementById('modal-expandir-bloque').style.display = 'flex';
+    }
+
+    function cerrarModalExpandirPorBloque() {
+      document.getElementById('modal-expandir-bloque').style.display = 'none';
+    }
+
+    function pintarListaExpandirPorBloque(texto) {
+      const t = texto.trim().toLowerCase();
+      const bloques = todosLosNodos
+        .filter(n => n.tipo === 'BLOQUE' && n.activo)
+        .filter(n => !t || n.codigo.toLowerCase().includes(t) || n.nombre.toLowerCase().includes(t));
+      const cont = document.getElementById('modal-expandir-bloque-lista');
+      cont.innerHTML = bloques.length === 0
+        ? '<div class="opcion-mover">No hay ningún bloque que coincida.</div>'
+        : bloques.map(n => `<div class="opcion-mover" onclick="expandirPorBloque('${n.id}')">${rutaCompleta(n)}</div>`).join('');
+    }
+
+    function expandirPorBloque(bloqueId) {
+      nodosAbiertos.clear();
+
+      // Abre la cadena de ancestros (para que el bloque sea visible al navegar)...
+      let actual = mapaNodoPorId[bloqueId];
+      while (actual) {
+        nodosAbiertos.add(actual.id);
+        actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
+      }
+
+      // ...y despliega también todo lo que cuelga del bloque elegido.
+      obtenerDescendientesIds(bloqueId).forEach(id => nodosAbiertos.add(id));
+
+      cerrarModalExpandirPorBloque();
+      cargarArbol();
+    }
     function expandirRama(nodeId) {
       nodosAbiertos.add(nodeId);
       obtenerDescendientesIds(nodeId).forEach(id => nodosAbiertos.add(id));
