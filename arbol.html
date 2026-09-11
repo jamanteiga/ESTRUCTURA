@@ -1600,8 +1600,8 @@
               { label: 'En proceso', tip: 'Se da por iniciada la tarea.', fn: () => accionMarcarEnTrabajo(nodeId) },
               { label: 'Pendiente de revisión', tip: 'Dar tarea por finalizada, a la espera de revisión.', fn: () => accionMarcarTerminado(nodeId) },
               { label: 'Pendiente de dudas', tip: 'Pendiente por dudas.', fn: () => accionMarcarPendienteDudas(nodeId) },
-              { label: 'Pendiente cambios en modelo (Ghenova)', tip: 'Pendiente por cambios en el modelo — comentarios GHE01, GHE02...', fn: () => accionAbrirComentariosModelo(nodeId, 'GHE') },
-              { label: 'Pendiente cambios en modelo (Navantia)', tip: 'Pendiente por cambios en el modelo — comentarios NAV01, NAV02...', fn: () => accionAbrirComentariosModelo(nodeId, 'NAV') }
+              { label: 'Pendiente cambios en modelo (Ghenova)', tip: 'Pendiente por cambios en el modelo — comentarios GHE001, GHE002... (numeración compartida por todo el buque)', fn: () => accionAbrirComentariosModelo(nodeId, 'GHE') },
+              { label: 'Pendiente cambios en modelo (Navantia)', tip: 'Pendiente por cambios en el modelo — comentarios NAV001, NAV002... (numeración compartida por todo el buque)', fn: () => accionAbrirComentariosModelo(nodeId, 'NAV') }
             ]
           });
         }
@@ -1633,8 +1633,8 @@
               { label: 'En proceso', tip: 'Comenzar a trabajar en una tarea.', fn: () => accionMarcarEnTrabajo(nodeId) },
               { label: 'Pendiente de revisión', tip: 'Dar tarea por finalizada.', fn: () => accionMarcarTerminado(nodeId) },
               { label: 'Pendiente de dudas', tip: 'Pendiente por dudas.', fn: () => accionMarcarPendienteDudas(nodeId) },
-              { label: 'Pendiente cambios en modelo (Ghenova)', tip: 'Pendiente por cambios en el modelo — comentarios GHE01, GHE02...', fn: () => accionAbrirComentariosModelo(nodeId, 'GHE') },
-              { label: 'Pendiente cambios en modelo (Navantia)', tip: 'Pendiente por cambios en el modelo — comentarios NAV01, NAV02...', fn: () => accionAbrirComentariosModelo(nodeId, 'NAV') }
+              { label: 'Pendiente cambios en modelo (Ghenova)', tip: 'Pendiente por cambios en el modelo — comentarios GHE001, GHE002... (numeración compartida por todo el buque)', fn: () => accionAbrirComentariosModelo(nodeId, 'GHE') },
+              { label: 'Pendiente cambios en modelo (Navantia)', tip: 'Pendiente por cambios en el modelo — comentarios NAV001, NAV002... (numeración compartida por todo el buque)', fn: () => accionAbrirComentariosModelo(nodeId, 'NAV') }
             ]
           });
         } else {
@@ -3032,35 +3032,25 @@
       }
       lista.innerHTML = (data || []).length === 0
         ? '<p style="color:#666;">Todavía no hay comentarios.</p>'
-        : data.map(c => `<div class="comentario-modelo-fila" oncontextmenu="mostrarMenuComentario(event, '${c.id}', ${!!c.aprobado})" style="padding:4px 0; border-bottom:1px solid #eee; cursor:context-menu;">
-            <span class="check-comentario" title="Clic derecho: marcar/quitar OK" onclick="mostrarMenuComentario(event, '${c.id}', ${!!c.aprobado})" style="color:rgb(146,208,80); font-weight:bold; cursor:pointer;">${c.aprobado ? '✔ ' : ''}</span><b>${comentariosModeloOrigenActual}${String(c.numero).padStart(2, '0')}</b> — ${c.texto}
+        : data.map(c => `
+          <div class="comentario-modelo-fila" style="display:flex; align-items:flex-start; gap:6px; padding:5px 0; border-bottom:1px solid #eee;">
+            <input type="checkbox" ${(c.implementado || c.aprobado) ? 'checked' : ''}
+                   title="${esGestor() ? 'Marcar/quitar Aprobado' : 'Marcar/quitar como corregido'}"
+                   onclick="event.stopPropagation(); accionToggleChecklistComentario('${c.id}', this.checked)"
+                   style="margin-top:3px; flex-shrink:0;">
+            <div style="flex:1;">
+              <b>${comentariosModeloOrigenActual}${String(c.numero).padStart(3, '0')}</b> — ${c.texto}
+              ${c.aprobado ? '<span style="color:rgb(146,208,80); font-weight:bold; margin-left:6px;">✔ Aprobado</span>' : ''}
+            </div>
           </div>`).join('');
     }
 
-    function mostrarMenuComentario(evento, comentarioId, aprobadoActual) {
-      evento.preventDefault();
-      evento.stopPropagation();
-      const items = aprobadoActual
-        ? [{ label: '✘ Quitar OK', tip: 'Quita la marca de aprobado de este comentario.', fn: () => accionAprobarComentarioModelo(comentarioId, false) }]
-        : [{ label: '✔ OK (Aprobado)', tip: 'Marca este comentario como aprobado.', fn: () => accionAprobarComentarioModelo(comentarioId, true) }];
-
-      const menu = document.getElementById('menu-contextual');
-      menu.innerHTML = items.map((it, i) => `<div class="mc-item" data-idx="${i}">${it.label}</div>`).join('');
-      menu.querySelectorAll('.mc-item[data-idx]').forEach(el => {
-        const it = items[parseInt(el.dataset.idx, 10)];
-        el.addEventListener('click', (e) => { e.stopPropagation(); cerrarMenuContextual(); it.fn(); });
-        el.addEventListener('mouseenter', (e) => mostrarTooltipMenu(e, it.tip));
-        el.addEventListener('mousemove', (e) => posicionarTooltipMenu(e));
-        el.addEventListener('mouseleave', ocultarTooltipMenu);
-      });
-
-      const anchoEstimado = 220, altoEstimado = Math.min(items.length * 34 + 20, window.innerHeight - 20);
-      let x = evento.clientX, y = evento.clientY;
-      if (x + anchoEstimado > window.innerWidth) x = window.innerWidth - anchoEstimado - 10;
-      if (y + altoEstimado > window.innerHeight) y = window.innerHeight - altoEstimado - 10;
-      menu.style.left = x + 'px';
-      menu.style.top = Math.max(y, 10) + 'px';
-      menu.style.display = 'block';
+    // Una sola casilla por comentario: para un ADMIN/REVISOR, marcarla
+    // aprueba el comentario (y de paso lo deja como implementado); para
+    // cualquier otro con acceso a la tarea, solo marca "ya lo he corregido".
+    async function accionToggleChecklistComentario(comentarioId, marcado) {
+      if (esGestor()) return accionAprobarComentarioModelo(comentarioId, marcado);
+      return accionMarcarImplementadoComentario(comentarioId, marcado);
     }
 
     async function accionAprobarComentarioModelo(comentarioId, aprobado) {
@@ -3068,10 +3058,24 @@
       const { error } = await supabaseClient.rpc('aprobar_comentario_modelo', { p_comentario_id: comentarioId, p_aprobado: aprobado });
       if (error) {
         mostrarAvisoModal('Error: ' + traducirError(error.message));
-        registrarLog('INTENTO_FALLIDO', `Intento de ${aprobado ? 'marcar OK' : 'quitar OK'} en comentario de "${nodo?.codigo}" denegado: ${error.message}`, comentariosModeloNodoActual);
+        registrarLog('INTENTO_FALLIDO', `Intento de ${aprobado ? 'aprobar' : 'quitar aprobado de'} un comentario de "${nodo?.codigo}" denegado: ${error.message}`, comentariosModeloNodoActual);
+        await cargarComentariosModelo();
         return;
       }
-      registrarLog('PENDIENTE_CAMBIOS_MODELO', `${aprobado ? 'Marcó OK' : 'Quitó OK'} en un comentario ${comentariosModeloOrigenActual} de "${nodo?.codigo}"`, comentariosModeloNodoActual);
+      registrarLog('PENDIENTE_CAMBIOS_MODELO', `${aprobado ? 'Aprobó' : 'Quitó el aprobado de'} un comentario ${comentariosModeloOrigenActual} de "${nodo?.codigo}"`, comentariosModeloNodoActual);
+      await cargarComentariosModelo();
+    }
+
+    async function accionMarcarImplementadoComentario(comentarioId, implementado) {
+      const nodo = mapaNodoPorId[comentariosModeloNodoActual];
+      const { error } = await supabaseClient.rpc('marcar_comentario_implementado', { p_comentario_id: comentarioId, p_implementado: implementado });
+      if (error) {
+        mostrarAvisoModal('Error: ' + traducirError(error.message));
+        registrarLog('INTENTO_FALLIDO', `Intento de marcar comentario de "${nodo?.codigo}" como ${implementado ? 'corregido' : 'sin corregir'} denegado: ${error.message}`, comentariosModeloNodoActual);
+        await cargarComentariosModelo();
+        return;
+      }
+      registrarLog('PENDIENTE_CAMBIOS_MODELO', `Marcó un comentario ${comentariosModeloOrigenActual} de "${nodo?.codigo}" como ${implementado ? 'corregido' : 'sin corregir'}`, comentariosModeloNodoActual);
       await cargarComentariosModelo();
     }
 
