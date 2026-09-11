@@ -643,6 +643,36 @@
 
     const TIPOS_SIN_ASIGNACION = new Set(['BUQUE']);
 
+    const ETIQUETAS_TIPO = {
+      BUQUE: 'Buque',
+      BLOQUE: 'Bloque',
+      SB: 'Subbloque',
+      SBE: 'Unión de subbloques',
+      SBL: 'Unión en grada',
+      CS: 'Conjunto simple',
+      UA: 'Unidad abierta',
+      GR: 'Grupo',
+      UL: 'Unidad longitudinal',
+      NL: 'Nivel', // TODO: confirmar nombre completo de NL con José
+      PS: 'Previa simple',
+      PT: 'Previa en T',
+      PE: 'Pieza especial',
+      PM: 'Piezas menores',
+      UC: 'Unidad fabricada de forro',
+      NC: 'Panel curvo de forro',
+      PI: 'Producto intermedio',
+      ANIDADOS: 'Anidados',
+      PDB: 'Planos de bloque',
+      PANELES: 'Paneles',
+      PL: 'Plancha',
+      PERF: 'Perfil',
+      PLANCHA_1000: 'Plancha 1000',
+      PLANCHA_2000: 'Plancha 2000',
+      PLANCHA_3000: 'Plancha 3000',
+      PERFIL_4000: 'Perfil 4000',
+      PERFIL_6000: 'Perfil 6000'
+    };
+
     let miPerfil = null;
     let todosLosNodos = [];
     let mapaHijosPorPadre = {};
@@ -1143,22 +1173,26 @@
         : '';
 
       let badgeTiempos = '';
-      if (modoTiempos && miPerfil.rol === 'ADMIN' && !sinAsignacion) {
-        const edicion = formatearDuracionHM(nodo.trabajo_iniciado_en, nodo.trabajo_terminado_en);
-        const espera = formatearDuracionHM(nodo.trabajo_terminado_en, nodo.revisado_en);
-        const partes = [];
-        if (edicion !== null) partes.push(`✏️ ${edicion}${!nodo.trabajo_terminado_en ? ' <span class="en-curso">(en curso)</span>' : ''}`);
-        if (espera !== null) partes.push(`⏳ ${espera}${!nodo.revisado_en ? ' <span class="en-curso">(en curso)</span>' : ''}`);
-        if (partes.length > 0) badgeTiempos = `<span class="badge-tiempos">${partes.join(' · ')}</span>`;
+      if (modoTiempos && esGestor() && !sinAsignacion) {
+        // Tiempo que lleva la tarea desde que se asignó: sigue corriendo hasta que
+        // se aprueba (revisado_en con revision_estado APROBADO), o hasta ahora si sigue abierta.
+        const finConteo = (nodo.revision_estado === 'APROBADO' && nodo.revisado_en) ? nodo.revisado_en : null;
+        const tiempo = formatearDuracionHM(nodo.asignado_en, finConteo);
+        if (tiempo !== null) {
+          badgeTiempos = `<span class="badge-tiempos">⏱️ ${tiempo}${!finConteo ? ' <span class="en-curso">(en curso)</span>' : ''}</span>`;
+        }
       }
 
       const checkboxSeleccion = (modoSeleccion && esGestor() && !sinAsignacion)
         ? `<input type="checkbox" class="chk-seleccion" ${nodosSeleccionados.has(nodo.id) ? 'checked' : ''} onclick="toggleSeleccionNodo('${nodo.id}', event)">`
         : '';
 
+      const tituloTipo = ETIQUETAS_TIPO[nodo.tipo] || nodo.tipo;
+
       return `
         <li class="nodo" id="li-${nodo.id}">
           <div class="fila-nodo"
+               title="${tituloTipo}"
                oncontextmenu="mostrarMenuContextual(event, '${nodo.id}'); return false;"
                ${esGestor() ? `draggable="true" ondragstart="iniciarArrastre(event, '${nodo.id}')" ondragend="finalizarArrastre(event)"` : ''}
                ondragover="sobreArrastre(event, '${nodo.id}')"
