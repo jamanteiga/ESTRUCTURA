@@ -1506,6 +1506,9 @@
 
       if (pareceGestor()) {
         if (!esMovil) {
+          if (nodo.tipo === 'BLOQUE') {
+            items.push({ label: '🏗️ Generar estructura mínima', tip: 'Crea de golpe AN, PI y todo lo que cuelga de ellos (sin numerar) dentro de este Bloque.', fn: () => accionGenerarEstructuraMinima(nodeId) });
+          }
           items.push({ label: '+ Generar nodo hijo', tip: 'Crea un nuevo nodo dentro de este.', fn: () => abrirModalCrear(nodeId, nodo.tipo) });
           items.push({ label: '+N Crear varios nodos', tip: 'Creación de varios nodos iguales al indicado.', fn: () => abrirModalLote(nodeId, nodo.tipo) });
           items.push({ label: '↔️ Cambiar de nodo', tip: 'Cambia de nodo padre.', fn: () => abrirModalMover(nodeId) });
@@ -1813,6 +1816,76 @@
     }
 
     function cerrarModalNodo() { document.getElementById('modal-nodo').style.display = 'none'; }
+
+    // -------------------- Generar estructura mínima --------------------
+
+    const ESTRUCTURA_MINIMA = [
+      { tipo: 'ANIDADOS', hijos: [
+          { tipo: 'PL', hijos: [
+              { tipo: 'PLANCHA_1000', codigo: 'PL1000' },
+              { tipo: 'PLANCHA_2000', codigo: 'PL2000' },
+              { tipo: 'PLANCHA_3000', codigo: 'PL3000' }
+          ]},
+          { tipo: 'PERF', hijos: [
+              { tipo: 'PERFIL_4000', codigo: 'PERF4000' },
+              { tipo: 'PERFIL_6000', codigo: 'PERF6000' }
+          ]}
+      ]},
+      { tipo: 'PI', hijos: [
+          { tipo: 'SB', hijos: [
+              { tipo: 'UA', hijos: [
+                  { tipo: 'GR', hijos: [
+                      { tipo: 'UL', hijos: [
+                          { tipo: 'NL' },
+                          { tipo: 'PS' },
+                          { tipo: 'PT' },
+                          { tipo: 'PM' }
+                      ]}
+                  ]},
+                  { tipo: 'PS' },
+                  { tipo: 'PM' }
+              ]}
+          ]},
+          { tipo: 'PM' },
+          { tipo: 'PS' },
+          { tipo: 'UC', hijos: [
+              { tipo: 'NC' }
+          ]}
+      ]}
+    ];
+
+    async function crearRamaMinima(spec, parentId, orden) {
+      const codigo = spec.codigo || spec.tipo;
+      const nombre = ETIQUETAS_TIPO[spec.tipo] || spec.tipo;
+      const { data: nuevoNodo, error } = await supabaseClient.from('nodes').insert({
+        parent_id: parentId, tipo: spec.tipo, codigo, nombre, orden
+      }).select().single();
+      if (error) throw new Error(`${codigo}: ${error.message}`);
+      if (spec.hijos) {
+        for (let i = 0; i < spec.hijos.length; i++) {
+          await crearRamaMinima(spec.hijos[i], nuevoNodo.id, i);
+        }
+      }
+      return nuevoNodo;
+    }
+
+    async function accionGenerarEstructuraMinima(bloqueId) {
+      const nodo = mapaNodoPorId[bloqueId];
+      if (!await mostrarConfirmacion(`¿Generar la estructura mínima completa dentro de "${nodo.codigo} - ${nodo.nombre}"? Se crean de golpe AN, PI y todo lo que cuelga de ellos (sin números en el código, salvo Planchas/Perfiles).`)) return;
+
+      try {
+        for (let i = 0; i < ESTRUCTURA_MINIMA.length; i++) {
+          await crearRamaMinima(ESTRUCTURA_MINIMA[i], bloqueId, i);
+        }
+        registrarLog('CREAR_LOTE', `Generó la estructura mínima dentro de "${nodo.codigo}"`, bloqueId);
+        nodosAbiertos.add(bloqueId);
+        await cargarArbol();
+      } catch (e) {
+        mostrarAvisoModal('Error generando la estructura mínima: ' + traducirError(e.message));
+        registrarLog('INTENTO_FALLIDO', `Intento de generar estructura mínima en "${nodo.codigo}" denegado: ${e.message}`, bloqueId);
+        await cargarArbol();
+      }
+    }
 
     async function guardarNodoNuevo() {
       const estadoEl = document.getElementById('modal-nodo-estado');
