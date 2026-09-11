@@ -294,6 +294,7 @@
         <span class="menu-item" onclick="encogerTodo()">⏫ Contraer todo</span>
         <span class="menu-item" onclick="expandirTodo()">⏬ Expandir todo</span>
         <span class="menu-item" onclick="expandirSinSubbloques()">⏬ Expandir (sin Subbloques)</span>
+        <span class="menu-item" onclick="expandirSoloBloques()">⏬ Expandir solo bloques</span>
         <span class="menu-item" onclick="abrirModalExpandirPorBloque()">⏬ Expandir por bloque</span>
         <label class="menu-item">
           <input type="checkbox" id="chk-vista-simple" onchange="toggleVistaSimplificada()"> 🎨 Vista simplificada (solo colores)
@@ -1276,6 +1277,14 @@
       cargarArbol();
     }
     function encogerTodo() { nodosAbiertos.clear(); cargarArbol(); }
+    function expandirSoloBloques() {
+      // Solo se abren los Buques (para ver sus Bloques raíz); todo lo demás
+      // se cierra, así los Bloques aparecen pero sin desplegar su interior.
+      todosLosNodos.forEach(n => {
+        if (n.tipo === 'BUQUE') nodosAbiertos.add(n.id); else nodosAbiertos.delete(n.id);
+      });
+      cargarArbol();
+    }
 
     function abrirModalExpandirPorBloque() {
       cerrarMenu();
