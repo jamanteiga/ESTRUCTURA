@@ -521,10 +521,11 @@
   <div id="contenedor-avisos"></div>
   <div id="barra-seleccion" style="display:none; position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#222; color:white; padding:12px 20px; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.35); z-index:3000; gap:12px; align-items:center; flex-wrap:wrap; max-width:95vw;">
     <span id="texto-seleccion" style="font-size:13px;"></span>
-    <button onclick="abrirModalAsignacionMasiva()">👤 Asignar seleccionadas</button>
+    <button id="btn-asignar-masivo" onclick="abrirModalAsignacionMasiva()">👤 Asignar seleccionadas</button>
     <button id="btn-estado-masivo" style="display:none;" onclick="abrirModalEstadoMasivo()">📋 Estado tareas</button>
     <button id="btn-anadir-masivo" style="display:none;" onclick="abrirModalAnadirMasivo()">+ Añadir dentro de cada una</button>
     <button id="btn-desactivar-masivo" class="peligro" style="display:none;" onclick="confirmarDesactivarMasivo()">🗑️ Desactivar seleccionadas</button>
+    <button id="btn-tomar-tarea" style="display:none;" onclick="abrirModalTomarTarea()">🔄 Tomar tarea</button>
     <button class="secundario" onclick="cancelarSeleccion()">✕ Cancelar</button>
   </div>
 
@@ -573,6 +574,28 @@
       <div class="overlay-botones">
         <button class="secundario" onclick="cerrarModalAsignacionMasiva()">Cancelar</button>
         <button onclick="confirmarAsignacionMasiva()">Asignar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="modal-tomar-tarea">
+    <div class="overlay-caja">
+      <h3>🔄 Tomar tarea</h3>
+      <p id="tomartarea-contador" style="font-size:13px; color:#666;"></p>
+      <label>Para</label>
+      <div id="tomartarea-usuario" style="padding:6px 0; font-weight:bold;"></div>
+      <label>Estado tarea (opcional)</label>
+      <select id="tomartarea-estado">
+        <option value="">— No cambiar —</option>
+        <option value="pendiente_de_hacer">Pendiente de hacer</option>
+        <option value="en_proceso">En proceso</option>
+        <option value="pendiente_revision">Pendiente de revisión</option>
+        <option value="pendiente_dudas">Pendiente de dudas</option>
+      </select>
+      <div class="estado-msg" id="tomartarea-estado-msg"></div>
+      <div class="overlay-botones">
+        <button class="secundario" onclick="cerrarModalTomarTarea()">Cancelar</button>
+        <button onclick="confirmarTomarTareaMasivo()">Tomar</button>
       </div>
     </div>
   </div>
@@ -809,7 +832,7 @@
         document.getElementById('menu-link-duplicados').style.display = 'flex';
         document.getElementById('menu-item-exportar-excel').style.display = 'flex';
       }
-      if (pareceGestor()) {
+      if (puedeSeleccionar()) {
         document.getElementById('wrap-modo-seleccion').style.display = 'flex';
       }
 
@@ -861,6 +884,9 @@
     function esGestor() { return miPerfil.rol === 'ADMIN' || miPerfil.rol === 'REVISOR'; }
     function esInvitado() { return miPerfil.rol === 'INVITADO'; }
     function pareceGestor() { return esGestor() || esInvitado(); }
+    // Selección múltiple ampliada a TRABAJADOR: cualquiera puede "tomar" tareas
+    // de otro, aunque las acciones de asignación libre siguen siendo de gestor.
+    function puedeSeleccionar() { return esGestor() || miPerfil.rol === 'TRABAJADOR'; }
 
     async function registrarLog(accion, descripcion, nodeId) {
       try {
@@ -1220,7 +1246,7 @@
         }
       }
 
-      const checkboxSeleccion = (modoSeleccion && esGestor() && !sinAsignacion)
+      const checkboxSeleccion = (modoSeleccion && puedeSeleccionar() && !sinAsignacion)
         ? `<input type="checkbox" class="chk-seleccion" ${nodosSeleccionados.has(nodo.id) ? 'checked' : ''} onclick="toggleSeleccionNodo('${nodo.id}', event)">`
         : '';
 
@@ -1828,9 +1854,20 @@
       document.getElementById('modal-nodo').style.display = 'flex';
     }
 
+    // Dentro de PLANCHA_1000/2000/3000 y PERFIL_4000/6000 los hijos son piezas
+    // numeradas de esa misma familia (1001, 1002... / 4000, 4001...), sin
+    // ninguna letra delante — el código empieza directamente por el número base.
+    const BASE_NUMERO_TIPO = {
+      PLANCHA_1000: '1000', PLANCHA_2000: '2000', PLANCHA_3000: '3000',
+      PERFIL_4000: '4000', PERFIL_6000: '6000'
+    };
     function actualizarCodigoSegunTipo() {
       const tipo = document.getElementById('modal-nodo-tipo').value;
       const codigoInput = document.getElementById('modal-nodo-codigo');
+      if (tipo in BASE_NUMERO_TIPO) {
+        codigoInput.value = BASE_NUMERO_TIPO[tipo];
+        return;
+      }
       // Quita solo el prefijo de letras que ya hubiera (de un tipo anterior) y
       // conserva el resto (números u otros caracteres) tal como estaban.
       const resto = codigoInput.value.replace(/^[A-Za-zÁÉÍÓÚÑ]+/, '');
@@ -2270,8 +2307,10 @@
       const hasta = parseInt(hastaStr, 10);
       const anchoPadding = desdeStr.length;
 
-      if (!tipo || !prefijo || isNaN(desde) || isNaN(hasta) || hasta < desde) {
-        estadoEl.textContent = 'Rellena tipo, prefijo, y un rango "desde"-"hasta" válido.';
+      // El prefijo puede quedar vacío a propósito: dentro de PLANCHA_1000/2000/3000
+      // y PERFIL_4000/6000 los códigos son solo números (1001, 4001...), sin letras delante.
+      if (!tipo || isNaN(desde) || isNaN(hasta) || hasta < desde) {
+        estadoEl.textContent = 'Rellena tipo y un rango "desde"-"hasta" válido.';
         estadoEl.className = 'estado-msg error';
         return;
       }
@@ -2548,9 +2587,11 @@
       const barra = document.getElementById('barra-seleccion');
       if (!modoSeleccion || nodosSeleccionados.size === 0) { barra.classList.remove('visible'); return; }
       document.getElementById('texto-seleccion').textContent = `${nodosSeleccionados.size} tarea(s) seleccionada(s)`;
+      document.getElementById('btn-asignar-masivo').style.display = esGestor() ? 'inline-block' : 'none';
       document.getElementById('btn-estado-masivo').style.display = esGestor() ? 'inline-block' : 'none';
       document.getElementById('btn-anadir-masivo').style.display = esGestor() ? 'inline-block' : 'none';
       document.getElementById('btn-desactivar-masivo').style.display = esGestor() ? 'inline-block' : 'none';
+      document.getElementById('btn-tomar-tarea').style.display = puedeSeleccionar() ? 'inline-block' : 'none';
       barra.classList.add('visible');
     }
 
@@ -2579,6 +2620,75 @@
         mostrarAvisoModal(`Hecho ${hechos} de ${ids.length}. Fallaron ${errores.length}:\n` + errores.map(e => `• ${e}`).join('\n'));
       }
 
+      nodosSeleccionados.clear();
+      modoSeleccion = false;
+      document.getElementById('chk-modo-seleccion').checked = false;
+      actualizarBarraSeleccion();
+      await cargarArbol();
+    }
+
+    // -------------------- Tomar tarea (de otro usuario, sin pedir permiso) --------------------
+
+    function abrirModalTomarTarea() {
+      const ids = [...nodosSeleccionados];
+      document.getElementById('tomartarea-contador').textContent = `${ids.length} tarea(s) seleccionada(s)`;
+      document.getElementById('tomartarea-usuario').textContent = miPerfil.nombre_completo || miPerfil.username;
+      document.getElementById('tomartarea-estado').value = '';
+      document.getElementById('tomartarea-estado-msg').textContent = '';
+      document.getElementById('modal-tomar-tarea').style.display = 'flex';
+    }
+
+    function cerrarModalTomarTarea() {
+      document.getElementById('modal-tomar-tarea').style.display = 'none';
+    }
+
+    async function confirmarTomarTareaMasivo() {
+      const estadoEl = document.getElementById('tomartarea-estado-msg');
+      const btn = document.querySelector('#modal-tomar-tarea .overlay-botones button:last-child');
+      const estadoElegido = document.getElementById('tomartarea-estado').value;
+      const ids = [...nodosSeleccionados];
+      if (ids.length === 0) return;
+
+      btn.disabled = true;
+      let hechos = 0;
+      const errores = [];
+
+      // Sin confirmaciones intermedias ni comprobación de a quién pertenecía
+      // antes la tarea: cualquiera la puede tomar para no dejar a nadie parado.
+      for (const id of ids) {
+        estadoEl.textContent = `Tomando (${hechos + errores.length + 1}/${ids.length})...`;
+        const nodo = mapaNodoPorId[id];
+        const { error } = await supabaseClient.rpc('tomar_tarea', { p_node_id: id });
+        if (error) { errores.push(`${nodo?.codigo || id}: ${error.message}`); continue; }
+
+        if (estadoElegido) {
+          const accionesEstado = {
+            pendiente_de_hacer: () => supabaseClient.rpc('reiniciar_tarea', { p_node_id: id }),
+            en_proceso: () => supabaseClient.rpc('marcar_en_trabajo', { p_node_id: id }),
+            pendiente_revision: () => supabaseClient.rpc('marcar_terminado', { p_node_id: id }),
+            pendiente_dudas: () => supabaseClient.rpc('marcar_pendiente_dudas', { p_node_id: id })
+          };
+          if (accionesEstado[estadoElegido]) {
+            const { error: errorEstado } = await accionesEstado[estadoElegido]();
+            if (errorEstado) { errores.push(`${nodo?.codigo || id} (estado): ${errorEstado.message}`); continue; }
+          }
+        }
+        hechos++;
+      }
+
+      registrarLog('TOMAR_TAREA', `Tomó ${hechos} de ${ids.length} tarea(s) seleccionada(s)${estadoElegido ? `, estado: ${estadoElegido}` : ''}${errores.length ? ` (${errores.length} fallaron)` : ''}`);
+
+      btn.disabled = false;
+
+      if (errores.length > 0) {
+        estadoEl.innerHTML = `Hecho ${hechos} de ${ids.length}. Fallaron ${errores.length}:<br>` + errores.map(e => `• ${e}`).join('<br>');
+        estadoEl.className = 'estado-msg error';
+        await cargarArbol();
+        return;
+      }
+
+      estadoEl.textContent = '';
+      cerrarModalTomarTarea();
       nodosSeleccionados.clear();
       modoSeleccion = false;
       document.getElementById('chk-modo-seleccion').checked = false;
