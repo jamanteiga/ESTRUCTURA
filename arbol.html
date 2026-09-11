@@ -686,6 +686,19 @@
       PERFIL_6000: 'Perfil 6000'
     };
 
+    // Para la etiqueta corta que se ve junto al nodo: los tipos "internos" de
+    // Anidados/Planchas/Perfiles guardan en BD el valor completo del enum,
+    // pero aquí se muestran con el código corto del grupo al que pertenecen.
+    const TIPO_TAG_CORTO = {
+      ANIDADOS: 'AN',
+      PLANCHA_1000: 'PL',
+      PLANCHA_2000: 'PL',
+      PLANCHA_3000: 'PL',
+      PERFIL_4000: 'PERF',
+      PERFIL_6000: 'PERF'
+    };
+    function etiquetaCortaTipo(tipo) { return TIPO_TAG_CORTO[tipo] || tipo; }
+
     let miPerfil = null;
     let todosLosNodos = [];
     let mapaHijosPorPadre = {};
@@ -1138,7 +1151,7 @@
               <span class="flecha f-sin_asignar">▶</span>
               <span class="codigo">${resaltarCoincidencia(nodo.codigo)}</span>
               <span>${resaltarCoincidencia(nodo.nombre)}</span>
-              <span class="tipo-tag">${nodo.tipo}</span>
+              <span class="tipo-tag">${etiquetaCortaTipo(nodo.tipo)}</span>
               <span style="font-size:11px; color:#dc3545;">(desactivado)</span>
               <span class="acciones">${acciones}</span>
             </div>
@@ -1181,7 +1194,9 @@
       const motivoRechazo = (!sinAsignacion && !vistaSimplificada && nodo.revision_estado === 'RECHAZADO' && nodo.comentario_revision)
         ? `<div class="motivo-rechazo">✘ Motivo: ${nodo.comentario_revision}</div>` : '';
 
-      const badgeAvance = (modoAvance && (nodo.tipo === 'BUQUE' || nodo.tipo === 'BLOQUE' || nodo.tipo === 'SB' || nodo.tipo === 'PI'))
+      // El % de avance se muestra en cualquier nodo (rama o final), no solo en
+      // Buque/Bloque/SB/PI: cada nodo resume su propio estado + el de todo lo que cuelgue de él.
+      const badgeAvance = modoAvance
         ? (() => { const pct = calcularPorcentajeAvance(nodo.id); return pct !== null ? `<span class="badge-avance">${pct}%</span>` : ''; })()
         : '';
 
@@ -1219,7 +1234,7 @@
             <span class="flecha ${claseColor}" title="${estado}">${simboloFlecha}</span>
             <span class="codigo">${resaltarCoincidencia(nodo.codigo)}</span>
             <span>${resaltarCoincidencia(nodo.nombre)}</span>
-            <span class="tipo-tag">${nodo.tipo}</span>
+            <span class="tipo-tag">${etiquetaCortaTipo(nodo.tipo)}</span>
             ${badgeAvance}
             ${asignadosTexto ? `<span class="asignados">${asignadosTexto}</span>` : ''}
             ${badgeTiempos}
@@ -2112,7 +2127,7 @@
         : inactivos.map(n => `
             <li class="nodo">
               <div class="fila-nodo">
-                <span class="tipo-tag">${n.tipo}</span>
+                <span class="tipo-tag">${etiquetaCortaTipo(n.tipo)}</span>
                 <span class="codigo">${n.codigo}</span>
                 <span>${n.nombre}</span>
                 <span style="font-size:11px; color:#888;">${rutaCompletaPapelera(n)}</span>
