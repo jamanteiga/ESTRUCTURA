@@ -699,6 +699,14 @@
     };
     function etiquetaCortaTipo(tipo) { return TIPO_TAG_CORTO[tipo] || tipo; }
 
+    // Muchos nodos tienen el nombre igual al código (o casi): en ese caso no
+    // hace falta repetirlo en la fila, el código ya lo identifica.
+    function nombreEsRedundante(codigo, nombre) {
+      const c = (codigo || '').trim().toUpperCase();
+      const n = (nombre || '').trim().toUpperCase();
+      return !n || n === c;
+    }
+
     let miPerfil = null;
     let todosLosNodos = [];
     let mapaHijosPorPadre = {};
@@ -1150,7 +1158,7 @@
               <span class="toggle ${tieneHijos ? '' : 'vacio'}" onclick="toggleNodo('${nodo.id}')">${abierto ? '▼' : '▶'}</span>
               <span class="flecha f-sin_asignar">▶</span>
               <span class="codigo">${resaltarCoincidencia(nodo.codigo)}</span>
-              <span>${resaltarCoincidencia(nodo.nombre)}</span>
+              ${nombreEsRedundante(nodo.codigo, nodo.nombre) ? '' : `<span>${resaltarCoincidencia(nodo.nombre)}</span>`}
               <span class="tipo-tag">${etiquetaCortaTipo(nodo.tipo)}</span>
               <span style="font-size:11px; color:#dc3545;">(desactivado)</span>
               <span class="acciones">${acciones}</span>
@@ -1233,7 +1241,7 @@
             <span class="toggle ${tieneHijos ? '' : 'vacio'}" onclick="toggleNodo('${nodo.id}')">${abierto ? '▼' : '▶'}</span>
             <span class="flecha ${claseColor}" title="${estado}">${simboloFlecha}</span>
             <span class="codigo">${resaltarCoincidencia(nodo.codigo)}</span>
-            <span>${resaltarCoincidencia(nodo.nombre)}</span>
+            ${nombreEsRedundante(nodo.codigo, nodo.nombre) ? '' : `<span>${resaltarCoincidencia(nodo.nombre)}</span>`}
             <span class="tipo-tag">${etiquetaCortaTipo(nodo.tipo)}</span>
             ${badgeAvance}
             ${asignadosTexto ? `<span class="asignados">${asignadosTexto}</span>` : ''}
@@ -2034,18 +2042,21 @@
 
     async function desactivarNodo(nodeId) {
       const nodo = mapaNodoPorId[nodeId];
-      if ((mapaHijosPorPadre[nodeId] || []).length > 0) {
-        mostrarAvisoModal('Este nodo tiene hijos. Desactívalos primero.'); return;
-      }
-      if (!await mostrarConfirmacion(`¿Desactivar "${nodo.codigo} - ${nodo.nombre}"? No se borra, solo deja de aparecer.`)) return;
+      const descendientes = obtenerDescendientesIds(nodeId);
+      const ids = [nodeId, ...descendientes];
 
-      const { error } = await supabaseClient.from('nodes').update({ activo: false }).eq('id', nodeId);
+      const mensaje = descendientes.length > 0
+        ? `¿Desactivar "${nodo.codigo} - ${nodo.nombre}" junto con los ${descendientes.length} nodo(s) que cuelgan de él? No se borran, solo dejan de aparecer (pasan a la papelera y se pueden reactivar).`
+        : `¿Desactivar "${nodo.codigo} - ${nodo.nombre}"? No se borra, solo deja de aparecer.`;
+      if (!await mostrarConfirmacion(mensaje)) return;
+
+      const { error } = await supabaseClient.from('nodes').update({ activo: false }).in('id', ids);
       if (error) {
         mostrarAvisoModal('Error: ' + traducirError(error.message));
         registrarLog('INTENTO_FALLIDO', `Intento de desactivar "${nodo.codigo}" denegado: ${error.message}`, nodeId);
         return;
       }
-      registrarLog('DESACTIVAR_NODO', `Desactivó "${nodo.codigo}"`, nodeId);
+      registrarLog('DESACTIVAR_NODO', `Desactivó "${nodo.codigo}"${descendientes.length ? ` junto con ${descendientes.length} nodo(s) dentro` : ''}`, nodeId);
       await cargarArbol();
     }
 
@@ -2129,7 +2140,7 @@
               <div class="fila-nodo">
                 <span class="tipo-tag">${etiquetaCortaTipo(n.tipo)}</span>
                 <span class="codigo">${n.codigo}</span>
-                <span>${n.nombre}</span>
+                ${nombreEsRedundante(n.codigo, n.nombre) ? '' : `<span>${n.nombre}</span>`}
                 <span style="font-size:11px; color:#888;">${rutaCompletaPapelera(n)}</span>
                 <span class="acciones">
                   <button class="pequeno exito" onclick="reactivarNodo('${n.id}')">♻️ Reactivar</button>
