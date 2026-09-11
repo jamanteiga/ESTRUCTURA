@@ -374,7 +374,7 @@
       <h3 id="modal-nodo-titulo">Nuevo nodo</h3>
       <div id="modal-nodo-tipo-wrap">
         <label>Tipo</label>
-        <select id="modal-nodo-tipo"></select>
+        <select id="modal-nodo-tipo" onchange="actualizarCodigoSegunTipo()"></select>
       </div>
       <label>Código</label>
       <input type="text" id="modal-nodo-codigo" placeholder="Ej: SB3, UA1, NL801...">
@@ -1733,7 +1733,17 @@
           ? '<option value="">(este tipo no admite hijos)</option>'
           : tipos.map(t => `<option value="${t}">${t}</option>`).join('');
       }
+      actualizarCodigoSegunTipo();
       document.getElementById('modal-nodo').style.display = 'flex';
+    }
+
+    function actualizarCodigoSegunTipo() {
+      const tipo = document.getElementById('modal-nodo-tipo').value;
+      const codigoInput = document.getElementById('modal-nodo-codigo');
+      // Quita solo el prefijo de letras que ya hubiera (de un tipo anterior) y
+      // conserva el resto (números u otros caracteres) tal como estaban.
+      const resto = codigoInput.value.replace(/^[A-Za-zÁÉÍÓÚÑ]+/, '');
+      codigoInput.value = tipo + resto;
     }
 
     async function abrirModalEditar(nodeId) {
