@@ -1097,7 +1097,7 @@
       }
 
       let acciones = '';
-      if (nodo.tipo === 'BUQUE' || nodo.tipo === 'BLOQUE' || nodo.tipo === 'SB') {
+      if (nodo.tipo === 'BUQUE' || nodo.tipo === 'BLOQUE' || nodo.tipo === 'SB' || nodo.tipo === 'PI') {
         acciones += `<button class="pequeno secundario" onclick="expandirRama('${nodo.id}')" title="Expandir esta rama">⏬</button>`;
         acciones += `<button class="pequeno secundario" onclick="encogerRama('${nodo.id}')" title="Encoger esta rama">⏫</button>`;
       }
@@ -1114,7 +1114,7 @@
       const motivoRechazo = (!sinAsignacion && !vistaSimplificada && nodo.revision_estado === 'RECHAZADO' && nodo.comentario_revision)
         ? `<div class="motivo-rechazo">✘ Motivo: ${nodo.comentario_revision}</div>` : '';
 
-      const badgeAvance = (modoAvance && (nodo.tipo === 'BUQUE' || nodo.tipo === 'BLOQUE' || nodo.tipo === 'SB'))
+      const badgeAvance = (modoAvance && (nodo.tipo === 'BUQUE' || nodo.tipo === 'BLOQUE' || nodo.tipo === 'SB' || nodo.tipo === 'PI'))
         ? (() => { const pct = calcularPorcentajeAvance(nodo.id); return pct !== null ? `<span class="badge-avance">${pct}%</span>` : ''; })()
         : '';
 
@@ -2518,7 +2518,47 @@
       }
       lista.innerHTML = (data || []).length === 0
         ? '<p style="color:#666;">Todavía no hay comentarios.</p>'
-        : data.map(c => `<div style="padding:4px 0; border-bottom:1px solid #eee;"><b>${comentariosModeloOrigenActual}${String(c.numero).padStart(2, '0')}</b> — ${c.texto}</div>`).join('');
+        : data.map(c => `<div class="comentario-modelo-fila" oncontextmenu="mostrarMenuComentario(event, '${c.id}', ${!!c.aprobado})" style="padding:4px 0; border-bottom:1px solid #eee; cursor:context-menu;">
+            <span class="check-comentario" title="Clic derecho: marcar/quitar OK" onclick="mostrarMenuComentario(event, '${c.id}', ${!!c.aprobado})" style="color:rgb(146,208,80); font-weight:bold; cursor:pointer;">${c.aprobado ? '✔ ' : ''}</span><b>${comentariosModeloOrigenActual}${String(c.numero).padStart(2, '0')}</b> — ${c.texto}
+          </div>`).join('');
+    }
+
+    function mostrarMenuComentario(evento, comentarioId, aprobadoActual) {
+      evento.preventDefault();
+      evento.stopPropagation();
+      const items = aprobadoActual
+        ? [{ label: '✘ Quitar OK', tip: 'Quita la marca de aprobado de este comentario.', fn: () => accionAprobarComentarioModelo(comentarioId, false) }]
+        : [{ label: '✔ OK (Aprobado)', tip: 'Marca este comentario como aprobado.', fn: () => accionAprobarComentarioModelo(comentarioId, true) }];
+
+      const menu = document.getElementById('menu-contextual');
+      menu.innerHTML = items.map((it, i) => `<div class="mc-item" data-idx="${i}">${it.label}</div>`).join('');
+      menu.querySelectorAll('.mc-item[data-idx]').forEach(el => {
+        const it = items[parseInt(el.dataset.idx, 10)];
+        el.addEventListener('click', (e) => { e.stopPropagation(); cerrarMenuContextual(); it.fn(); });
+        el.addEventListener('mouseenter', (e) => mostrarTooltipMenu(e, it.tip));
+        el.addEventListener('mousemove', (e) => posicionarTooltipMenu(e));
+        el.addEventListener('mouseleave', ocultarTooltipMenu);
+      });
+
+      const anchoEstimado = 220, altoEstimado = Math.min(items.length * 34 + 20, window.innerHeight - 20);
+      let x = evento.clientX, y = evento.clientY;
+      if (x + anchoEstimado > window.innerWidth) x = window.innerWidth - anchoEstimado - 10;
+      if (y + altoEstimado > window.innerHeight) y = window.innerHeight - altoEstimado - 10;
+      menu.style.left = x + 'px';
+      menu.style.top = Math.max(y, 10) + 'px';
+      menu.style.display = 'block';
+    }
+
+    async function accionAprobarComentarioModelo(comentarioId, aprobado) {
+      const nodo = mapaNodoPorId[comentariosModeloNodoActual];
+      const { error } = await supabaseClient.rpc('aprobar_comentario_modelo', { p_comentario_id: comentarioId, p_aprobado: aprobado });
+      if (error) {
+        mostrarAvisoModal('Error: ' + traducirError(error.message));
+        registrarLog('INTENTO_FALLIDO', `Intento de ${aprobado ? 'marcar OK' : 'quitar OK'} en comentario de "${nodo?.codigo}" denegado: ${error.message}`, comentariosModeloNodoActual);
+        return;
+      }
+      registrarLog('PENDIENTE_CAMBIOS_MODELO', `${aprobado ? 'Marcó OK' : 'Quitó OK'} en un comentario ${comentariosModeloOrigenActual} de "${nodo?.codigo}"`, comentariosModeloNodoActual);
+      await cargarComentariosModelo();
     }
 
     async function anadirComentarioModelo() {
