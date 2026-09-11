@@ -509,7 +509,31 @@
     <span id="texto-seleccion" style="font-size:13px;"></span>
     <button onclick="abrirModalAsignacionMasiva()">👤 Asignar seleccionadas</button>
     <button id="btn-estado-masivo" style="display:none;" onclick="abrirModalEstadoMasivo()">📋 Estado tareas</button>
+    <button id="btn-anadir-masivo" style="display:none;" onclick="abrirModalAnadirMasivo()">+ Añadir dentro de cada una</button>
+    <button id="btn-desactivar-masivo" class="peligro" style="display:none;" onclick="confirmarDesactivarMasivo()">🗑️ Desactivar seleccionadas</button>
     <button class="secundario" onclick="cancelarSeleccion()">✕ Cancelar</button>
+  </div>
+
+  <div class="overlay" id="modal-anadir-masivo">
+    <div class="overlay-caja">
+      <h3>+ Añadir nodo dentro de cada seleccionado</h3>
+      <p id="anadirmasivo-contador" style="font-size:13px; color:#666;"></p>
+      <label>Tipo (solo se muestran los válidos para TODOS los seleccionados)</label>
+      <select id="anadirmasivo-tipo"></select>
+      <label>Código</label>
+      <input type="text" id="anadirmasivo-codigo" placeholder="Se repite igual dentro de cada nodo seleccionado">
+      <label>Nombre</label>
+      <input type="text" id="anadirmasivo-nombre">
+      <label>Descripción (opcional)</label>
+      <textarea id="anadirmasivo-descripcion" rows="2"></textarea>
+      <label>Orden</label>
+      <input type="number" id="anadirmasivo-orden" value="0">
+      <div class="estado-msg" id="anadirmasivo-estado"></div>
+      <div class="overlay-botones">
+        <button class="secundario" onclick="cerrarModalAnadirMasivo()">Cancelar</button>
+        <button onclick="confirmarAnadirMasivo()">Crear en todos</button>
+      </div>
+    </div>
   </div>
 
   <div class="overlay" id="modal-asignar-masivo">
@@ -2230,8 +2254,18 @@
 
     function toggleSeleccionNodo(nodeId, event) {
       event.stopPropagation();
-      if (nodosSeleccionados.has(nodeId)) nodosSeleccionados.delete(nodeId); else nodosSeleccionados.add(nodeId);
+      const descendientes = obtenerDescendientesIds(nodeId);
+      if (nodosSeleccionados.has(nodeId)) {
+        // Al desmarcar, se desmarca también toda la rama (selección/deselección simétricas).
+        nodosSeleccionados.delete(nodeId);
+        descendientes.forEach(id => nodosSeleccionados.delete(id));
+      } else {
+        // Al marcar un nodo, se marca automáticamente todo lo que cuelga de él.
+        nodosSeleccionados.add(nodeId);
+        descendientes.forEach(id => nodosSeleccionados.add(id));
+      }
       actualizarBarraSeleccion();
+      renderizarArbolCompleto();
     }
 
     function actualizarBarraSeleccion() {
@@ -2239,6 +2273,8 @@
       if (!modoSeleccion || nodosSeleccionados.size === 0) { barra.classList.remove('visible'); return; }
       document.getElementById('texto-seleccion').textContent = `${nodosSeleccionados.size} tarea(s) seleccionada(s)`;
       document.getElementById('btn-estado-masivo').style.display = esGestor() ? 'inline-block' : 'none';
+      document.getElementById('btn-anadir-masivo').style.display = esGestor() ? 'inline-block' : 'none';
+      document.getElementById('btn-desactivar-masivo').style.display = esGestor() ? 'inline-block' : 'none';
       barra.classList.add('visible');
     }
 
@@ -2246,6 +2282,98 @@
       nodosSeleccionados.clear();
       actualizarBarraSeleccion();
       renderizarArbolCompleto();
+    }
+
+    async function confirmarDesactivarMasivo() {
+      const ids = [...nodosSeleccionados];
+      if (ids.length === 0) return;
+      if (!await mostrarConfirmacion(`¿Desactivar ${ids.length} nodo(s) seleccionados (incluye ramas completas)? No se borran — pasan a la papelera y se pueden reactivar.`)) return;
+
+      let hechos = 0;
+      const errores = [];
+      for (const id of ids) {
+        const nodo = mapaNodoPorId[id];
+        const { error } = await supabaseClient.from('nodes').update({ activo: false }).eq('id', id);
+        if (error) { errores.push(`${nodo?.codigo || id}: ${error.message}`); continue; }
+        hechos++;
+      }
+
+      registrarLog('DESACTIVAR_NODO', `Desactivó en lote ${hechos} de ${ids.length} nodo(s)${errores.length ? ` (${errores.length} fallaron)` : ''}`);
+      if (errores.length > 0) {
+        mostrarAvisoModal(`Hecho ${hechos} de ${ids.length}. Fallaron ${errores.length}:\n` + errores.map(e => `• ${e}`).join('\n'));
+      }
+
+      nodosSeleccionados.clear();
+      modoSeleccion = false;
+      document.getElementById('chk-modo-seleccion').checked = false;
+      actualizarBarraSeleccion();
+      await cargarArbol();
+    }
+
+    async function abrirModalAnadirMasivo() {
+      const ids = [...nodosSeleccionados];
+      const padres = ids.map(id => mapaNodoPorId[id]).filter(Boolean);
+      if (padres.length === 0) return;
+
+      const listasTipos = await Promise.all(padres.map(p => obtenerTiposHijoValidos(p.tipo)));
+      const interseccion = listasTipos.reduce((acc, lista) => acc.filter(t => lista.includes(t)));
+
+      document.getElementById('anadirmasivo-contador').textContent =
+        `Se creará un nodo igual dentro de cada uno de los ${padres.length} nodo(s) seleccionados.`;
+      const selectTipo = document.getElementById('anadirmasivo-tipo');
+      selectTipo.innerHTML = interseccion.length === 0
+        ? '<option value="">(ningún tipo de hijo es válido para TODOS los seleccionados a la vez)</option>'
+        : interseccion.map(t => `<option value="${t}">${t}</option>`).join('');
+      document.getElementById('anadirmasivo-codigo').value = '';
+      document.getElementById('anadirmasivo-nombre').value = '';
+      document.getElementById('anadirmasivo-descripcion').value = '';
+      document.getElementById('anadirmasivo-orden').value = '0';
+      document.getElementById('anadirmasivo-estado').textContent = '';
+      document.getElementById('modal-anadir-masivo').style.display = 'flex';
+    }
+
+    function cerrarModalAnadirMasivo() {
+      document.getElementById('modal-anadir-masivo').style.display = 'none';
+    }
+
+    async function confirmarAnadirMasivo() {
+      const estadoEl = document.getElementById('anadirmasivo-estado');
+      const tipo = document.getElementById('anadirmasivo-tipo').value;
+      const codigo = document.getElementById('anadirmasivo-codigo').value.trim();
+      const nombre = document.getElementById('anadirmasivo-nombre').value.trim() || codigo;
+      const descripcion = document.getElementById('anadirmasivo-descripcion').value.trim();
+      const orden = parseInt(document.getElementById('anadirmasivo-orden').value, 10) || 0;
+
+      if (!tipo) { estadoEl.textContent = 'Elige un tipo.'; estadoEl.className = 'estado-msg error'; return; }
+      if (!codigo) { estadoEl.textContent = 'Escribe un código.'; estadoEl.className = 'estado-msg error'; return; }
+
+      const ids = [...nodosSeleccionados];
+      let hechos = 0;
+      const errores = [];
+      for (const parentId of ids) {
+        const padre = mapaNodoPorId[parentId];
+        const { error } = await supabaseClient.from('nodes').insert({
+          parent_id: parentId, tipo, codigo, nombre, descripcion: descripcion || null, orden
+        });
+        if (error) { errores.push(`${padre?.codigo || parentId}: ${error.message}`); continue; }
+        hechos++;
+      }
+
+      registrarLog('CREAR_NODO', `Creó en lote "${codigo}" (${tipo}) dentro de ${hechos} de ${ids.length} nodo(s) seleccionados${errores.length ? ` (${errores.length} fallaron)` : ''}`);
+
+      if (errores.length > 0) {
+        estadoEl.innerHTML = `Hecho ${hechos} de ${ids.length}. Fallaron ${errores.length}:<br>` + errores.map(e => `• ${e}`).join('<br>');
+        estadoEl.className = 'estado-msg error';
+        await cargarArbol();
+        return;
+      }
+
+      cerrarModalAnadirMasivo();
+      nodosSeleccionados.clear();
+      modoSeleccion = false;
+      document.getElementById('chk-modo-seleccion').checked = false;
+      actualizarBarraSeleccion();
+      await cargarArbol();
     }
 
     function abrirModalAsignacionMasiva() {
