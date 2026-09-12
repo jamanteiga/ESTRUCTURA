@@ -105,6 +105,7 @@
       <button class="secundario" onclick="alternarTema()">🌙/☀️</button>
       <button class="secundario" onclick="exportarExcel()">⬇ Exportar a Excel</button>
       <button class="secundario" onclick="exportarPdf()">⬇ Exportar a PDF</button>
+      <button class="secundario" onclick="exportarProject()">⬇ Exportar a Project</button>
       <button class="peligro" onclick="cerrarPagina()">❌ Cerrar</button>
     </div>
   </div>
@@ -124,8 +125,9 @@
     <button class="secundario" onclick="expandirTodoGantt()">⏬ Expandir todo</button>
     <button class="secundario" onclick="contraerTodoGantt()">⏫ Contraer todo</button>
     <button class="secundario" onclick="abrirModalVerRama()">🔎 Ver Bloque/Subbloque...</button>
+    <button class="secundario" onclick="verTodoElBuqueGantt()">👁️ Ver todo</button>
+    <button class="secundario" onclick="verSoloBloquesRaizGantt()">⬛ B-raíz</button>
     <span id="badge-rama-filtrada" style="display:none; font-size:12px; background:#e9f7ec; color:#218838; padding:4px 8px; border-radius:10px;"></span>
-    <button class="secundario" onclick="exportarProject()">⬇ Exportar a Project</button>
   </div>
 
   <div class="card leyenda">
@@ -372,6 +374,24 @@
       raizGanttId = buqueActualId;
       nodosAbiertos = new Set(Object.keys(mapaNodoPorId));
       cerrarModalVerRama();
+      actualizarBadgeRama();
+      pintarGantt();
+    }
+
+    // Botón "Ver todo": vuelve a ver el Buque completo con todo expandido,
+    // sin pasar por el modal (acceso directo desde la barra de filtros).
+    function verTodoElBuqueGantt() {
+      raizGanttId = buqueActualId;
+      nodosAbiertos = new Set(Object.keys(mapaNodoPorId));
+      actualizarBadgeRama();
+      pintarGantt();
+    }
+
+    // Botón "B-raíz": se ve el Buque y, colgando de él, únicamente la fila
+    // raíz de cada Bloque (colapsados, sin nada de su interior visible).
+    function verSoloBloquesRaizGantt() {
+      raizGanttId = buqueActualId;
+      nodosAbiertos = new Set([buqueActualId]);
       actualizarBadgeRama();
       pintarGantt();
     }

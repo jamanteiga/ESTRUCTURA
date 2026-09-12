@@ -34,6 +34,11 @@
     .f-aprobado { color: rgb(146,208,80); font-size: 26px; width: 26px; }
     .f-rechazado { color: rgb(255,0,0); font-size: 26px; width: 26px; }
     .f-mezcla { color: rgb(228,158,221); }
+    .candado { font-size: 17px; display: inline-block; width: 21px; text-align: center; line-height: 1; cursor: pointer; flex-shrink: 0; }
+    .cuadro-cambios-modelo {
+      display: inline-block; width: 12px; height: 12px; background: rgb(255,192,0); border-radius: 2px;
+      flex-shrink: 0; margin: 0 1px;
+    }
 
     .barra-global { display: flex; gap: 6px; flex-wrap: wrap; }
 
@@ -171,11 +176,12 @@
     #menu-contextual .mc-titulo { padding: 6px 14px; font-size: 11px; color: #888; text-transform: uppercase; font-weight: bold; }
     #menu-contextual .mc-item.mc-padre::after { content: '▸'; float: right; color: #999; margin-left: 10px; }
 
-    #menu-submenu-flotante {
+    #menu-submenu-flotante, #menu-submenu-flotante-2 {
       display: none; position: fixed; z-index: 4050; background: #fff; border: 1px solid #ccc;
       border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.25); min-width: 280px; padding: 4px 0;
       font-size: 13px;
     }
+    #menu-submenu-flotante-2 { z-index: 4100; }
 
     .spinner-carga {
       display: inline-block; width: 16px; height: 16px; border: 2px solid #ccc; border-top-color: #007bff;
@@ -189,6 +195,7 @@
     body.vista-movil .fila-nodo { flex-wrap: wrap; padding: 8px 6px; gap: 8px; }
     body.vista-movil .toggle { width: 24px; font-size: 16px; }
     body.vista-movil .flecha { width: 26px; font-size: 24px; }
+    body.vista-movil .candado { width: 26px; font-size: 20px; }
     body.vista-movil .codigo, body.vista-movil .tipo-tag { font-size: 13px; }
     body.vista-movil button { padding: 8px 12px; font-size: 14px; }
     body.vista-movil .btn-mas-movil {
@@ -220,8 +227,8 @@
     body.tema-oscuro select, body.tema-oscuro input[type="text"], body.tema-oscuro input[type="number"],
     body.tema-oscuro textarea { background: #1a1d21; color: #e0e0e0; border-color: #4a4f57; }
     body.tema-oscuro .overlay-caja { background: #24282e; color: #e0e0e0; }
-    body.tema-oscuro #menu-contextual, body.tema-oscuro #menu-submenu-flotante { background: #24282e; border-color: #3a3f47; }
-    body.tema-oscuro #menu-contextual .mc-item:hover, body.tema-oscuro #menu-submenu-flotante .mc-item:hover { background: #2f343b; }
+    body.tema-oscuro #menu-contextual, body.tema-oscuro #menu-submenu-flotante, body.tema-oscuro #menu-submenu-flotante-2 { background: #24282e; border-color: #3a3f47; }
+    body.tema-oscuro #menu-contextual .mc-item:hover, body.tema-oscuro #menu-submenu-flotante .mc-item:hover, body.tema-oscuro #menu-submenu-flotante-2 .mc-item:hover { background: #2f343b; }
     body.tema-oscuro #menu-contextual .mc-separador { border-top-color: #3a3f47; }
     body.tema-oscuro .lista-mover { border-color: #3a3f47; }
     body.tema-oscuro .opcion-mover { border-bottom-color: #33373d; }
@@ -666,6 +673,7 @@
 
   <div id="menu-contextual"></div>
   <div id="menu-submenu-flotante"></div>
+  <div id="menu-submenu-flotante-2"></div>
   <div id="mc-tooltip"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -884,9 +892,9 @@
     function esGestor() { return miPerfil.rol === 'ADMIN' || miPerfil.rol === 'REVISOR'; }
     function esInvitado() { return miPerfil.rol === 'INVITADO'; }
     function pareceGestor() { return esGestor() || esInvitado(); }
-    // Selección múltiple ampliada a TRABAJADOR: cualquiera puede "tomar" tareas
-    // de otro, aunque las acciones de asignación libre siguen siendo de gestor.
-    function puedeSeleccionar() { return esGestor() || miPerfil.rol === 'TRABAJADOR'; }
+    // Un usuario cualquiera NO puede tomar la tarea de otro — reasignar tareas
+    // (incluido "Tomar tarea") sigue siendo cosa exclusiva de ADMIN/REVISOR.
+    function puedeSeleccionar() { return esGestor(); }
 
     async function registrarLog(accion, descripcion, nodeId) {
       try {
@@ -1266,6 +1274,8 @@
                ontouchmove="cancelarPulsacionLarga()">
             ${checkboxSeleccion}
             <span class="toggle ${tieneHijos ? '' : 'vacio'}" onclick="toggleNodo('${nodo.id}')">${abierto ? '▼' : '▶'}</span>
+            ${!sinAsignacion ? `<span class="candado" title="${nodo.bloqueado ? 'Bloqueado — clic para desbloquear' : 'Desbloqueado — clic para bloquear'}" onclick="event.stopPropagation(); accionAlternarBloqueoDesdeIcono('${nodo.id}')">${nodo.bloqueado ? '🔒' : '🔓'}</span>` : ''}
+            ${(!sinAsignacion && nodo.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO') ? '<span class="cuadro-cambios-modelo" title="Pendiente de cambios en modelo"></span>' : ''}
             <span class="flecha ${claseColor}" title="${estado}">${simboloFlecha}</span>
             <span class="codigo">${resaltarCoincidencia(nodo.codigo)}</span>
             ${nombreEsRedundante(nodo.codigo, nodo.nombre) ? '' : `<span>${resaltarCoincidencia(nodo.nombre)}</span>`}
@@ -1590,6 +1600,14 @@
           items.push({ label: '👤 Asignar usuario', tip: 'Asignación de tarea a un usuario.', fn: () => abrirModalAsignar(nodeId) });
 
           items.push({
+            label: nodo.bloqueado ? '🔓 Desbloquear' : '🔒 Bloquear',
+            tip: nodo.bloqueado
+              ? 'Desbloquea esta tarea y, si tiene, todos los nodos que cuelgan de ella.'
+              : 'Bloquea esta tarea y, si tiene, todos los nodos que cuelgan de ella.',
+            fn: () => accionAlternarBloqueo(nodeId, !nodo.bloqueado)
+          });
+
+          items.push({
             submenu: true,
             label: 'Estado tarea',
             subitems: [
@@ -1600,8 +1618,14 @@
               { label: 'En proceso', tip: 'Se da por iniciada la tarea.', fn: () => accionMarcarEnTrabajo(nodeId) },
               { label: 'Pendiente de revisión', tip: 'Dar tarea por finalizada, a la espera de revisión.', fn: () => accionMarcarTerminado(nodeId) },
               { label: 'Pendiente de dudas', tip: 'Pendiente por dudas.', fn: () => accionMarcarPendienteDudas(nodeId) },
-              { label: 'Pendiente cambios en modelo (Ghenova)', tip: 'Pendiente por cambios en el modelo — comentarios GHE001, GHE002... (numeración compartida por todo el buque)', fn: () => accionAbrirComentariosModelo(nodeId, 'GHE') },
-              { label: 'Pendiente cambios en modelo (Navantia)', tip: 'Pendiente por cambios en el modelo — comentarios NAV001, NAV002... (numeración compartida por todo el buque)', fn: () => accionAbrirComentariosModelo(nodeId, 'NAV') }
+              {
+                submenu: true,
+                label: 'Pendiente cambios en modelo',
+                subitems: [
+                  { label: 'Ghenova', tip: 'Pendiente por cambios en el modelo — comentarios GHE001, GHE002... (numeración compartida por todo el buque)', fn: () => accionAbrirComentariosModelo(nodeId, 'GHE') },
+                  { label: 'Navantia', tip: 'Pendiente por cambios en el modelo — comentarios NAV001, NAV002... (numeración compartida por todo el buque)', fn: () => accionAbrirComentariosModelo(nodeId, 'NAV') }
+                ]
+              }
             ]
           });
         }
@@ -1625,6 +1649,13 @@
         } else if (esMio) {
           items.push({ separador: true });
           items.push({
+            label: nodo.bloqueado ? '🔓 Desbloquear' : '🔒 Bloquear',
+            tip: nodo.bloqueado
+              ? 'Desbloquea esta tarea y, si tiene, todos los nodos que cuelgan de ella.'
+              : 'Bloquea esta tarea y, si tiene, todos los nodos que cuelgan de ella.',
+            fn: () => accionAlternarBloqueo(nodeId, !nodo.bloqueado)
+          });
+          items.push({
             submenu: true,
             label: 'Estado tarea',
             subitems: [
@@ -1633,8 +1664,14 @@
               { label: 'En proceso', tip: 'Comenzar a trabajar en una tarea.', fn: () => accionMarcarEnTrabajo(nodeId) },
               { label: 'Pendiente de revisión', tip: 'Dar tarea por finalizada.', fn: () => accionMarcarTerminado(nodeId) },
               { label: 'Pendiente de dudas', tip: 'Pendiente por dudas.', fn: () => accionMarcarPendienteDudas(nodeId) },
-              { label: 'Pendiente cambios en modelo (Ghenova)', tip: 'Pendiente por cambios en el modelo — comentarios GHE001, GHE002... (numeración compartida por todo el buque)', fn: () => accionAbrirComentariosModelo(nodeId, 'GHE') },
-              { label: 'Pendiente cambios en modelo (Navantia)', tip: 'Pendiente por cambios en el modelo — comentarios NAV001, NAV002... (numeración compartida por todo el buque)', fn: () => accionAbrirComentariosModelo(nodeId, 'NAV') }
+              {
+                submenu: true,
+                label: 'Pendiente cambios en modelo',
+                subitems: [
+                  { label: 'Ghenova', tip: 'Pendiente por cambios en el modelo — comentarios GHE001, GHE002... (numeración compartida por todo el buque)', fn: () => accionAbrirComentariosModelo(nodeId, 'GHE') },
+                  { label: 'Navantia', tip: 'Pendiente por cambios en el modelo — comentarios NAV001, NAV002... (numeración compartida por todo el buque)', fn: () => accionAbrirComentariosModelo(nodeId, 'NAV') }
+                ]
+              }
             ]
           });
         } else {
@@ -1655,11 +1692,14 @@
 
       if (esInvitado()) {
         const avisoInvitado = () => mostrarAvisoModal('Eres un usuario Invitado: solo puedes consultar la aplicación, no puedes realizar cambios.');
-        items.forEach(it => {
-          if (it.label && (it.label.includes('Expandir') || it.label.includes('Contraer'))) return;
-          if (it.fn) it.fn = avisoInvitado;
-          if (it.subitems) it.subitems.forEach(sub => { sub.fn = avisoInvitado; });
-        });
+        const anularRecursivo = (lista) => {
+          lista.forEach(it => {
+            if (it.label && (it.label.includes('Expandir') || it.label.includes('Contraer'))) return;
+            if (it.fn) it.fn = avisoInvitado;
+            if (it.subitems) anularRecursivo(it.subitems);
+          });
+        };
+        anularRecursivo(items);
       }
 
       const menu = document.getElementById('menu-contextual');
@@ -1707,12 +1747,36 @@
       menu.style.display = 'block';
     }
 
-    function mostrarSubmenuFlotante(elementoPadre, subitems) {
-      const sub = document.getElementById('menu-submenu-flotante');
-      sub.innerHTML = subitems.map((s, j) => `<div class="mc-item" data-idx="${j}">${s.label}</div>`).join('');
+    // nivel 1 = primer flyout (a la derecha del menú principal), nivel 2 = segundo
+    // flyout anidado (p.ej. "Pendiente cambios en modelo" → Ghenova/Navantia).
+    function mostrarSubmenuFlotante(elementoPadre, subitems, nivel = 1) {
+      const sub = document.getElementById(nivel === 1 ? 'menu-submenu-flotante' : 'menu-submenu-flotante-2');
 
-      sub.querySelectorAll('.mc-item').forEach(el => {
+      // Si se vuelve a abrir un flyout de nivel 1 (p.ej. al pasar a otro item
+      // "Estado tarea" hipotético), se cierra cualquier flyout de nivel 2 que
+      // hubiera quedado abierto de un item anterior.
+      if (nivel === 1) document.getElementById('menu-submenu-flotante-2').style.display = 'none';
+
+      sub.innerHTML = subitems.map((s, j) => {
+        if (s.submenu) return `<div class="mc-item mc-padre" data-idx="${j}">${s.label}</div>`;
+        return `<div class="mc-item ${s.soloLectura ? 'mc-solo-lectura' : ''}" data-idx="${j}">${s.label}</div>`;
+      }).join('');
+
+      sub.querySelectorAll('.mc-item[data-idx]').forEach(el => {
         const it = subitems[parseInt(el.dataset.idx, 10)];
+        if (it.submenu) {
+          el.addEventListener('click', (e) => { e.stopPropagation(); mostrarSubmenuFlotante(el, it.subitems, nivel + 1); });
+          el.addEventListener('mouseenter', (e) => mostrarTooltipMenu(e, it.tip));
+          el.addEventListener('mousemove', (e) => posicionarTooltipMenu(e));
+          el.addEventListener('mouseleave', ocultarTooltipMenu);
+          return;
+        }
+        if (it.soloLectura) {
+          el.addEventListener('mouseenter', (e) => mostrarTooltipMenu(e, it.tip));
+          el.addEventListener('mousemove', (e) => posicionarTooltipMenu(e));
+          el.addEventListener('mouseleave', ocultarTooltipMenu);
+          return;
+        }
         el.addEventListener('click', (e) => { e.stopPropagation(); cerrarMenuContextual(); it.fn(); });
         el.addEventListener('mouseenter', (e) => mostrarTooltipMenu(e, it.tip));
         el.addEventListener('mousemove', (e) => posicionarTooltipMenu(e));
@@ -1753,6 +1817,7 @@
     function cerrarMenuContextual() {
       document.getElementById('menu-contextual').style.display = 'none';
       document.getElementById('menu-submenu-flotante').style.display = 'none';
+      document.getElementById('menu-submenu-flotante-2').style.display = 'none';
       ocultarTooltipMenu();
     }
 
@@ -1794,6 +1859,44 @@
 
       cerrarModalTomar();
       await cargarArbol();
+    }
+
+    // -------------------- Bloquear / Desbloquear --------------------
+    // Cualquier usuario puede bloquear o desbloquear sus propias tareas; un
+    // ADMIN/REVISOR puede hacerlo con cualquiera. Al bloquear/desbloquear un
+    // nodo con hijos, la acción se aplica también a todo lo que cuelga de él
+    // (lo hace el propio RPC, de una sola vez).
+    function puedeBloquearNodo(nodo) {
+      return esGestor() || nodo.trabajador_id === miPerfil.id;
+    }
+
+    async function accionAlternarBloqueo(nodeId, nuevoValor) {
+      const nodo = mapaNodoPorId[nodeId];
+      const numDescendientes = obtenerDescendientesIds(nodeId).length;
+      const { error } = await supabaseClient.rpc('establecer_bloqueo_nodo', {
+        p_node_id: nodeId, p_bloqueado: nuevoValor, p_cascada: true
+      });
+      if (error) {
+        mostrarAvisoModal('Error: ' + traducirError(error.message));
+        registrarLog('INTENTO_FALLIDO', `Intento de ${nuevoValor ? 'bloquear' : 'desbloquear'} "${nodo?.codigo}" denegado: ${error.message}`, nodeId);
+        return;
+      }
+      registrarLog(nuevoValor ? 'BLOQUEAR_NODO' : 'DESBLOQUEAR_NODO',
+        `${nuevoValor ? 'Bloqueó' : 'Desbloqueó'} "${nodo?.codigo}"${numDescendientes > 0 ? ` junto con ${numDescendientes} nodo(s) que cuelgan de él` : ''}`, nodeId);
+      await cargarArbol();
+    }
+
+    // Clic directo sobre el icono del candado en la fila (además de la opción
+    // del menú contextual). Comprueba el permiso en el cliente para dar un
+    // aviso claro; el RPC vuelve a comprobarlo igualmente en el servidor.
+    function accionAlternarBloqueoDesdeIcono(nodeId) {
+      const nodo = mapaNodoPorId[nodeId];
+      if (!nodo) return;
+      if (!puedeBloquearNodo(nodo)) {
+        mostrarAvisoModal('Solo el usuario asignado a esta tarea, o un ADMIN/REVISOR, puede bloquearla o desbloquearla.');
+        return;
+      }
+      accionAlternarBloqueo(nodeId, !nodo.bloqueado);
     }
 
     async function accionDesasignarTrabajador(nodeId) {
