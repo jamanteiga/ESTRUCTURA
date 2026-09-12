@@ -7,7 +7,7 @@
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#007bff">
   <style>
-    body { font-family: Arial, sans-serif; max-width: min(1600px, 96vw); margin: 30px auto; padding: 0 20px; color: #333; }
+    body { font-family: Arial, sans-serif; max-width: min(1850px, 97vw); margin: 30px auto; padding: 0 20px; color: #333; }
     h1 { font-size: 22px; }
     .card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 14px; margin-bottom: 16px; }
     #card-arbol { overflow-y: auto; overflow-x: auto; box-sizing: border-box; }
@@ -23,8 +23,8 @@
     button.pequeno { padding: 3px 7px; font-size: 11px; }
     button:disabled { background: #ccc; cursor: not-allowed; }
 
-    .leyenda { display: flex; gap: 14px; font-size: 12px; align-items: center; flex-wrap: wrap; }
-    .leyenda .leyenda-clic { cursor: pointer; border-radius: 10px; padding: 2px 6px; }
+    .leyenda { display: flex; gap: 10px; font-size: 12px; align-items: center; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
+    .leyenda .leyenda-clic { cursor: pointer; border-radius: 10px; padding: 2px 5px; white-space: nowrap; flex-shrink: 0; }
     .leyenda .leyenda-clic:hover { background: #eef3ff; }
     body.tema-oscuro .leyenda .leyenda-clic:hover { background: #2f343b; }
     .flecha { font-size: 21px; display: inline-block; width: 21px; text-align: center; line-height: 1; }
@@ -246,7 +246,6 @@
 
     @media (min-width: 2200px) {
       html { font-size: 13px; }
-      body { max-width: 1300px; }
       .pequeno { padding: 2px 5px; font-size: 10px; }
       button { padding: 5px 10px; font-size: 12px; }
       .fila-nodo { padding: 3px 5px; gap: 5px; }
