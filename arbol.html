@@ -24,6 +24,9 @@
     button:disabled { background: #ccc; cursor: not-allowed; }
 
     .leyenda { display: flex; gap: 14px; font-size: 12px; align-items: center; flex-wrap: wrap; }
+    .leyenda .leyenda-clic { cursor: pointer; border-radius: 10px; padding: 2px 6px; }
+    .leyenda .leyenda-clic:hover { background: #eef3ff; }
+    body.tema-oscuro .leyenda .leyenda-clic:hover { background: #2f343b; }
     .flecha { font-size: 21px; display: inline-block; width: 21px; text-align: center; line-height: 1; }
     .f-sin_asignar { color: rgb(191,191,191); }
     .f-asignada_sin_empezar { color: #fff; -webkit-text-stroke: 1.5px #000; text-stroke: 1.5px #000; filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 1px #000); }
@@ -270,15 +273,16 @@
   </div>
 
   <div class="card leyenda">
-    <span><span class="flecha f-sin_asignar">▶</span>Sin asignar</span>
-    <span><span class="flecha f-asignada_sin_empezar">▶</span>Pendiente de hacer</span>
-    <span><span class="flecha f-en_proceso">▶</span>En proceso</span>
-    <span><span class="flecha f-pendiente_revision">▶</span>Pendiente de revisión</span>
-    <span><span class="flecha f-pendiente_dudas">▶</span>Pendiente de dudas</span>
-    <span><span class="flecha f-pendiente_cambios_modelo">▶</span>Pendiente de cambios de modelo</span>
-    <span><span class="flecha f-aprobado">✔</span>Aprobado</span>
-    <span><span class="flecha f-rechazado">✘</span>Rechazado</span>
-    <span><span class="flecha f-mezcla">▶</span>Estados mezclados</span>
+    <span class="leyenda-clic" onclick="filtrarPorEstadoLeyenda('')" title="Quita el filtro por estado">👁️ Ver todo</span>
+    <span class="leyenda-clic" onclick="filtrarPorEstadoLeyenda('sin_asignar')"><span class="flecha f-sin_asignar">▶</span>Sin asignar</span>
+    <span class="leyenda-clic" onclick="filtrarPorEstadoLeyenda('asignada_sin_empezar')"><span class="flecha f-asignada_sin_empezar">▶</span>Pendiente de hacer</span>
+    <span class="leyenda-clic" onclick="filtrarPorEstadoLeyenda('en_proceso')"><span class="flecha f-en_proceso">▶</span>En proceso</span>
+    <span class="leyenda-clic" onclick="filtrarPorEstadoLeyenda('pendiente_revision')"><span class="flecha f-pendiente_revision">▶</span>Pendiente de revisión</span>
+    <span class="leyenda-clic" onclick="filtrarPorEstadoLeyenda('pendiente_dudas')"><span class="flecha f-pendiente_dudas">▶</span>Pendiente de dudas</span>
+    <span class="leyenda-clic" onclick="filtrarPorEstadoLeyenda('pendiente_cambios_modelo')"><span class="flecha f-pendiente_cambios_modelo">▶</span>Pendiente de cambios de modelo</span>
+    <span class="leyenda-clic" onclick="filtrarPorEstadoLeyenda('aprobado')"><span class="flecha f-aprobado">✔</span>Aprobado</span>
+    <span class="leyenda-clic" onclick="filtrarPorEstadoLeyenda('rechazado')"><span class="flecha f-rechazado">✘</span>Rechazado</span>
+    <span title="No es un estado propio de una tarea — sale cuando una rama tiene hijos en varios estados distintos."><span class="flecha f-mezcla">▶</span>Estados mezclados</span>
   </div>
 
   <!-- Menú hamburguesa -->
@@ -333,6 +337,9 @@
             <option value="aprobado">Aprobado</option>
             <option value="rechazado">Rechazado</option>
           </select>
+        </label>
+        <label class="menu-item">
+          <input type="checkbox" id="chk-solo-bloqueados"> 🔒 Elementos bloqueados
         </label>
         <label class="menu-item" id="wrap-desactivados" style="display:none;">
           <input type="checkbox" id="chk-desactivados"> Mostrar desactivados
@@ -796,6 +803,7 @@
     let filtroTexto = '';
     let filtroUsuarioId = '';
     let filtroEstado = '';
+    let filtroSoloBloqueados = false;
     let mostrarDesactivados = false;
     let vistaSimplificada = false;
     let modoPapelera = false;
@@ -897,6 +905,10 @@
       });
       document.getElementById('sel-filtro-estado').addEventListener('change', (e) => {
         filtroEstado = e.target.value;
+        renderizarArbolCompleto();
+      });
+      document.getElementById('chk-solo-bloqueados').addEventListener('change', (e) => {
+        filtroSoloBloqueados = e.target.checked;
         renderizarArbolCompleto();
       });
       document.getElementById('chk-desactivados').addEventListener('change', (e) => {
@@ -1040,11 +1052,24 @@
       if (filtroEstado) {
         ok = ok && calcularEstadoPropio(nodo) === filtroEstado;
       }
+      if (filtroSoloBloqueados) {
+        ok = ok && !!nodo.bloqueado;
+      }
       return ok;
     }
 
+    // Clic en un icono de la leyenda (arriba del árbol): filtra por ese
+    // estado, igual que el desplegable "Por estado" del menú Filtros (queda
+    // sincronizado con él en ambos sentidos). estado === '' quita el filtro.
+    function filtrarPorEstadoLeyenda(estado) {
+      filtroEstado = estado;
+      const sel = document.getElementById('sel-filtro-estado');
+      if (sel) sel.value = estado;
+      renderizarArbolCompleto();
+    }
+
     function calcularNodosVisibles() {
-      if (!filtroTexto && !filtroUsuarioId && !filtroEstado) return null;
+      if (!filtroTexto && !filtroUsuarioId && !filtroEstado && !filtroSoloBloqueados) return null;
       const visibles = new Set();
       todosLosNodos.forEach(n => {
         if (coincideFiltro(n)) {
