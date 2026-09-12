@@ -1612,6 +1612,17 @@
       const puedeOperar = esGestor() || esMio;
       const items = [];
 
+      // Si el nodo tiene comentarios de "Pendiente cambios en modelo", se
+      // ofrece como primera opción un acceso directo al mismo panel que
+      // hay en el menú lateral (todos los buques, Ghenova y Navantia).
+      if (!esInvitado() && nodo.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO') {
+        items.push({
+          label: '📋 Comentarios pendientes de modelo',
+          tip: 'Abre el resumen de todos los comentarios de Ghenova y Navantia (todos los buques).',
+          fn: () => abrirResumenComentariosModelo()
+        });
+      }
+
       if (pareceGestor()) {
         if (!esMovil) {
           if (nodo.tipo in ESTRUCTURA_MINIMA_POR_TIPO || nodo.tipo === 'BUQUE') {
