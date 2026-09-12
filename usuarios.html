@@ -109,13 +109,14 @@
         <option value="INVITADO">INVITADO (solo consulta)</option>
       </select>
 
-      <label for="ubicacion-nuevo">Ubicación</label>
+      <label for="ubicacion-nuevo">Ubicación (también decide qué festivos locales le aplican)</label>
       <select id="ubicacion-nuevo">
         <option value="">— Sin especificar —</option>
         <option value="FER">Ferrol (FER)</option>
         <option value="BIL">Bilbao (BIL)</option>
         <option value="CAN">Canarias (CAN)</option>
         <option value="MAD">Madrid (MAD)</option>
+        <option value="SEV">Sevilla (SEV)</option>
       </select>
 
       <label for="password-nuevo">Contraseña inicial (déjalo en blanco para que se genere una)</label>
@@ -145,6 +146,73 @@
         </table>
       </div>
     </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;">🌴 Ausencias (vacaciones, bajas...)</h2>
+      <p style="font-size:12px; color:#666; margin-top:-6px;">Los días marcados aquí no cuentan como laborables para ese usuario a la hora de calcular fechas previstas.</p>
+      <label for="aus-usuario">Usuario</label>
+      <select id="aus-usuario"></select>
+      <div style="display:flex; gap:10px;">
+        <div style="flex:1;">
+          <label for="aus-inicio">Desde</label>
+          <input type="date" id="aus-inicio">
+        </div>
+        <div style="flex:1;">
+          <label for="aus-fin">Hasta</label>
+          <input type="date" id="aus-fin">
+        </div>
+      </div>
+      <label for="aus-motivo">Motivo (opcional)</label>
+      <input type="text" id="aus-motivo" placeholder="Opcional">
+      <button onclick="anadirAusencia()" style="margin-top:14px;">+ Añadir ausencia</button>
+      <div id="estado-ausencia" class="estado"></div>
+      <div style="max-height:260px; overflow-y:auto; border:1px solid #eee; border-radius:6px; margin-top:12px;">
+        <table>
+          <thead><tr><th>Usuario</th><th>Desde</th><th>Hasta</th><th>Motivo</th><th></th></tr></thead>
+          <tbody id="tabla-ausencias-body"><tr><td colspan="5">Cargando...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;">📅 Calendario de festivos</h2>
+      <p style="font-size:12px; color:#666; margin-top:-6px;">Nacionales (sede "Todas") + los propios de Ferrol, Bilbao, Las Palmas de Gran Canaria, Madrid y Sevilla — usados junto con la ubicación de cada usuario para calcular días laborables.</p>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:140px;">
+          <label for="fes-fecha">Fecha</label>
+          <input type="date" id="fes-fecha">
+        </div>
+        <div style="flex:1; min-width:160px;">
+          <label for="fes-sede">Sede</label>
+          <select id="fes-sede">
+            <option value="">Todas (nacional)</option>
+            <option value="Ferrol">Ferrol</option>
+            <option value="Bilbao">Bilbao</option>
+            <option value="Las Palmas de Gran Canaria">Las Palmas de Gran Canaria</option>
+            <option value="Madrid">Madrid</option>
+            <option value="Sevilla">Sevilla</option>
+          </select>
+        </div>
+        <div style="flex:1; min-width:110px;">
+          <label for="fes-ambito">Ámbito</label>
+          <select id="fes-ambito">
+            <option value="nacional">Nacional</option>
+            <option value="autonomico">Autonómico</option>
+            <option value="local">Local</option>
+          </select>
+        </div>
+      </div>
+      <label for="fes-descripcion">Descripción</label>
+      <input type="text" id="fes-descripcion" placeholder="Ej: San Isidro Labrador">
+      <button onclick="anadirFestivo()" style="margin-top:14px;">+ Añadir festivo</button>
+      <div id="estado-festivo" class="estado"></div>
+      <div style="max-height:320px; overflow-y:auto; border:1px solid #eee; border-radius:6px; margin-top:12px;">
+        <table>
+          <thead><tr><th>Fecha</th><th>Sede</th><th>Ámbito</th><th>Descripción</th><th></th></tr></thead>
+          <tbody id="tabla-festivos-body"><tr><td colspan="5">Cargando...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <!-- Modal editar usuario -->
@@ -160,13 +228,14 @@
         <option value="ADMIN">ADMIN</option>
         <option value="INVITADO">INVITADO (solo consulta)</option>
       </select>
-      <label>Ubicación</label>
+      <label>Ubicación (también decide qué festivos locales le aplican)</label>
       <select id="editar-ubicacion">
         <option value="">— Sin especificar —</option>
         <option value="FER">Ferrol (FER)</option>
         <option value="BIL">Bilbao (BIL)</option>
         <option value="CAN">Canarias (CAN)</option>
         <option value="MAD">Madrid (MAD)</option>
+        <option value="SEV">Sevilla (SEV)</option>
       </select>
       <label>Email de contacto</label>
       <input type="text" id="editar-email">
@@ -258,7 +327,9 @@
       document.getElementById('texto-sesion-activa').textContent =
         `Conectado como ${perfil.nombre_completo} (${perfil.username}) — ADMIN`;
 
-      cargarUsuarios();
+      await cargarUsuarios();
+      cargarAusencias();
+      cargarFestivos();
     }
 
     async function cerrarSesion() {
@@ -332,7 +403,11 @@
       cargarUsuarios();
     }
 
-    const ETIQUETAS_UBICACION = { FER: 'Ferrol', BIL: 'Bilbao', CAN: 'Canarias', MAD: 'Madrid' };
+    const ETIQUETAS_UBICACION = { FER: 'Ferrol', BIL: 'Bilbao', CAN: 'Canarias', MAD: 'Madrid', SEV: 'Sevilla' };
+    // Qué calendario de festivos (tabla "festivos", columna sede) le aplica a
+    // cada ubicación. CAN se trata como Las Palmas de Gran Canaria porque es
+    // el que se ha cargado; si hace falta distinguir Tenerife, se añade aquí.
+    const MAPA_UBICACION_SEDE_FESTIVOS = { FER: 'Ferrol', BIL: 'Bilbao', CAN: 'Las Palmas de Gran Canaria', MAD: 'Madrid', SEV: 'Sevilla' };
     const ETIQUETAS_ROL = { TRABAJADOR: 'USUARIO', REVISOR: 'SUPERVISOR', ADMIN: 'ADMIN', INVITADO: 'INVITADO' };
 
     let perfilesCache = [];
@@ -360,6 +435,131 @@
           <td><button onclick="abrirModalEditar('${perfil.id}')">✎ Editar</button></td>
         </tr>
       `).join('');
+
+      const selAus = document.getElementById('aus-usuario');
+      if (selAus) {
+        const seleccionActual = selAus.value;
+        selAus.innerHTML = perfilesCache.filter(p => p.activo).map(p => `<option value="${p.id}">${p.nombre_completo} (${ETIQUETAS_ROL[p.rol] || p.rol})</option>`).join('');
+        if (seleccionActual) selAus.value = seleccionActual;
+      }
+    }
+
+    // -------------------- Ausencias --------------------
+
+    let ausenciasCache = [];
+
+    async function cargarAusencias() {
+      const tbody = document.getElementById('tabla-ausencias-body');
+      const { data, error } = await supabaseClient.from('ausencias').select('*').order('fecha_inicio', { ascending: false });
+      if (error) { tbody.innerHTML = `<tr><td colspan="5" style="color:red;">Error: ${traducirError(error.message)}</td></tr>`; return; }
+      ausenciasCache = data || [];
+      pintarAusencias();
+    }
+
+    function pintarAusencias() {
+      const tbody = document.getElementById('tabla-ausencias-body');
+      if (ausenciasCache.length === 0) { tbody.innerHTML = '<tr><td colspan="5">No hay ausencias registradas.</td></tr>'; return; }
+      tbody.innerHTML = ausenciasCache.map(a => {
+        const nombre = perfilesCache.find(p => p.id === a.usuario_id)?.nombre_completo || '(usuario eliminado)';
+        return `
+          <tr>
+            <td>${nombre}</td>
+            <td>${a.fecha_inicio}</td>
+            <td>${a.fecha_fin}</td>
+            <td>${a.motivo || '—'}</td>
+            <td><button class="secundario" onclick="eliminarAusencia('${a.id}')">✕ Quitar</button></td>
+          </tr>`;
+      }).join('');
+    }
+
+    async function anadirAusencia() {
+      const estadoEl = document.getElementById('estado-ausencia');
+      const usuarioId = document.getElementById('aus-usuario').value;
+      const inicio = document.getElementById('aus-inicio').value;
+      const fin = document.getElementById('aus-fin').value;
+      const motivo = document.getElementById('aus-motivo').value.trim() || null;
+
+      if (!usuarioId || !inicio || !fin) { estadoEl.textContent = 'Elige usuario y ambas fechas.'; estadoEl.className = 'estado error'; return; }
+
+      const { error } = await supabaseClient.rpc('anadir_ausencia', {
+        p_usuario_id: usuarioId, p_fecha_inicio: inicio, p_fecha_fin: fin, p_motivo: motivo
+      });
+      if (error) {
+        estadoEl.textContent = 'Error: ' + traducirError(error.message); estadoEl.className = 'estado error';
+        registrarLog('INTENTO_FALLIDO', `Intento de añadir ausencia denegado: ${error.message}`);
+        return;
+      }
+      estadoEl.textContent = 'Ausencia añadida.'; estadoEl.className = 'estado ok';
+      registrarLog('AUSENCIA', `Registró una ausencia de "${perfilesCache.find(p => p.id === usuarioId)?.nombre_completo}" del ${inicio} al ${fin}`);
+      document.getElementById('aus-inicio').value = '';
+      document.getElementById('aus-fin').value = '';
+      document.getElementById('aus-motivo').value = '';
+      cargarAusencias();
+    }
+
+    async function eliminarAusencia(id) {
+      if (!await mostrarConfirmacion('¿Quitar esta ausencia?')) return;
+      const { error } = await supabaseClient.rpc('eliminar_ausencia', { p_id: id });
+      if (error) { mostrarAvisoModal('Error: ' + traducirError(error.message)); return; }
+      registrarLog('AUSENCIA', 'Quitó una ausencia');
+      cargarAusencias();
+    }
+
+    // -------------------- Calendario de festivos --------------------
+
+    let festivosCache = [];
+
+    async function cargarFestivos() {
+      const tbody = document.getElementById('tabla-festivos-body');
+      const { data, error } = await supabaseClient.from('festivos').select('*').order('fecha');
+      if (error) { tbody.innerHTML = `<tr><td colspan="5" style="color:red;">Error: ${traducirError(error.message)}</td></tr>`; return; }
+      festivosCache = data || [];
+      pintarFestivos();
+    }
+
+    function pintarFestivos() {
+      const tbody = document.getElementById('tabla-festivos-body');
+      if (festivosCache.length === 0) { tbody.innerHTML = '<tr><td colspan="5">No hay festivos cargados.</td></tr>'; return; }
+      tbody.innerHTML = festivosCache.map(f => `
+        <tr>
+          <td>${f.fecha}</td>
+          <td>${f.sede || 'Todas (nacional)'}</td>
+          <td>${f.ambito}</td>
+          <td>${f.descripcion}</td>
+          <td><button class="secundario" onclick="eliminarFestivo('${f.id}')">✕ Quitar</button></td>
+        </tr>
+      `).join('');
+    }
+
+    async function anadirFestivo() {
+      const estadoEl = document.getElementById('estado-festivo');
+      const fecha = document.getElementById('fes-fecha').value;
+      const sede = document.getElementById('fes-sede').value || null;
+      const ambito = document.getElementById('fes-ambito').value;
+      const descripcion = document.getElementById('fes-descripcion').value.trim();
+
+      if (!fecha || !descripcion) { estadoEl.textContent = 'Rellena fecha y descripción.'; estadoEl.className = 'estado error'; return; }
+
+      const { error } = await supabaseClient.rpc('anadir_festivo', {
+        p_fecha: fecha, p_sede: sede, p_descripcion: descripcion, p_ambito: ambito
+      });
+      if (error) {
+        estadoEl.textContent = 'Error: ' + traducirError(error.message); estadoEl.className = 'estado error';
+        registrarLog('INTENTO_FALLIDO', `Intento de añadir festivo denegado: ${error.message}`);
+        return;
+      }
+      estadoEl.textContent = 'Festivo añadido.'; estadoEl.className = 'estado ok';
+      registrarLog('CALENDARIO_LABORAL', `Añadió el festivo "${descripcion}" (${fecha}${sede ? ', ' + sede : ', nacional'})`);
+      document.getElementById('fes-descripcion').value = '';
+      cargarFestivos();
+    }
+
+    async function eliminarFestivo(id) {
+      if (!await mostrarConfirmacion('¿Quitar este festivo?')) return;
+      const { error } = await supabaseClient.rpc('eliminar_festivo', { p_id: id });
+      if (error) { mostrarAvisoModal('Error: ' + traducirError(error.message)); return; }
+      registrarLog('CALENDARIO_LABORAL', 'Quitó un festivo');
+      cargarFestivos();
     }
 
     function abrirModalEditar(id) {

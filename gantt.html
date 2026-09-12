@@ -40,6 +40,12 @@
     .gantt-fila { display: flex; border-bottom: 1px solid #eee; align-items: center; }
     .gantt-fila:hover { background: rgba(0,123,255,0.05); }
     .gantt-fila.fila-critica .col-nombre strong { color: #dc3545; }
+    .gantt-fila.fila-ruta-critica { box-shadow: inset 3px 0 0 #6f42c1; }
+    .gantt-barra-prevista {
+      position: absolute; top: 1px; height: 4px; border-radius: 2px; background: transparent;
+      border: 1px solid #6c757d; box-sizing: border-box; z-index: 2;
+    }
+    .gantt-barra-prevista.retrasada { border-color: #dc3545; border-width: 2px; top: 0; }
 
     .col-info {
       position: sticky; left: 0; background: white; z-index: 2; display: flex; align-items: center;
@@ -140,6 +146,9 @@
     <label style="font-size:12px; display:flex; align-items:center; gap:4px;">
       <input type="checkbox" id="chk-solo-criticas"> ⚠️ Solo críticas
     </label>
+    <label style="font-size:12px; display:flex; align-items:center; gap:4px;">
+      <input type="checkbox" id="chk-solo-ruta-critica"> 🔺 Solo ruta crítica
+    </label>
     <button class="secundario" onclick="expandirTodoGantt()">⏬ Expandir todo</button>
     <button class="secundario" onclick="contraerTodoGantt()">⏫ Contraer todo</button>
     <button class="secundario" onclick="abrirModalVerRama()">🔎 Ver Bloque/Subbloque...</button>
@@ -154,6 +163,8 @@
     <span><span class="muestra c-trabajo"></span>En proceso</span>
     <span><span class="muestra c-espera"></span>Esperando revisión</span>
     <span><span class="muestra c-cuello-botella"></span>Esperando revisión, lleva demasiado</span>
+    <span>🔺 En la ruta crítica (según fechas previstas + dependencias)</span>
+    <span><span style="display:inline-block; width:14px; height:4px; border:1px solid #6c757d; border-radius:2px; vertical-align:middle; margin-right:4px;"></span>Previsto (línea fina arriba de la barra)</span>
   </div>
 
   <div class="overlay" id="modal-ver-rama">
@@ -200,6 +211,9 @@
     let umbralCuelloBotella = 3;
     let soloCriticas = false;
     let raizGanttId = null;
+    let dependenciasCache = [];
+    let soloRutaCritica = false;
+    let nodosEnRutaCritica = new Set();
 
     // Vista móvil: filtros/vistas se pliegan tras el botón ☰ en vez de
     // mostrar todo el panel de escritorio apretado.
@@ -336,6 +350,11 @@
         pintarGantt();
       });
 
+      document.getElementById('chk-solo-ruta-critica').addEventListener('change', (e) => {
+        soloRutaCritica = e.target.checked;
+        pintarGantt();
+      });
+
       document.getElementById('ver-rama-buscar').addEventListener('input', (e) => pintarListaVerRama(e.target.value));
 
       buqueActualId = buques[0].id;
@@ -455,11 +474,14 @@
         .from('nodes')
         .select(`
           id, codigo, nombre, parent_id, tipo,
-          node_workflow ( trabajador_id, revisor_id, asignado_en, trabajo_estado, trabajo_iniciado_en, trabajo_terminado_en, revisado_en, revision_estado )
+          node_workflow ( trabajador_id, revisor_id, asignado_en, trabajo_estado, trabajo_iniciado_en, trabajo_terminado_en, revisado_en, revision_estado, fecha_inicio_prevista, fecha_fin_prevista )
         `)
         .eq('activo', true);
 
       if (error) { mensajeVacio.style.display = 'block'; mensajeVacio.textContent = 'Error: ' + error.message; return; }
+
+      const { data: depsCrudas } = await supabaseClient.from('node_dependencias').select('*');
+      dependenciasCache = depsCrudas || [];
 
       const todosNodos = filasCrudas.map(n => {
         const wf = Array.isArray(n.node_workflow) ? n.node_workflow[0] : n.node_workflow;
@@ -472,7 +494,9 @@
           trabajo_iniciado_en: wf?.trabajo_iniciado_en || null,
           trabajo_terminado_en: wf?.trabajo_terminado_en || null,
           revisado_en: wf?.revisado_en || null,
-          revision_estado: wf?.revision_estado || null
+          revision_estado: wf?.revision_estado || null,
+          fecha_inicio_prevista: wf?.fecha_inicio_prevista || null,
+          fecha_fin_prevista: wf?.fecha_fin_prevista || null
         };
       });
 
@@ -581,15 +605,81 @@
       return resultado;
     }
 
+    // Ruta crítica (CPM) sobre las fechas PREVISTAS y las dependencias entre
+    // tareas: solo entra en el cálculo lo que tiene fecha_inicio_prevista y
+    // fecha_fin_prevista fijadas (Menú contextual → 📅 Fechas previstas) y
+    // dependencias entre sí (🔗 Dependencias). Si nada tiene fechas previstas
+    // todavía, sale un conjunto vacío — no hay ruta crítica que mostrar.
+    function calcularRutaCritica() {
+      const rango = {};
+      Object.values(mapaNodoPorId).forEach(n => {
+        if (n.fecha_inicio_prevista && n.fecha_fin_prevista) {
+          rango[n.id] = { inicio: new Date(n.fecha_inicio_prevista + 'T00:00:00'), fin: new Date(n.fecha_fin_prevista + 'T00:00:00') };
+        }
+      });
+      const ids = Object.keys(rango);
+      if (ids.length === 0) return new Set();
+
+      const sucesoresDe = {}, predecesoresDe = {};
+      ids.forEach(id => { sucesoresDe[id] = []; predecesoresDe[id] = []; });
+      dependenciasCache.forEach(d => {
+        if (rango[d.predecesor_id] && rango[d.sucesor_id]) {
+          sucesoresDe[d.predecesor_id].push(d.sucesor_id);
+          predecesoresDe[d.sucesor_id].push(d.predecesor_id);
+        }
+      });
+
+      const duracionMs = id => rango[id].fin - rango[id].inicio;
+      const EF = {};
+      function calcularEF(id, pila) {
+        if (EF[id] !== undefined) return EF[id];
+        if (pila.has(id)) return EF[id] = rango[id].fin;
+        pila.add(id);
+        let inicioReal = rango[id].inicio;
+        predecesoresDe[id].forEach(pid => {
+          const ef = calcularEF(pid, pila);
+          if (ef > inicioReal) inicioReal = ef;
+        });
+        return EF[id] = new Date(inicioReal.getTime() + duracionMs(id));
+      }
+      ids.forEach(id => calcularEF(id, new Set()));
+
+      const finProyecto = new Date(Math.max(...ids.map(id => EF[id].getTime())));
+      const LS = {};
+      function calcularLS(id, pila) {
+        if (LS[id] !== undefined) return LS[id];
+        if (pila.has(id)) return LS[id] = finProyecto;
+        pila.add(id);
+        const sucs = sucesoresDe[id];
+        const finTardio = sucs.length === 0 ? finProyecto : new Date(Math.min(...sucs.map(sid => calcularLS(sid, pila).getTime())));
+        return LS[id] = new Date(finTardio.getTime() - duracionMs(id));
+      }
+      ids.forEach(id => calcularLS(id, new Set()));
+
+      const ES = {};
+      ids.forEach(id => { ES[id] = new Date(EF[id].getTime() - duracionMs(id)); });
+
+      const criticos = new Set();
+      const UNA_HORA_MS = 3600000;
+      ids.forEach(id => { if (Math.abs(LS[id] - ES[id]) < UNA_HORA_MS) criticos.add(id); });
+      return criticos;
+    }
+
     function nodoOAlgunDescendienteEsDeUsuario(nodeId) {
       const nodo = mapaNodoPorId[nodeId];
       if (nodo.trabajador_id === filtroUsuarioId) return true;
       return (mapaHijosPorPadre[nodeId] || []).some(h => nodoOAlgunDescendienteEsDeUsuario(h.id));
     }
 
+    function ramaEnRutaCritica(nodeId) {
+      if (nodosEnRutaCritica.has(nodeId)) return true;
+      return (mapaHijosPorPadre[nodeId] || []).some(h => ramaEnRutaCritica(h.id));
+    }
+
     function generarFilasVisibles(nodeId, nivel, lista) {
       if (filtroUsuarioId && !nodoOAlgunDescendienteEsDeUsuario(nodeId)) return;
       if (soloCriticas && !ramaTieneCritica(nodeId)) return;
+      if (soloRutaCritica && !ramaEnRutaCritica(nodeId)) return;
       lista.push({ id: nodeId, nivel });
       if (nodosAbiertos.has(nodeId)) {
         const hijos = mapaHijosPorPadre[nodeId] || [];
@@ -609,6 +699,7 @@
 
     function pintarGantt() {
       const contenedor = document.getElementById('gantt-contenido');
+      nodosEnRutaCritica = calcularRutaCritica();
       const filas = [];
       generarFilasVisibles(raizGanttId, 0, filas);
 
@@ -692,6 +783,13 @@
         const sufijoPersonas = [nombreTrab ? `Usuario: ${nombreTrab}` : null, nombreRev ? `Supervisor: ${nombreRev}` : null].filter(Boolean).join(' · ');
 
         let barrasHtml = '';
+        if (nodo.fecha_inicio_prevista && nodo.fecha_fin_prevista) {
+          const iniPrev = posX(new Date(nodo.fecha_inicio_prevista + 'T00:00:00'));
+          const finPrev = posX(new Date(nodo.fecha_fin_prevista + 'T00:00:00'));
+          const finRealEfectivo = rango.fin || (rango.cerrado ? null : ahora);
+          const retrasada = !nodo.revisado_en && new Date(nodo.fecha_fin_prevista + 'T00:00:00') < ahora;
+          barrasHtml += `<div class="gantt-barra-prevista${retrasada ? ' retrasada' : ''}" style="left:${iniPrev}px; width:${Math.max(ANCHO_MIN_BARRA, finPrev - iniPrev)}px;" title="Previsto: ${formatearFechaCorta(new Date(nodo.fecha_inicio_prevista + 'T00:00:00')).split(' ')[0]} → ${formatearFechaCorta(new Date(nodo.fecha_fin_prevista + 'T00:00:00')).split(' ')[0]}${retrasada ? ' — RETRASADA' : ''}"></div>`;
+        }
         if (rango.tieneDato) {
           if (tieneHijos) {
             const iniBar = posX(rango.inicio);
@@ -723,11 +821,11 @@
         }
 
         filasHtml += `
-          <div class="gantt-fila${esNodoCritico(nodo) ? ' fila-critica' : ''}">
+          <div class="gantt-fila${esNodoCritico(nodo) ? ' fila-critica' : ''}${nodosEnRutaCritica.has(id) ? ' fila-ruta-critica' : ''}">
             <div class="col-info">
               <div class="col-nombre" style="padding-left:${8 + nivel * 16}px;">
                 <span class="toggle ${tieneHijos ? '' : 'vacio'}" onclick="toggleNodoGantt('${id}')">${abierto ? '▼' : '▶'}</span>
-                <strong>${nodo.codigo}</strong> ${nodo.nombre}
+                <strong>${nodo.codigo}</strong> ${nodo.nombre}${nodosEnRutaCritica.has(id) ? ' <span title="En la ruta crítica" style="color:#6f42c1;">🔺</span>' : ''}
                 <span class="tipo-tag">${nodo.tipo}</span>
               </div>
               <div class="col-avance">${(() => { const pct = calcularPorcentajeAvanceGantt(id); return pct !== null ? `<span class="pct">${pct}%</span>` : '—'; })()}</div>

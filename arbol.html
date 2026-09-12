@@ -42,6 +42,12 @@
       display: inline-block; width: 12px; height: 12px; background: rgb(255,192,0); border-radius: 2px;
       flex-shrink: 0; margin: 0 1px;
     }
+    .icono-retraso { font-size: 14px; color: #dc3545; flex-shrink: 0; cursor: default; }
+    .fila-dependencia { display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid #eee; font-size:13px; }
+    .fila-dependencia .ruta { color:#666; flex:1; min-width:0; overflow-wrap:break-word; }
+    .fila-dependencia .estado-dep { font-size:11px; font-weight:bold; padding:1px 7px; border-radius:8px; flex-shrink:0; }
+    .fila-dependencia .estado-dep.ok { background:#e9f7ec; color:#218838; }
+    .fila-dependencia .estado-dep.pendiente { background:#fdecea; color:#dc3545; }
 
     .barra-global { display: flex; gap: 6px; flex-wrap: wrap; }
 
@@ -511,6 +517,42 @@
       </div>
       <div class="overlay-botones">
         <button class="secundario" onclick="cerrarResumenComentariosModelo()">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="modal-fechas-previstas">
+    <div class="overlay-caja" style="max-width:420px;">
+      <h3>📅 Fechas previstas</h3>
+      <p id="fp-nodo-info" style="font-size:12px; color:#666; margin-top:-8px;"></p>
+      <label>Inicio previsto</label>
+      <input type="date" id="fp-inicio">
+      <label>Fin previsto</label>
+      <input type="date" id="fp-fin">
+      <p id="fp-sugerencia" style="font-size:12px; color:#0069d9; margin:6px 0; display:none;"></p>
+      <p id="fp-base" style="font-size:12px; color:#888; margin:6px 0;"></p>
+      <div class="estado-msg" id="fp-estado"></div>
+      <div class="overlay-botones">
+        <button class="secundario" id="fp-btn-reiniciar-base" style="margin-right:auto; display:none;" onclick="accionReiniciarLineaBase()">🔁 Reiniciar línea base</button>
+        <button class="secundario" onclick="cerrarModalFechasPrevistas()">Cancelar</button>
+        <button onclick="guardarFechasPrevistas()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="modal-dependencias">
+    <div class="overlay-caja" style="max-width:480px;">
+      <h3>🔗 Dependencias</h3>
+      <p id="dep-nodo-info" style="font-size:12px; color:#666; margin-top:-8px;"></p>
+      <p style="font-size:12px; color:#666; margin:6px 0 2px; font-weight:bold;">Esperando a que terminen (predecesoras):</p>
+      <div id="dep-lista-predecesoras"></div>
+      <input type="text" id="dep-buscar-predecesora" placeholder="Buscar tarea del mismo buque para añadir como predecesora...">
+      <div class="lista-mover" id="dep-lista-candidatas"></div>
+      <p style="font-size:12px; color:#666; margin:14px 0 2px; font-weight:bold;">Tareas que esperan a que esta termine (sucesoras):</p>
+      <div id="dep-lista-sucesoras"></div>
+      <div class="estado-msg" id="dep-estado"></div>
+      <div class="overlay-botones">
+        <button class="secundario" onclick="cerrarModalDependencias()">Cerrar</button>
       </div>
     </div>
   </div>
@@ -1238,6 +1280,20 @@
       return `${horasTotales}:${String(minutos).padStart(2, '0')}`;
     }
 
+    function formatearFechaCorta(fecha) {
+      if (!fecha) return '—';
+      return `${String(fecha.getDate()).padStart(2, '0')}/${String(fecha.getMonth() + 1).padStart(2, '0')}/${fecha.getFullYear()}`;
+    }
+
+    // Retrasada = tiene fecha fin prevista, ya se pasó, y la tarea todavía
+    // no está Aprobada (una vez aprobada ya no importa si llegó tarde).
+    function nodoRetrasado(nodo) {
+      if (!nodo.fecha_fin_prevista) return false;
+      if (calcularEstadoPropio(nodo) === 'aprobado') return false;
+      const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+      return new Date(nodo.fecha_fin_prevista + 'T00:00:00') < hoy;
+    }
+
     function resaltarCoincidencia(texto) {
       if (!filtroTexto) return texto;
       const idx = texto.toLowerCase().indexOf(filtroTexto.toLowerCase());
@@ -1347,6 +1403,7 @@
             <span class="toggle ${tieneHijos ? '' : 'vacio'}" onclick="toggleNodo('${nodo.id}')">${abierto ? '▼' : '▶'}</span>
             ${!sinAsignacion ? `<span class="candado" title="${nodo.bloqueado ? 'Bloqueado — clic para desbloquear' : 'Desbloqueado — clic para bloquear'}" onclick="event.stopPropagation(); accionAlternarBloqueoDesdeIcono('${nodo.id}')">${nodo.bloqueado ? '🔒' : '🔓'}</span>` : ''}
             ${(!sinAsignacion && nodo.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO') ? '<span class="cuadro-cambios-modelo" title="Pendiente de cambios en modelo"></span>' : ''}
+            ${(!sinAsignacion && nodoRetrasado(nodo)) ? `<span class="icono-retraso" title="Retrasada — prevista para ${formatearFechaCorta(new Date(nodo.fecha_fin_prevista))}">⏰</span>` : ''}
             <span class="flecha ${claseColor}" title="${estado}">${simboloFlecha}</span>
             <span class="codigo">${resaltarCoincidencia(nodo.codigo)}</span>
             ${nombreEsRedundante(nodo.codigo, nodo.nombre) ? '' : `<span>${resaltarCoincidencia(nodo.nombre)}</span>`}
@@ -1689,6 +1746,9 @@
             fn: () => accionAlternarBloqueo(nodeId, !nodo.bloqueado)
           });
 
+          items.push({ label: '📅 Fechas previstas', tip: 'Fija cuándo debería empezar y terminar esta tarea, para comparar plan vs. real.', fn: () => abrirModalFechasPrevistas(nodeId) });
+          items.push({ label: '🔗 Dependencias', tip: 'Marca qué tareas tienen que estar Aprobadas antes de poder empezar esta.', fn: () => abrirModalDependencias(nodeId) });
+
           items.push({
             submenu: true,
             label: 'Estado tarea',
@@ -1979,6 +2039,260 @@
         return;
       }
       accionAlternarBloqueo(nodeId, !nodo.bloqueado);
+    }
+
+    // -------------------- Calendario laboral (festivos + ausencias) --------------------
+    // Se cargan bajo demanda (son tablas pequeñas) la primera vez que hacen
+    // falta, para no añadir peso a la carga inicial del árbol.
+
+    const MAPA_UBICACION_SEDE = { FER: 'Ferrol', BIL: 'Bilbao', CAN: 'Las Palmas de Gran Canaria', MAD: 'Madrid', SEV: 'Sevilla' };
+    let festivosCache = null;
+    let ausenciasCache = null;
+
+    async function asegurarCalendarioLaboral() {
+      if (festivosCache && ausenciasCache) return;
+      const [{ data: festivos }, { data: ausencias }] = await Promise.all([
+        supabaseClient.from('festivos').select('*'),
+        supabaseClient.from('ausencias').select('*')
+      ]);
+      festivosCache = festivos || [];
+      ausenciasCache = ausencias || [];
+    }
+
+    function esFinDeSemana(fecha) { const d = fecha.getDay(); return d === 0 || d === 6; }
+
+    function esFestivo(fecha, sede) {
+      const iso = fecha.toISOString().slice(0, 10);
+      return (festivosCache || []).some(f => f.fecha === iso && (f.sede === null || f.sede === sede));
+    }
+
+    function usuarioAusente(usuarioId, fecha) {
+      if (!usuarioId) return false;
+      const iso = fecha.toISOString().slice(0, 10);
+      return (ausenciasCache || []).some(a => a.usuario_id === usuarioId && a.fecha_inicio <= iso && iso <= a.fecha_fin);
+    }
+
+    function esDiaLaborable(fecha, sede, usuarioId) {
+      if (esFinDeSemana(fecha)) return false;
+      if (esFestivo(fecha, sede)) return false;
+      if (usuarioAusente(usuarioId, fecha)) return false;
+      return true;
+    }
+
+    // Suma días laborables a partir de una fecha de inicio (incluyendo el
+    // propio día de inicio si es laborable) — para sugerir una fecha fin.
+    function sumarDiasLaborables(fechaInicio, numDias, sede, usuarioId) {
+      let f = new Date(fechaInicio);
+      while (!esDiaLaborable(f, sede, usuarioId)) f.setDate(f.getDate() + 1);
+      let restantes = Math.max(0, Math.round(numDias) - 1);
+      while (restantes > 0) {
+        f.setDate(f.getDate() + 1);
+        if (esDiaLaborable(f, sede, usuarioId)) restantes--;
+      }
+      return f;
+    }
+
+    // -------------------- Fechas previstas (plan vs. real) --------------------
+
+    let nodoFechasPrevistasActual = null;
+
+    async function abrirModalFechasPrevistas(nodeId) {
+      nodoFechasPrevistasActual = nodeId;
+      const nodo = mapaNodoPorId[nodeId];
+      document.getElementById('fp-nodo-info').textContent = `${nodo.codigo} — ${nodo.nombre}`;
+      document.getElementById('fp-inicio').value = nodo.fecha_inicio_prevista || '';
+      document.getElementById('fp-fin').value = nodo.fecha_fin_prevista || '';
+      document.getElementById('fp-estado').textContent = '';
+
+      const baseEl = document.getElementById('fp-base');
+      if (nodo.fecha_inicio_prevista_base || nodo.fecha_fin_prevista_base) {
+        baseEl.textContent = `Línea base: ${nodo.fecha_inicio_prevista_base ? formatearFechaCorta(new Date(nodo.fecha_inicio_prevista_base + 'T00:00:00')) : '—'} → ${nodo.fecha_fin_prevista_base ? formatearFechaCorta(new Date(nodo.fecha_fin_prevista_base + 'T00:00:00')) : '—'}`;
+        document.getElementById('fp-btn-reiniciar-base').style.display = 'inline-block';
+      } else {
+        baseEl.textContent = 'Todavía no tiene línea base — se fijará sola con las fechas que guardes ahora.';
+        document.getElementById('fp-btn-reiniciar-base').style.display = 'none';
+      }
+
+      // Sugerencia de fecha fin, basada en la duración media real de tareas
+      // ya Aprobadas del mismo tipo (en cualquier buque), contando solo días
+      // laborables según la sede/ausencias del usuario asignado, si lo tiene.
+      const sugerenciaEl = document.getElementById('fp-sugerencia');
+      sugerenciaEl.style.display = 'none';
+      const mismasTipo = todosLosNodos.filter(n =>
+        n.tipo === nodo.tipo && n.id !== nodo.id &&
+        n.revision_estado === 'APROBADO' && n.trabajo_iniciado_en && n.trabajo_terminado_en
+      );
+      if (mismasTipo.length > 0) {
+        await asegurarCalendarioLaboral();
+        const ubicacion = nodo.trabajador_id ? perfilesCache.find(p => p.id === nodo.trabajador_id)?.ubicacion : null;
+        const sede = ubicacion ? MAPA_UBICACION_SEDE[ubicacion] : null;
+        const duracionesDias = mismasTipo.map(n => {
+          const ini = new Date(n.trabajo_iniciado_en), fin = new Date(n.trabajo_terminado_en);
+          let ini0 = new Date(ini); ini0.setHours(0, 0, 0, 0);
+          let fin0 = new Date(fin); fin0.setHours(0, 0, 0, 0);
+          return contarDiasLaborablesEntre(ini0, fin0, sede, nodo.trabajador_id) || 1;
+        });
+        const mediaDias = Math.round(duracionesDias.reduce((a, b) => a + b, 0) / duracionesDias.length);
+        const inicioParaSugerir = document.getElementById('fp-inicio').value || new Date().toISOString().slice(0, 10);
+        const finSugerido = sumarDiasLaborables(new Date(inicioParaSugerir + 'T00:00:00'), mediaDias, sede, nodo.trabajador_id);
+        sugerenciaEl.textContent = `💡 Tareas ${etiquetaCortaTipo(nodo.tipo)} ya aprobadas tardan de media ${mediaDias} día(s) laborable(s). Con inicio ${formatearFechaCorta(new Date(inicioParaSugerir + 'T00:00:00'))}, fin sugerido: ${formatearFechaCorta(finSugerido)}.`;
+        sugerenciaEl.style.display = 'block';
+      }
+
+      document.getElementById('modal-fechas-previstas').style.display = 'flex';
+    }
+
+    function contarDiasLaborablesEntre(fechaInicio, fechaFin, sede, usuarioId) {
+      let f = new Date(fechaInicio);
+      const fin = new Date(fechaFin);
+      let n = 0;
+      while (f <= fin) {
+        if (esDiaLaborable(f, sede, usuarioId)) n++;
+        f.setDate(f.getDate() + 1);
+      }
+      return n;
+    }
+
+    function cerrarModalFechasPrevistas() {
+      document.getElementById('modal-fechas-previstas').style.display = 'none';
+      nodoFechasPrevistasActual = null;
+    }
+
+    async function guardarFechasPrevistas() {
+      const estadoEl = document.getElementById('fp-estado');
+      const inicio = document.getElementById('fp-inicio').value || null;
+      const fin = document.getElementById('fp-fin').value || null;
+      const nodo = mapaNodoPorId[nodoFechasPrevistasActual];
+
+      const { error } = await supabaseClient.rpc('establecer_fechas_previstas', {
+        p_node_id: nodoFechasPrevistasActual, p_fecha_inicio: inicio, p_fecha_fin: fin
+      });
+      if (error) {
+        estadoEl.textContent = 'Error: ' + traducirError(error.message); estadoEl.className = 'estado-msg error';
+        registrarLog('INTENTO_FALLIDO', `Intento de fijar fechas previstas de "${nodo?.codigo}" denegado: ${error.message}`, nodoFechasPrevistasActual);
+        return;
+      }
+      registrarLog('FECHAS_PREVISTAS', `Fijó fechas previstas de "${nodo?.codigo}": ${inicio || '—'} → ${fin || '—'}`, nodoFechasPrevistasActual);
+      cerrarModalFechasPrevistas();
+      await cargarArbol();
+    }
+
+    async function accionReiniciarLineaBase() {
+      if (!await mostrarConfirmacion('¿Reiniciar la línea base a las fechas previstas guardadas ahora mismo? Se perderá la línea base anterior.')) return;
+      const nodo = mapaNodoPorId[nodoFechasPrevistasActual];
+      const { error } = await supabaseClient.rpc('fijar_linea_base_nodo', { p_node_id: nodoFechasPrevistasActual });
+      if (error) {
+        mostrarAvisoModal('Error: ' + traducirError(error.message));
+        registrarLog('INTENTO_FALLIDO', `Intento de reiniciar línea base de "${nodo?.codigo}" denegado: ${error.message}`, nodoFechasPrevistasActual);
+        return;
+      }
+      registrarLog('FECHAS_PREVISTAS', `Reinició la línea base de "${nodo?.codigo}"`, nodoFechasPrevistasActual);
+      await cargarArbol();
+      abrirModalFechasPrevistas(nodoFechasPrevistasActual);
+    }
+
+    // -------------------- Dependencias entre tareas --------------------
+
+    let nodoDependenciasActual = null;
+    let dependenciasDelNodoActual = [];
+
+    async function abrirModalDependencias(nodeId) {
+      nodoDependenciasActual = nodeId;
+      const nodo = mapaNodoPorId[nodeId];
+      document.getElementById('dep-nodo-info').textContent = `${nodo.codigo} — ${nodo.nombre}`;
+      document.getElementById('dep-estado').textContent = '';
+      document.getElementById('dep-buscar-predecesora').value = '';
+      await cargarDependenciasDelNodo();
+      document.getElementById('dep-buscar-predecesora').oninput = (e) => pintarCandidatasDependencia(e.target.value);
+      pintarCandidatasDependencia('');
+      document.getElementById('modal-dependencias').style.display = 'flex';
+    }
+
+    function cerrarModalDependencias() {
+      document.getElementById('modal-dependencias').style.display = 'none';
+      nodoDependenciasActual = null;
+    }
+
+    async function cargarDependenciasDelNodo() {
+      const { data, error } = await supabaseClient
+        .from('node_dependencias').select('*')
+        .or(`predecesor_id.eq.${nodoDependenciasActual},sucesor_id.eq.${nodoDependenciasActual}`);
+      dependenciasDelNodoActual = error ? [] : (data || []);
+      pintarDependenciasDelNodo();
+    }
+
+    function pintarDependenciasDelNodo() {
+      const predecesoras = dependenciasDelNodoActual.filter(d => d.sucesor_id === nodoDependenciasActual);
+      const sucesoras = dependenciasDelNodoActual.filter(d => d.predecesor_id === nodoDependenciasActual);
+
+      const filaDe = (dep, idOtro, esPredecesora) => {
+        const otro = mapaNodoPorId[idOtro];
+        if (!otro) return '';
+        const aprobada = otro.revision_estado === 'APROBADO';
+        return `
+          <div class="fila-dependencia">
+            <span class="ruta">${rutaCompleta(otro)}</span>
+            ${esPredecesora ? `<span class="estado-dep ${aprobada ? 'ok' : 'pendiente'}">${aprobada ? '✔ Aprobada' : '⏳ Pendiente'}</span>` : ''}
+            <button class="secundario pequeno" onclick="accionEliminarDependencia('${dep.id}')">✕ Quitar</button>
+          </div>`;
+      };
+
+      document.getElementById('dep-lista-predecesoras').innerHTML = predecesoras.length === 0
+        ? '<p style="font-size:12px; color:#888;">Ninguna — puede empezar sin esperar a otra tarea.</p>'
+        : predecesoras.map(d => filaDe(d, d.predecesor_id, true)).join('');
+
+      document.getElementById('dep-lista-sucesoras').innerHTML = sucesoras.length === 0
+        ? '<p style="font-size:12px; color:#888;">Ninguna.</p>'
+        : sucesoras.map(d => filaDe(d, d.sucesor_id, false)).join('');
+    }
+
+    function pintarCandidatasDependencia(q) {
+      const cont = document.getElementById('dep-lista-candidatas');
+      const yaPredecesoras = new Set(dependenciasDelNodoActual.filter(d => d.sucesor_id === nodoDependenciasActual).map(d => d.predecesor_id));
+      const texto = q.trim().toLowerCase();
+      if (!texto) { cont.innerHTML = ''; return; }
+      const candidatas = todosLosNodos.filter(n =>
+        n.id !== nodoDependenciasActual &&
+        !TIPOS_SIN_ASIGNACION.has(n.tipo) &&
+        !yaPredecesoras.has(n.id) &&
+        !esDescendiente(n.id, nodoDependenciasActual) &&
+        !esDescendiente(nodoDependenciasActual, n.id) &&
+        (n.codigo.toLowerCase().includes(texto) || n.nombre.toLowerCase().includes(texto))
+      ).slice(0, 30);
+      cont.innerHTML = candidatas.length === 0
+        ? '<div class="opcion-mover">Sin resultados.</div>'
+        : candidatas.map(n => `<div class="opcion-mover" onclick="accionAnadirDependencia('${n.id}')">${rutaCompleta(n)}</div>`).join('');
+    }
+
+    async function accionAnadirDependencia(predecesorId) {
+      const estadoEl = document.getElementById('dep-estado');
+      const nodo = mapaNodoPorId[nodoDependenciasActual];
+      const predecesor = mapaNodoPorId[predecesorId];
+      const { error } = await supabaseClient.rpc('anadir_dependencia', {
+        p_predecesor_id: predecesorId, p_sucesor_id: nodoDependenciasActual
+      });
+      if (error) {
+        estadoEl.textContent = 'Error: ' + traducirError(error.message); estadoEl.className = 'estado-msg error';
+        registrarLog('INTENTO_FALLIDO', `Intento de añadir dependencia en "${nodo?.codigo}" denegado: ${error.message}`, nodoDependenciasActual);
+        return;
+      }
+      estadoEl.textContent = '';
+      registrarLog('DEPENDENCIA', `"${nodo?.codigo}" ahora depende de que "${predecesor?.codigo}" esté Aprobada`, nodoDependenciasActual);
+      document.getElementById('dep-buscar-predecesora').value = '';
+      pintarCandidatasDependencia('');
+      await cargarDependenciasDelNodo();
+    }
+
+    async function accionEliminarDependencia(depId) {
+      const nodo = mapaNodoPorId[nodoDependenciasActual];
+      const { error } = await supabaseClient.rpc('eliminar_dependencia', { p_id: depId });
+      if (error) {
+        mostrarAvisoModal('Error: ' + traducirError(error.message));
+        registrarLog('INTENTO_FALLIDO', `Intento de quitar una dependencia de "${nodo?.codigo}" denegado: ${error.message}`, nodoDependenciasActual);
+        return;
+      }
+      registrarLog('DEPENDENCIA', `Quitó una dependencia de "${nodo?.codigo}"`, nodoDependenciasActual);
+      await cargarDependenciasDelNodo();
     }
 
     async function accionDesasignarTrabajador(nodeId) {
