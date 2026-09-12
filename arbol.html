@@ -476,7 +476,7 @@
   <div class="overlay" id="modal-comentarios-modelo">
     <div class="overlay-caja">
       <h3 id="modal-comentarios-titulo">Pendiente cambios en modelo</h3>
-      <div id="comentarios-modelo-lista" style="max-height:260px; overflow-y:auto; margin-bottom:10px; font-size:13px;"></div>
+      <div id="comentarios-modelo-lista" style="max-height:260px; overflow-y:auto; overflow-x:hidden; margin-bottom:10px; font-size:13px;"></div>
       <label>Nuevo comentario</label>
       <textarea id="comentarios-modelo-nuevo" rows="2" placeholder="Ej: Cambio de varias planchas"></textarea>
       <div class="estado-msg" id="comentarios-modelo-estado"></div>
@@ -3184,16 +3184,19 @@
         lista.innerHTML = `<p style="color:#dc3545;">Error: ${traducirError(error.message)}</p>`;
         return;
       }
+      // Más reciente arriba: se invierte el orden de llegada (que es
+      // ascendente por número) solo para pintarlo, no para guardarlo.
       lista.innerHTML = (data || []).length === 0
         ? '<p style="color:#666;">Todavía no hay comentarios.</p>'
-        : data.map(c => `
-          <div class="comentario-modelo-fila" style="display:flex; align-items:flex-start; gap:6px; padding:5px 0; border-bottom:1px solid #eee;">
+        : [...data].reverse().map(c => `
+          <div class="comentario-modelo-fila" style="display:flex; align-items:flex-start; gap:8px; padding:8px 0; border-bottom:1px solid #eee;">
             <input type="checkbox" ${(c.implementado || c.aprobado) ? 'checked' : ''}
                    title="${esGestor() ? 'Marcar/quitar Aprobado' : 'Marcar/quitar como corregido'}"
                    onclick="event.stopPropagation(); accionToggleChecklistComentario('${c.id}', this.checked)"
-                   style="margin-top:3px; flex-shrink:0;">
-            <div style="flex:1;">
-              <b>${comentariosModeloOrigenActual}${String(c.numero).padStart(3, '0')}</b> — ${c.texto}
+                   style="width:auto; padding:0; border:none; margin:2px 0 0 0; flex-shrink:0;">
+            <b style="flex-shrink:0; white-space:nowrap;">${comentariosModeloOrigenActual}${String(c.numero).padStart(3, '0')}</b>
+            <div style="flex:1; min-width:0; overflow-wrap:break-word;">
+              ${c.texto}
               ${c.aprobado ? '<span style="color:rgb(146,208,80); font-weight:bold; margin-left:6px;">✔ Aprobado</span>' : ''}
             </div>
           </div>`).join('');
