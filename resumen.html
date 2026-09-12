@@ -108,6 +108,8 @@
       <button class="secundario" onclick="alternarTema()">🌙/☀️</button>
       <button class="secundario" onclick="location.href='index.html'">🏠 Inicio</button>
       <button class="secundario" onclick="location.href='arbol.html'">🌳 Árbol</button>
+      <button class="secundario" onclick="location.href='kanban.html'">🗂️ Kanban</button>
+      <button class="secundario" id="btn-informe" onclick="location.href='informe.html'" style="display:none;">🖨️ Informe</button>
       <button class="secundario" id="btn-usuarios" onclick="location.href='usuarios.html'" style="display:none;">👤 Usuarios</button>
       <button class="secundario" onclick="cerrarSesion()">Cerrar sesión</button>
       <button style="background:#dc3545; color:white; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:13px;" onclick="cerrarPagina()">❌ Cerrar</button>
@@ -191,6 +193,7 @@
     let miPerfil = null;
     let filtroDetalleEstado = null;
     let mapaNodoPorId = {};
+    let dependenciasCache = [];
 
     function rutaCompleta(nodo) {
       const partes = [];
@@ -466,6 +469,7 @@
       document.getElementById('texto-usuario').textContent =
         `${perfil.nombre_completo} (${perfil.username}) — ${perfil.rol === 'TRABAJADOR' ? 'USUARIO' : (perfil.rol === 'REVISOR' ? 'SUPERVISOR' : perfil.rol)}`;
       if (perfil.rol === 'ADMIN') document.getElementById('btn-usuarios').style.display = 'inline-block';
+      if (perfil.rol === 'ADMIN' || perfil.rol === 'REVISOR') document.getElementById('btn-informe').style.display = 'inline-block';
 
       if (perfil.rol === 'TRABAJADOR') {
         document.getElementById('pref-inicio-wrap-resumen').style.display = 'inline';
@@ -485,8 +489,10 @@
     }
 
     async function recargarDatos() {
-      const { data: nodos, error: errorNodos } = await supabaseClient
-        .from('v_nodes_with_workflow').select('*').eq('activo', true);
+      const [{ data: nodos, error: errorNodos }, { data: dependencias }] = await Promise.all([
+        supabaseClient.from('v_nodes_with_workflow').select('*').eq('activo', true),
+        supabaseClient.from('node_dependencias').select('*')
+      ]);
 
       if (errorNodos) {
         document.getElementById('contenido').innerHTML = `<p style="color:red;">Error: ${errorNodos.message}</p>`;
@@ -495,6 +501,7 @@
 
       mapaNodoPorId = {};
       nodos.forEach(n => { mapaNodoPorId[n.id] = n; });
+      dependenciasCache = dependencias || [];
 
       const nodosRelevantes = nodos.filter(n => !TIPOS_SIN_ASIGNACION.has(n.tipo));
 
@@ -648,6 +655,133 @@
       return null;
     }
 
+    // Ruta crítica (CPM) + holgura, igual que en gantt.html, pero calculada
+    // aquí sobre un subconjunto de nodos (los de un buque concreto) para el
+    // panel de riesgos, que junta el resultado de todos los buques.
+    function calcularRutaCriticaParaNodos(idsBuque) {
+      const rango = {};
+      idsBuque.forEach(id => {
+        const n = mapaNodoPorId[id];
+        if (n && n.fecha_inicio_prevista && n.fecha_fin_prevista) {
+          rango[id] = { inicio: new Date(n.fecha_inicio_prevista + 'T00:00:00'), fin: new Date(n.fecha_fin_prevista + 'T00:00:00') };
+        }
+      });
+      const ids = Object.keys(rango);
+      if (ids.length === 0) return { criticos: new Set(), holguras: new Map() };
+
+      const sucesoresDe = {}, predecesoresDe = {};
+      ids.forEach(id => { sucesoresDe[id] = []; predecesoresDe[id] = []; });
+      dependenciasCache.forEach(d => {
+        if (rango[d.predecesor_id] && rango[d.sucesor_id]) {
+          sucesoresDe[d.predecesor_id].push(d.sucesor_id);
+          predecesoresDe[d.sucesor_id].push(d.predecesor_id);
+        }
+      });
+
+      const duracionMs = id => rango[id].fin - rango[id].inicio;
+      const EF = {};
+      function calcularEF(id, pila) {
+        if (EF[id] !== undefined) return EF[id];
+        if (pila.has(id)) return EF[id] = rango[id].fin;
+        pila.add(id);
+        let inicioReal = rango[id].inicio;
+        predecesoresDe[id].forEach(pid => {
+          const ef = calcularEF(pid, pila);
+          if (ef > inicioReal) inicioReal = ef;
+        });
+        return EF[id] = new Date(inicioReal.getTime() + duracionMs(id));
+      }
+      ids.forEach(id => calcularEF(id, new Set()));
+
+      const finProyecto = new Date(Math.max(...ids.map(id => EF[id].getTime())));
+      const LS = {};
+      function calcularLS(id, pila) {
+        if (LS[id] !== undefined) return LS[id];
+        if (pila.has(id)) return LS[id] = finProyecto;
+        pila.add(id);
+        const sucs = sucesoresDe[id];
+        const finTardio = sucs.length === 0 ? finProyecto : new Date(Math.min(...sucs.map(sid => calcularLS(sid, pila).getTime())));
+        return LS[id] = new Date(finTardio.getTime() - duracionMs(id));
+      }
+      ids.forEach(id => calcularLS(id, new Set()));
+
+      const ES = {};
+      ids.forEach(id => { ES[id] = new Date(EF[id].getTime() - duracionMs(id)); });
+
+      const criticos = new Set();
+      const holguras = new Map();
+      const UNA_HORA_MS = 3600000;
+      const UN_DIA_MS = 86400000;
+      ids.forEach(id => {
+        const holguraMs = LS[id].getTime() - ES[id].getTime();
+        holguras.set(id, Math.round(holguraMs / UN_DIA_MS));
+        if (Math.abs(holguraMs) < UNA_HORA_MS) criticos.add(id);
+      });
+      return { criticos, holguras };
+    }
+
+    const UMBRAL_HOLGURA_RIESGO_DIAS = 2;
+
+    // Junta, de todos los buques, las tareas críticas retrasadas (alto),
+    // críticas o retrasadas sin más (medio), y las que tienen poca holgura
+    // (bajo) — para que el gestor vea de un vistazo dónde hay más peligro
+    // de que se retrase la entrega.
+    function calcularPanelRiesgos(nodos) {
+      const buques = Object.values(mapaNodoPorId).filter(n => n.tipo === 'BUQUE');
+      const hoyIso = new Date().toISOString().slice(0, 10);
+      const riesgos = [];
+
+      buques.forEach(buque => {
+        const idsBuque = nodos.filter(n => { const b = buqueDeNodo(n); return b && b.id === buque.id; }).map(n => n.id);
+        const { criticos, holguras } = calcularRutaCriticaParaNodos(idsBuque);
+        idsBuque.forEach(id => {
+          const n = mapaNodoPorId[id];
+          if (calcularEstadoPropio(n) === 'aprobado') return;
+          const esCritica = criticos.has(id);
+          const holgura = holguras.has(id) ? holguras.get(id) : null;
+          const retrasada = !!(n.fecha_fin_prevista && n.fecha_fin_prevista < hoyIso);
+
+          let severidad = null;
+          if (esCritica && retrasada) severidad = 'ALTO';
+          else if (esCritica || retrasada) severidad = 'MEDIO';
+          else if (holgura !== null && holgura <= UMBRAL_HOLGURA_RIESGO_DIAS) severidad = 'BAJO';
+          if (severidad) riesgos.push({ nodo: n, buque, esCritica, retrasada, holgura, severidad });
+        });
+      });
+
+      const orden = { ALTO: 0, MEDIO: 1, BAJO: 2 };
+      riesgos.sort((a, b) => orden[a.severidad] - orden[b.severidad] || (a.holgura ?? 99) - (b.holgura ?? 99));
+      return riesgos;
+    }
+
+    function renderPanelRiesgos() {
+      const riesgos = calcularPanelRiesgos(nodosGestorActual);
+      if (riesgos.length === 0) {
+        return `
+          <div class="card">
+            <h2>⚠️ Panel de riesgos</h2>
+            <p style="font-size:12px; color:#888;">Nada en riesgo ahora mismo — sin tareas críticas retrasadas ni con poca holgura.</p>
+          </div>`;
+      }
+      const colorSeveridad = { ALTO: '#dc3545', MEDIO: '#fd7e14', BAJO: '#b38600' };
+      const etiquetaSeveridad = { ALTO: 'Riesgo alto', MEDIO: 'Riesgo medio', BAJO: 'Riesgo bajo' };
+      const filas = riesgos.slice(0, 40).map(r => `
+        <li>
+          <span class="flecha" style="color:${colorSeveridad[r.severidad]};">●</span>
+          <div>
+            <div><strong>${r.nodo.codigo}</strong> ${r.nodo.nombre}${r.nodo.trabajador_nombre ? ` — 👷 ${r.nodo.trabajador_nombre}` : ''}</div>
+            <div class="ruta-nodo">${rutaCompleta(r.nodo)} · <strong style="color:${colorSeveridad[r.severidad]};">${etiquetaSeveridad[r.severidad]}</strong>${r.esCritica ? ' · 🔺 ruta crítica' : ''}${r.retrasada ? ' · ⏰ retrasada' : ''}${(r.holgura !== null && !r.esCritica) ? ` · ⏳${r.holgura}d de margen` : ''}</div>
+          </div>
+        </li>
+      `).join('');
+      return `
+        <div class="card">
+          <h2>⚠️ Panel de riesgos (${riesgos.length})</h2>
+          <p style="font-size:11px; color:#888; margin:-4px 0 8px;">De todos los buques — crítica + retrasada (alto), crítica o retrasada (medio), poca holgura (bajo). Requiere tener fechas previstas y dependencias cargadas.</p>
+          <ul class="lista-nodos" style="max-height:320px; overflow-y:auto;">${filas}</ul>
+        </div>`;
+    }
+
     const UMBRAL_CUELLO_BOTELLA_DIAS = 3;
 
     function formatearMinutos(mins) {
@@ -723,7 +857,7 @@
               <tr>
                 <th>Buque</th><th>Nodos</th><th>% Avance</th><th>⚠️ Cuellos de botella</th>
                 <th>Tiempo medio de revisión</th><th>% Rechazo</th>
-                <th>Ghenova abiertos</th><th>Navantia abiertos</th>
+                <th>Ghenova abiertos</th><th>Navantia abiertos</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -737,6 +871,7 @@
                   <td class="num">${f.pctRechazo}%</td>
                   <td class="num">${f.abiertosGhe}${f.antiguedadGheMax !== null ? ` (máx ${f.antiguedadGheMax}d)` : ''}</td>
                   <td class="num">${f.abiertosNav}${f.antiguedadNavMax !== null ? ` (máx ${f.antiguedadNavMax}d)` : ''}</td>
+                  <td class="num"><a href="informe.html?buque=${f.buque.id}" title="Informe ejecutivo de ${f.buque.codigo}" style="text-decoration:none;">🖨️</a></td>
                 </tr>
               `).join('')}
             </tbody>
@@ -905,6 +1040,8 @@
           <p style="font-size:11px; color:#888; margin:-4px 0 8px;">Pulsa un estado para ver el detalle de esas tareas.</p>
           ${renderContadores(conteoGeneral, true, nodos.length)}
         </div>
+
+        ${renderPanelRiesgos()}
 
         ${renderKPIsPorBuque()}
 

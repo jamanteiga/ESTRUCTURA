@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESTRUCTURA - Informe ejecutivo</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#007bff">
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: 30px auto; padding: 0 20px; color: #333; }
+    h1 { font-size: 22px; margin-bottom: 2px; }
+    h2 { font-size: 15px; margin-top: 0; }
+    .subtitulo { color: #666; font-size: 13px; margin-bottom: 16px; }
+    .card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    .header-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+    button { padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; }
+    button.secundario { background: #6c757d; }
+    button.secundario:hover { background: #5a6268; }
+    select { padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+
+    .contadores { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    @media (max-width: 700px) { .contadores { grid-template-columns: repeat(2, 1fr); } }
+    .contador { text-align: center; padding: 12px 6px; border-radius: 8px; font-weight: bold; background: #fff; border: 1px solid #ddd; }
+    .contador .numero { font-size: 22px; display: block; }
+    .contador .etiqueta { font-size: 11px; font-weight: normal; color: #666; }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 6px; background: white; font-size: 12px; }
+    th, td { padding: 6px; text-align: left; border-bottom: 1px solid #ddd; }
+    th { background: #1c6e8c; color: white; font-size: 11px; }
+    .pasado { color: #888; }
+    .futuro { font-weight: bold; }
+
+    ul.lista-riesgo { list-style: none; padding: 0; margin: 6px 0 0; }
+    ul.lista-riesgo li { padding: 6px 0; border-bottom: 1px solid #eee; font-size: 12px; }
+    .sev-ALTO { color: #dc3545; font-weight: bold; }
+    .sev-MEDIO { color: #fd7e14; font-weight: bold; }
+    .sev-BAJO { color: #b38600; font-weight: bold; }
+
+    body.tema-oscuro { background: #1a1d21; color: #e0e0e0; }
+    body.tema-oscuro .card { background: #24282e; border-color: #3a3f47; }
+    body.tema-oscuro .contador { background: #2f343b; border-color: #444; }
+    body.tema-oscuro table { color: #e0e0e0; }
+    body.tema-oscuro td { border-color: #3a3f47; }
+
+    @media print {
+      @page { size: A4 portrait; margin: 14mm; }
+      .no-imprimir { display: none !important; }
+      body { margin: 0; padding: 0; max-width: 100%; }
+      .card { break-inside: avoid; border: 1px solid #999; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header-bar no-imprimir">
+    <h1>📄 Informe ejecutivo</h1>
+    <div>
+      <button class="secundario" onclick="alternarTema()">🌙/☀️</button>
+      <button class="secundario" onclick="location.href='resumen.html'">📊 Resumen</button>
+      <button onclick="window.print()">🖨️ Imprimir / Guardar como PDF</button>
+    </div>
+  </div>
+
+  <div class="card no-imprimir">
+    <label style="font-size:12px; font-weight:bold;">Buque:
+      <select id="sel-informe-buque" onchange="cambiarBuqueInforme(this.value)"></select>
+    </label>
+  </div>
+
+  <div id="informe-contenido">
+    <p>Cargando...</p>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script>
+    const SUPABASE_URL = 'https://wuarkraddnndmgvfnkmm.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const TIPOS_SIN_ASIGNACION = new Set(['BUQUE']);
+    const UMBRAL_CUELLO_BOTELLA_DIAS = 3;
+    const UMBRAL_HOLGURA_RIESGO_DIAS = 2;
+
+    let miPerfil = null;
+    let mapaNodoPorId = {};
+    let dependenciasCache = [];
+    let hitosCache = [];
+    let comentariosModeloCache = { GHE: [], NAV: [] };
+    let nodosTodos = [];
+    let buqueSeleccionadoId = null;
+    let chartCurvaAvanceInforme = null;
+
+    function aplicarTema(tema) {
+      document.body.classList.toggle('tema-oscuro', tema === 'oscuro');
+      localStorage.setItem('estructura_tema', tema);
+    }
+    function alternarTema() {
+      aplicarTema(document.body.classList.contains('tema-oscuro') ? 'claro' : 'oscuro');
+    }
+    aplicarTema(localStorage.getItem('estructura_tema') || 'claro');
+
+    function esGestor() { return miPerfil.rol === 'ADMIN' || miPerfil.rol === 'REVISOR'; }
+
+    function buqueDeNodo(nodo) {
+      let actual = nodo;
+      while (actual) {
+        if (actual.tipo === 'BUQUE') return actual;
+        actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
+      }
+      return null;
+    }
+
+    function calcularEstadoPropio(nodo) {
+      if (nodo.revision_estado === 'APROBADO') return 'aprobado';
+      if (nodo.revision_estado === 'RECHAZADO') return 'rechazado';
+      if (nodo.revision_estado === 'PENDIENTE' || nodo.revision_estado === 'EN_REVISION') return 'pendiente_revision';
+      if (nodo.trabajo_estado === 'EN_TRABAJO') return 'en_proceso';
+      if (nodo.trabajo_estado === 'PENDIENTE_DUDAS') return 'pendiente_dudas';
+      if (nodo.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO') return 'pendiente_cambios_modelo';
+      if (nodo.trabajador_id) return 'asignada_sin_empezar';
+      return 'sin_asignar';
+    }
+
+    function formatearMinutos(mins) {
+      if (mins === null || mins === undefined) return '—';
+      const totalMin = Math.round(mins);
+      if (totalMin <= 0) return '—';
+      const dias = Math.floor(totalMin / 1440);
+      const horas = Math.floor((totalMin % 1440) / 60);
+      const m = totalMin % 60;
+      if (dias > 0) return `${dias}d ${horas}h`;
+      if (horas > 0) return `${horas}h ${m}min`;
+      return `${m}min`;
+    }
+
+    async function iniciar() {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (!session) { window.location.href = 'login.html?next=informe.html'; return; }
+
+      const { data: perfil, error } = await supabaseClient
+        .from('profiles').select('*').eq('id', session.user.id).single();
+      if (error || !perfil || !perfil.activo || !(perfil.rol === 'ADMIN' || perfil.rol === 'REVISOR')) {
+        document.body.innerHTML = '<p style="color:red; font-weight:bold; margin-top:60px; text-align:center;">No tienes acceso.</p>';
+        return;
+      }
+      miPerfil = perfil;
+
+      const [{ data: nodos, error: errorNodos }, { data: dependencias }, { data: hitos }, rGhe, rNav] = await Promise.all([
+        supabaseClient.from('v_nodes_with_workflow').select('*').eq('activo', true),
+        supabaseClient.from('node_dependencias').select('*'),
+        supabaseClient.from('hitos').select('*'),
+        supabaseClient.rpc('listar_todos_comentarios_modelo', { p_origen: 'GHE' }),
+        supabaseClient.rpc('listar_todos_comentarios_modelo', { p_origen: 'NAV' })
+      ]);
+      if (errorNodos) {
+        document.getElementById('informe-contenido').innerHTML = `<p style="color:red;">Error: ${errorNodos.message}</p>`;
+        return;
+      }
+      mapaNodoPorId = {};
+      nodos.forEach(n => { mapaNodoPorId[n.id] = n; });
+      nodosTodos = nodos.filter(n => !TIPOS_SIN_ASIGNACION.has(n.tipo));
+      dependenciasCache = dependencias || [];
+      hitosCache = hitos || [];
+      comentariosModeloCache = { GHE: rGhe.error ? [] : (rGhe.data || []), NAV: rNav.error ? [] : (rNav.data || []) };
+
+      const buques = Object.values(mapaNodoPorId).filter(n => n.tipo === 'BUQUE').sort((a, b) => a.codigo.localeCompare(b.codigo, 'es'));
+      if (buques.length === 0) {
+        document.getElementById('informe-contenido').innerHTML = '<p>Todavía no hay ningún Buque creado.</p>';
+        return;
+      }
+
+      const params = new URLSearchParams(window.location.search);
+      const buqueParam = params.get('buque');
+      buqueSeleccionadoId = (buqueParam && mapaNodoPorId[buqueParam] && mapaNodoPorId[buqueParam].tipo === 'BUQUE') ? buqueParam : buques[0].id;
+
+      const sel = document.getElementById('sel-informe-buque');
+      sel.innerHTML = buques.map(b => `<option value="${b.id}" ${b.id === buqueSeleccionadoId ? 'selected' : ''}>${b.codigo} — ${b.nombre}</option>`).join('');
+
+      pintarInforme();
+    }
+
+    function cambiarBuqueInforme(id) {
+      buqueSeleccionadoId = id;
+      const url = new URL(window.location.href);
+      url.searchParams.set('buque', id);
+      window.history.replaceState({}, '', url);
+      pintarInforme();
+    }
+
+    // -------------------- Ruta crítica (CPM) + holgura, scoped a un buque --------------------
+
+    function calcularRutaCriticaParaNodos(idsBuque) {
+      const rango = {};
+      idsBuque.forEach(id => {
+        const n = mapaNodoPorId[id];
+        if (n && n.fecha_inicio_prevista && n.fecha_fin_prevista) {
+          rango[id] = { inicio: new Date(n.fecha_inicio_prevista + 'T00:00:00'), fin: new Date(n.fecha_fin_prevista + 'T00:00:00') };
+        }
+      });
+      const ids = Object.keys(rango);
+      if (ids.length === 0) return { criticos: new Set(), holguras: new Map() };
+
+      const sucesoresDe = {}, predecesoresDe = {};
+      ids.forEach(id => { sucesoresDe[id] = []; predecesoresDe[id] = []; });
+      dependenciasCache.forEach(d => {
+        if (rango[d.predecesor_id] && rango[d.sucesor_id]) {
+          sucesoresDe[d.predecesor_id].push(d.sucesor_id);
+          predecesoresDe[d.sucesor_id].push(d.predecesor_id);
+        }
+      });
+
+      const duracionMs = id => rango[id].fin - rango[id].inicio;
+      const EF = {};
+      function calcularEF(id, pila) {
+        if (EF[id] !== undefined) return EF[id];
+        if (pila.has(id)) return EF[id] = rango[id].fin;
+        pila.add(id);
+        let inicioReal = rango[id].inicio;
+        predecesoresDe[id].forEach(pid => {
+          const ef = calcularEF(pid, pila);
+          if (ef > inicioReal) inicioReal = ef;
+        });
+        return EF[id] = new Date(inicioReal.getTime() + duracionMs(id));
+      }
+      ids.forEach(id => calcularEF(id, new Set()));
+
+      const finProyecto = new Date(Math.max(...ids.map(id => EF[id].getTime())));
+      const LS = {};
+      function calcularLS(id, pila) {
+        if (LS[id] !== undefined) return LS[id];
+        if (pila.has(id)) return LS[id] = finProyecto;
+        pila.add(id);
+        const sucs = sucesoresDe[id];
+        const finTardio = sucs.length === 0 ? finProyecto : new Date(Math.min(...sucs.map(sid => calcularLS(sid, pila).getTime())));
+        return LS[id] = new Date(finTardio.getTime() - duracionMs(id));
+      }
+      ids.forEach(id => calcularLS(id, new Set()));
+
+      const ES = {};
+      ids.forEach(id => { ES[id] = new Date(EF[id].getTime() - duracionMs(id)); });
+
+      const criticos = new Set();
+      const holguras = new Map();
+      const UNA_HORA_MS = 3600000;
+      const UN_DIA_MS = 86400000;
+      ids.forEach(id => {
+        const holguraMs = LS[id].getTime() - ES[id].getTime();
+        holguras.set(id, Math.round(holguraMs / UN_DIA_MS));
+        if (Math.abs(holguraMs) < UNA_HORA_MS) criticos.add(id);
+      });
+      return { criticos, holguras };
+    }
+
+    function calcularRiesgosBuque(idsBuque) {
+      const hoyIso = new Date().toISOString().slice(0, 10);
+      const { criticos, holguras } = calcularRutaCriticaParaNodos(idsBuque);
+      const riesgos = [];
+      idsBuque.forEach(id => {
+        const n = mapaNodoPorId[id];
+        if (calcularEstadoPropio(n) === 'aprobado') return;
+        const esCritica = criticos.has(id);
+        const holgura = holguras.has(id) ? holguras.get(id) : null;
+        const retrasada = !!(n.fecha_fin_prevista && n.fecha_fin_prevista < hoyIso);
+        let severidad = null;
+        if (esCritica && retrasada) severidad = 'ALTO';
+        else if (esCritica || retrasada) severidad = 'MEDIO';
+        else if (holgura !== null && holgura <= UMBRAL_HOLGURA_RIESGO_DIAS) severidad = 'BAJO';
+        if (severidad) riesgos.push({ nodo: n, esCritica, retrasada, holgura, severidad });
+      });
+      const orden = { ALTO: 0, MEDIO: 1, BAJO: 2 };
+      riesgos.sort((a, b) => orden[a.severidad] - orden[b.severidad] || (a.holgura ?? 99) - (b.holgura ?? 99));
+      return riesgos;
+    }
+
+    // -------------------- Curva de avance --------------------
+
+    function formatearFechaEjeCurva(iso) {
+      const [a, m, d] = iso.split('-');
+      return `${d}/${m}`;
+    }
+
+    function construirCurvaAvance(propios) {
+      const total = propios.length;
+      if (total === 0) return null;
+      const eventosPlan = propios.filter(n => n.fecha_fin_prevista).map(n => n.fecha_fin_prevista);
+      const eventosReal = propios.filter(n => n.revision_estado === 'APROBADO' && n.revisado_en).map(n => n.revisado_en.slice(0, 10));
+      if (eventosPlan.length === 0 && eventosReal.length === 0) return null;
+
+      const hoyIso = new Date().toISOString().slice(0, 10);
+      const fechas = [...new Set([...eventosPlan, ...eventosReal, hoyIso])].sort();
+      const contarPlan = {}, contarReal = {};
+      eventosPlan.forEach(f => contarPlan[f] = (contarPlan[f] || 0) + 1);
+      eventosReal.forEach(f => contarReal[f] = (contarReal[f] || 0) + 1);
+
+      let acumPlan = 0, acumReal = 0;
+      const puntosPlan = [], puntosReal = [];
+      fechas.forEach(f => {
+        acumPlan += (contarPlan[f] || 0);
+        acumReal += (contarReal[f] || 0);
+        puntosPlan.push(Math.round((acumPlan / total) * 100));
+        puntosReal.push(f <= hoyIso ? Math.round((acumReal / total) * 100) : null);
+      });
+      return { labels: fechas.map(formatearFechaEjeCurva), plan: puntosPlan, real: puntosReal };
+    }
+
+    function formatearFechaCorta(fecha) {
+      return `${String(fecha.getDate()).padStart(2, '0')}/${String(fecha.getMonth() + 1).padStart(2, '0')}/${fecha.getFullYear()}`;
+    }
+
+    function pintarInforme() {
+      const buque = mapaNodoPorId[buqueSeleccionadoId];
+      const propios = nodosTodos.filter(n => { const b = buqueDeNodo(n); return b && b.id === buqueSeleccionadoId; });
+      const total = propios.length;
+      const aprobados = propios.filter(n => calcularEstadoPropio(n) === 'aprobado').length;
+      const rechazados = propios.filter(n => calcularEstadoPropio(n) === 'rechazado').length;
+      const avance = total > 0 ? Math.round((aprobados / total) * 100) : 0;
+      const revisados = aprobados + rechazados;
+      const pctRechazo = revisados > 0 ? Math.round((rechazados / revisados) * 100) : 0;
+
+      const ahora = new Date();
+      const enColaRevision = propios.filter(n => (n.revision_estado === 'PENDIENTE' || n.revision_estado === 'EN_REVISION') && n.trabajo_terminado_en);
+      const cuellosBotella = enColaRevision.filter(n => (ahora - new Date(n.trabajo_terminado_en)) / 86400000 > UMBRAL_CUELLO_BOTELLA_DIAS).length;
+
+      const revisionesConTiempo = propios.filter(n => n.trabajo_terminado_en && n.revisado_en && (n.revision_estado === 'APROBADO' || n.revision_estado === 'RECHAZADO'));
+      let tiempoMedioRevisionMin = null;
+      if (revisionesConTiempo.length > 0) {
+        const totalMin = revisionesConTiempo.reduce((acc, n) => acc + (new Date(n.revisado_en) - new Date(n.trabajo_terminado_en)) / 60000, 0);
+        tiempoMedioRevisionMin = totalMin / revisionesConTiempo.length;
+      }
+
+      const comentariosBuque = (origen) => (comentariosModeloCache[origen] || []).filter(c => c.buque_id === buqueSeleccionadoId && !c.implementado);
+      const abiertosGhe = comentariosBuque('GHE').length;
+      const abiertosNav = comentariosBuque('NAV').length;
+
+      const hitosBuque = hitosCache.filter(h => h.buque_id === buqueSeleccionadoId);
+
+      const idsBuque = propios.map(n => n.id);
+      const riesgos = calcularRiesgosBuque(idsBuque);
+      const etiquetaSeveridad = { ALTO: 'Riesgo alto', MEDIO: 'Riesgo medio', BAJO: 'Riesgo bajo' };
+
+      document.getElementById('informe-contenido').innerHTML = `
+        <div class="card">
+          <h1 style="margin-bottom:2px;">${buque.codigo} — ${buque.nombre}</h1>
+          <div class="subtitulo">Informe generado el ${formatearFechaCorta(new Date())} por ${miPerfil.nombre_completo}</div>
+          <div class="contadores">
+            <div class="contador"><span class="numero">${avance}%</span><span class="etiqueta">Avance (${aprobados}/${total} aprobadas)</span></div>
+            <div class="contador"><span class="numero">${cuellosBotella}</span><span class="etiqueta">Cuellos de botella (revisión &gt; ${UMBRAL_CUELLO_BOTELLA_DIAS}d)</span></div>
+            <div class="contador"><span class="numero">${formatearMinutos(tiempoMedioRevisionMin)}</span><span class="etiqueta">Tiempo medio de revisión</span></div>
+            <div class="contador"><span class="numero">${pctRechazo}%</span><span class="etiqueta">% rechazo sobre revisadas</span></div>
+            <div class="contador"><span class="numero">${abiertosGhe}</span><span class="etiqueta">Comentarios Ghenova abiertos</span></div>
+            <div class="contador"><span class="numero">${abiertosNav}</span><span class="etiqueta">Comentarios Navantia abiertos</span></div>
+            <div class="contador"><span class="numero">${riesgos.filter(r => r.severidad === 'ALTO').length}</span><span class="etiqueta">Tareas en riesgo alto</span></div>
+            <div class="contador"><span class="numero">${hitosBuque.length}</span><span class="etiqueta">Hitos definidos</span></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>📈 Curva de avance — plan vs. real</h2>
+          <div id="informe-curva-vacio" style="display:none; font-size:12px; color:#888;">Todavía no hay fechas previstas ni tareas aprobadas en este buque.</div>
+          <div style="height:260px;"><canvas id="informe-chart-curva"></canvas></div>
+        </div>
+
+        <div class="card">
+          <h2>🚩 Hitos (${hitosBuque.length})</h2>
+          ${hitosBuque.length === 0 ? '<p style="font-size:12px; color:#888;">Sin hitos definidos para este buque.</p>' : `
+            <table>
+              <thead><tr><th>Fecha</th><th>Nombre</th><th>Descripción</th></tr></thead>
+              <tbody>
+                ${hitosBuque.slice().sort((a, b) => a.fecha.localeCompare(b.fecha)).map(h => {
+                  const esPasado = h.fecha < new Date().toISOString().slice(0, 10);
+                  return `<tr class="${esPasado ? 'pasado' : 'futuro'}"><td>${formatearFechaCorta(new Date(h.fecha + 'T00:00:00'))}</td><td>${h.nombre}</td><td>${h.descripcion || '—'}</td></tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          `}
+        </div>
+
+        <div class="card">
+          <h2>⚠️ Riesgos (${riesgos.length})</h2>
+          <p style="font-size:11px; color:#888; margin:-4px 0 8px;">Crítica + retrasada (alto), crítica o retrasada (medio), poca holgura (bajo).</p>
+          ${riesgos.length === 0 ? '<p style="font-size:12px; color:#888;">Nada en riesgo ahora mismo.</p>' : `
+            <ul class="lista-riesgo">
+              ${riesgos.slice(0, 25).map(r => `
+                <li>
+                  <strong>${r.nodo.codigo}</strong> ${r.nodo.nombre}${r.nodo.trabajador_nombre ? ` — 👷 ${r.nodo.trabajador_nombre}` : ''} ·
+                  <span class="sev-${r.severidad}">${etiquetaSeveridad[r.severidad]}</span>
+                  ${r.esCritica ? ' · 🔺 ruta crítica' : ''}${r.retrasada ? ' · ⏰ retrasada' : ''}${(r.holgura !== null && !r.esCritica) ? ` · ⏳${r.holgura}d de margen` : ''}
+                </li>
+              `).join('')}
+            </ul>
+          `}
+        </div>
+      `;
+
+      pintarCurvaAvanceInforme(propios);
+    }
+
+    function pintarCurvaAvanceInforme(propios) {
+      const canvas = document.getElementById('informe-chart-curva');
+      if (!canvas || typeof Chart === 'undefined') return;
+      const datos = construirCurvaAvance(propios);
+      const vacioEl = document.getElementById('informe-curva-vacio');
+      if (chartCurvaAvanceInforme) { chartCurvaAvanceInforme.destroy(); chartCurvaAvanceInforme = null; }
+      if (!datos) {
+        canvas.style.display = 'none';
+        if (vacioEl) vacioEl.style.display = 'block';
+        return;
+      }
+      canvas.style.display = 'block';
+      if (vacioEl) vacioEl.style.display = 'none';
+      chartCurvaAvanceInforme = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: datos.labels,
+          datasets: [
+            { label: 'Plan (% previsto acumulado)', data: datos.plan, borderColor: '#6c757d', borderDash: [5, 4], pointRadius: 0, tension: 0.1 },
+            { label: 'Real (% aprobado acumulado)', data: datos.real, borderColor: '#007bff', pointRadius: 0, tension: 0.1, spanGaps: false }
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          scales: { y: { min: 0, max: 100, ticks: { callback: v => v + '%' } } },
+          plugins: { legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 11 } } } }
+        }
+      });
+    }
+
+    iniciar();
+  </script>
+</body>
+</html>

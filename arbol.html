@@ -305,6 +305,8 @@
         <a class="menu-item solo-escritorio" id="menu-link-log" href="log.html" style="display:none;">🗒️ Logs</a>
         <span class="menu-item solo-escritorio" id="menu-item-buque" onclick="esInvitado() ? mostrarAvisoModal('Eres un usuario Invitado: solo puedes consultar, no puedes realizar cambios.') : abrirModalCrear(null, 'BUQUE')" style="display:none;">+ Añadir Buque</span>
         <a class="menu-item" href="resumen.html">📊 Resumen</a>
+        <a class="menu-item" href="kanban.html">🗂️ Kanban</a>
+        <a class="menu-item" id="menu-item-alertas" href="resumen.html" style="display:none;" title="Tareas retrasadas y usuarios con demasiada carga hoy — detalle en Resumen">⚠️ Alertas<span id="badge-alertas" style="display:none; background:#dc3545; color:#fff; border-radius:10px; padding:1px 7px; font-size:11px; font-weight:bold; margin-left:6px;"></span></a>
         <span class="menu-item" id="menu-item-resumen-comentarios" onclick="abrirResumenComentariosModelo()" style="display:none;">📋 Comentarios pendientes de modelo<span id="badge-comentarios-pendientes" style="display:none; background:#dc3545; color:#fff; border-radius:10px; padding:1px 7px; font-size:11px; font-weight:bold; margin-left:6px;"></span></span>
         <a class="menu-item solo-escritorio" id="menu-link-usuarios" href="usuarios.html" style="display:none;">👤 Usuarios</a>
         <span class="menu-item" onclick="cerrarSesion()">🚪 Cerrar sesión</span>
@@ -528,9 +530,21 @@
       <label>Inicio previsto</label>
       <input type="date" id="fp-inicio">
       <label>Fin previsto</label>
-      <input type="date" id="fp-fin">
+      <input type="date" id="fp-fin" oninput="actualizarVisibilidadMotivoRetraso()">
       <p id="fp-sugerencia" style="font-size:12px; color:#0069d9; margin:6px 0; display:none;"></p>
       <p id="fp-base" style="font-size:12px; color:#888; margin:6px 0;"></p>
+      <div id="fp-motivo-caja" style="display:none; background:#fff8e6; border:1px solid #ffe6a3; border-radius:6px; padding:8px; margin:6px 0;">
+        <p style="font-size:12px; color:#8a6d00; margin:0 0 6px; font-weight:bold;">⚠️ Estás retrasando el fin previsto — indica el motivo:</p>
+        <select id="fp-motivo-categoria" style="margin-bottom:6px;">
+          <option value="">Elige una categoría...</option>
+          <option value="FALTA_MATERIAL">Falta de material</option>
+          <option value="CAMBIO_DISENO">Cambio de diseño / cambios en modelo</option>
+          <option value="AUSENCIA_PERSONAL">Ausencia de personal</option>
+          <option value="DEPENDENCIA_EXTERNA">Dependencia externa (otra tarea, proveedor...)</option>
+          <option value="OTRO">Otro</option>
+        </select>
+        <input type="text" id="fp-motivo-detalle" placeholder="Detalle (opcional)">
+      </div>
       <p style="font-size:11px; color:#888; margin:10px 0 2px; font-weight:bold;">📜 Historial de replanificaciones</p>
       <div id="fp-historial" style="font-size:11px; color:#777; max-height:110px; overflow-y:auto;"></div>
       <div class="estado-msg" id="fp-estado"></div>
@@ -932,6 +946,9 @@
         document.getElementById('menu-item-resumen-comentarios').style.display = 'flex';
         actualizarContadorComentariosPendientes();
       }
+      if (esGestor()) {
+        document.getElementById('menu-item-alertas').style.display = 'flex';
+      }
 
       if (miPerfil.rol === 'TRABAJADOR') {
         document.getElementById('wrap-mis-tareas').style.display = 'flex';
@@ -1087,6 +1104,36 @@
       });
 
       renderizarArbolCompleto();
+      if (esGestor()) actualizarBadgeAlertas();
+    }
+
+    // Aviso in-app (badge "⚠️ Alertas" del menú) para el gestor: cuenta
+    // tareas retrasadas (sin aprobar y con fecha fin prevista ya pasada) +
+    // usuarios con demasiada carga hoy (4 o más tareas sin aprobar cuyo
+    // rango de fechas previstas cubre hoy). El detalle está en Resumen.
+    function actualizarBadgeAlertas() {
+      const badge = document.getElementById('badge-alertas');
+      if (!badge) return;
+      const hoyIso = new Date().toISOString().slice(0, 10);
+      const retrasadas = todosLosNodos.filter(n => nodoRetrasado(n)).length;
+
+      const porUsuario = {};
+      todosLosNodos.forEach(n => {
+        if (!n.trabajador_id || calcularEstadoPropio(n) === 'aprobado') return;
+        if (!(n.fecha_inicio_prevista && n.fecha_fin_prevista && n.fecha_inicio_prevista <= hoyIso && hoyIso <= n.fecha_fin_prevista)) return;
+        porUsuario[n.trabajador_id] = (porUsuario[n.trabajador_id] || 0) + 1;
+      });
+      const usuariosSaturados = Object.values(porUsuario).filter(c => c >= 4).length;
+
+      const total = retrasadas + usuariosSaturados;
+      if (total > 0) {
+        badge.textContent = total;
+        badge.style.display = 'inline-block';
+        document.getElementById('menu-item-alertas').title =
+          `${retrasadas} tarea(s) retrasada(s)${usuariosSaturados > 0 ? ` · ${usuariosSaturados} usuario(s) con demasiada carga hoy` : ''} — detalle en Resumen`;
+      } else {
+        badge.style.display = 'none';
+      }
     }
 
     // Recalcula, para cada nodo, si todos sus comentarios Ghenova y/o
@@ -2091,6 +2138,13 @@
     // falta, para no añadir peso a la carga inicial del árbol.
 
     const MAPA_UBICACION_SEDE = { FER: 'Ferrol', BIL: 'Bilbao', CAN: 'Las Palmas de Gran Canaria', MAD: 'Madrid', SEV: 'Sevilla' };
+    const ETIQUETAS_MOTIVO_RETRASO = {
+      FALTA_MATERIAL: 'Falta de material',
+      CAMBIO_DISENO: 'Cambio de diseño / cambios en modelo',
+      AUSENCIA_PERSONAL: 'Ausencia de personal',
+      DEPENDENCIA_EXTERNA: 'Dependencia externa',
+      OTRO: 'Otro'
+    };
     let festivosCache = null;
     let ausenciasCache = null;
 
@@ -2140,6 +2194,9 @@
     // -------------------- Fechas previstas (plan vs. real) --------------------
 
     let nodoFechasPrevistasActual = null;
+    // Fin previsto tal y como estaba al abrir el modal — para saber si lo que
+    // se va a guardar es un retraso (fin nuevo posterior) y pedir motivo.
+    let fpFinOriginal = null;
 
     async function abrirModalFechasPrevistas(nodeId) {
       nodoFechasPrevistasActual = nodeId;
@@ -2148,6 +2205,10 @@
       document.getElementById('fp-inicio').value = nodo.fecha_inicio_prevista || '';
       document.getElementById('fp-fin').value = nodo.fecha_fin_prevista || '';
       document.getElementById('fp-estado').textContent = '';
+      fpFinOriginal = nodo.fecha_fin_prevista || null;
+      document.getElementById('fp-motivo-categoria').value = '';
+      document.getElementById('fp-motivo-detalle').value = '';
+      document.getElementById('fp-motivo-caja').style.display = 'none';
 
       const baseEl = document.getElementById('fp-base');
       if (nodo.fecha_inicio_prevista_base || nodo.fecha_fin_prevista_base) {
@@ -2197,7 +2258,10 @@
         historialEl.innerHTML = historial.map(h => {
           const quien = perfilesCache.find(p => p.id === h.cambiado_por)?.nombre_completo || 'alguien';
           const cuando = new Date(h.cambiado_en).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-          return `<div style="padding:3px 0; border-bottom:1px solid #eee;">${cuando} — ${quien}: ${fmt(h.fecha_inicio_anterior)}→${fmt(h.fecha_fin_anterior)} ⟶ ${fmt(h.fecha_inicio_nueva)}→${fmt(h.fecha_fin_nueva)}</div>`;
+          const motivo = h.motivo_categoria
+            ? ` <span style="color:#b38600;">— ${ETIQUETAS_MOTIVO_RETRASO[h.motivo_categoria] || h.motivo_categoria}${h.motivo_detalle ? `: ${h.motivo_detalle}` : ''}</span>`
+            : '';
+          return `<div style="padding:3px 0; border-bottom:1px solid #eee;">${cuando} — ${quien}: ${fmt(h.fecha_inicio_anterior)}→${fmt(h.fecha_fin_anterior)} ⟶ ${fmt(h.fecha_inicio_nueva)}→${fmt(h.fecha_fin_nueva)}${motivo}</div>`;
         }).join('');
       }
     }
@@ -2218,21 +2282,44 @@
       nodoFechasPrevistasActual = null;
     }
 
+    // Se llama cada vez que se toca "Fin previsto": si el nuevo fin es
+    // posterior al que había al abrir el modal, es un retraso y se pide motivo.
+    function esRetrasoFechaFin() {
+      const fin = document.getElementById('fp-fin').value || null;
+      return !!(fin && fpFinOriginal && fin > fpFinOriginal);
+    }
+
+    function actualizarVisibilidadMotivoRetraso() {
+      document.getElementById('fp-motivo-caja').style.display = esRetrasoFechaFin() ? 'block' : 'none';
+    }
+
     async function guardarFechasPrevistas() {
       const estadoEl = document.getElementById('fp-estado');
       const inicio = document.getElementById('fp-inicio').value || null;
       const fin = document.getElementById('fp-fin').value || null;
       const nodo = mapaNodoPorId[nodoFechasPrevistasActual];
 
+      let motivoCategoria = null, motivoDetalle = null;
+      if (esRetrasoFechaFin()) {
+        motivoCategoria = document.getElementById('fp-motivo-categoria').value || null;
+        motivoDetalle = document.getElementById('fp-motivo-detalle').value.trim() || null;
+        if (!motivoCategoria) {
+          estadoEl.textContent = 'Estás retrasando el fin previsto: elige un motivo antes de guardar.';
+          estadoEl.className = 'estado-msg error';
+          return;
+        }
+      }
+
       const { error } = await supabaseClient.rpc('establecer_fechas_previstas', {
-        p_node_id: nodoFechasPrevistasActual, p_fecha_inicio: inicio, p_fecha_fin: fin
+        p_node_id: nodoFechasPrevistasActual, p_fecha_inicio: inicio, p_fecha_fin: fin,
+        p_motivo_categoria: motivoCategoria, p_motivo_detalle: motivoDetalle
       });
       if (error) {
         estadoEl.textContent = 'Error: ' + traducirError(error.message); estadoEl.className = 'estado-msg error';
         registrarLog('INTENTO_FALLIDO', `Intento de fijar fechas previstas de "${nodo?.codigo}" denegado: ${error.message}`, nodoFechasPrevistasActual);
         return;
       }
-      registrarLog('FECHAS_PREVISTAS', `Fijó fechas previstas de "${nodo?.codigo}": ${inicio || '—'} → ${fin || '—'}`, nodoFechasPrevistasActual);
+      registrarLog('FECHAS_PREVISTAS', `Fijó fechas previstas de "${nodo?.codigo}": ${inicio || '—'} → ${fin || '—'}${motivoCategoria ? ` (motivo: ${ETIQUETAS_MOTIVO_RETRASO[motivoCategoria]})` : ''}`, nodoFechasPrevistasActual);
       cerrarModalFechasPrevistas();
       await cargarArbol();
     }

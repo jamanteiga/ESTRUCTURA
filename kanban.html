@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESTRUCTURA - Kanban</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#007bff">
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px auto; padding: 0 16px; color: #333; max-width: 1700px; }
+    h1 { font-size: 22px; }
+    body.tema-oscuro { background: #1a1d21; color: #e0e0e0; }
+    body.tema-oscuro .card-col { background: #24282e; border-color: #3a3f47; }
+    body.tema-oscuro .ficha { background: #2f343b; border-color: #444; color: #e0e0e0; }
+    body.tema-oscuro .ruta-nodo { color: #a0a0a0; }
+    body.tema-oscuro .overlay-caja { background: #24282e; color: #e0e0e0; }
+    body.tema-oscuro select, body.tema-oscuro input { background: #1a1d21; color: #e0e0e0; border-color: #4a4f57; }
+    .header-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+    button { padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; }
+    button.secundario { background: #6c757d; }
+    button.secundario:hover { background: #5a6268; }
+    .estado-msg { font-size: 13px; }
+
+    .filtros { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+    .filtros select, .filtros input[type="text"] { padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+    .filtros label { font-size: 12px; color: #666; display: flex; align-items: center; gap: 4px; }
+
+    .tablero { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 10px; align-items: flex-start; }
+    .card-col {
+      background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 10px;
+      min-width: 240px; max-width: 280px; flex: 1 0 240px;
+    }
+    .card-col h2 { font-size: 13px; margin: 0 0 8px; display: flex; justify-content: space-between; align-items: center; }
+    .card-col .contador-col { background: #dee2e6; border-radius: 10px; padding: 1px 8px; font-size: 11px; }
+    .col-sin_asignar { border-top: 4px solid rgb(191,191,191); }
+    .col-pendiente { border-top: 4px solid #adb5bd; }
+    .col-en_proceso { border-top: 4px solid rgb(255,255,0); }
+    .col-pendiente_revision { border-top: 4px solid rgb(0,123,255); }
+    .col-rechazado { border-top: 4px solid rgb(255,0,0); }
+    .col-aprobado { border-top: 4px solid rgb(146,208,80); }
+
+    .lista-fichas { max-height: 72vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+    .ficha { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 8px; font-size: 12px; position: relative; }
+    .ficha .cod { font-weight: bold; }
+    .ficha .ruta-nodo { color: #777; font-size: 10px; margin-top: 2px; }
+    .ficha .asignado { color: #555; font-size: 11px; margin-top: 4px; }
+    .ficha .badges { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px; }
+    .badge-ficha { font-size: 10px; padding: 1px 5px; border-radius: 8px; background: #eee; color: #555; }
+    .badge-retraso { background: #ffe1e1; color: #dc3545; }
+    .badge-dudas { background: rgb(209,239,251); color: #075872; }
+    .badge-cambios { background: rgb(255,240,204); color: #8a6d00; }
+    .ficha .motivo { color: #b02a2a; font-size: 11px; margin-top: 4px; }
+    .ficha .btn-mas { position: absolute; top: 4px; right: 6px; cursor: pointer; color: #888; font-weight: bold; padding: 0 4px; }
+    .ficha .btn-tomar { margin-top: 6px; padding: 3px 8px; font-size: 11px; }
+    .vacio-col { color: #999; font-size: 11px; text-align: center; padding: 10px 0; }
+
+    #menu-ficha-kanban, #submenu-estado-kanban {
+      display: none; position: fixed; z-index: 4000; background: #fff; border: 1px solid #ccc;
+      border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.25); min-width: 200px; padding: 4px 0; font-size: 13px;
+    }
+    #submenu-estado-kanban { z-index: 4050; min-width: 260px; }
+    #menu-ficha-kanban .mc-item, #submenu-estado-kanban .mc-item { padding: 8px 14px; cursor: pointer; }
+    #menu-ficha-kanban .mc-item:hover, #submenu-estado-kanban .mc-item:hover { background: #eef3ff; }
+    #menu-ficha-kanban .mc-item.mc-padre::after { content: '▸'; float: right; color: #999; margin-left: 10px; }
+
+    .overlay {
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.55); align-items: center; justify-content: center; z-index: 5000;
+    }
+    .overlay-caja { background: white; border-radius: 8px; padding: 22px; max-width: 400px; width: 90%; }
+    .overlay-caja h3 { margin-top: 0; font-size: 16px; }
+    .overlay-caja label { display: block; font-weight: bold; font-size: 12px; margin: 10px 0 4px; }
+    .overlay-caja select { width: 100%; padding: 7px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 13px; }
+    .overlay-caja textarea { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-family: inherit; font-size: 13px; }
+    .overlay-botones { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  </style>
+</head>
+<body>
+
+  <div class="header-bar">
+    <h1>🗂️ Kanban</h1>
+    <div>
+      <span id="texto-usuario" class="estado-msg"></span>
+      <button class="secundario" onclick="alternarTema()">🌙/☀️</button>
+      <button class="secundario" onclick="location.href='index.html'">🏠 Inicio</button>
+      <button class="secundario" onclick="location.href='arbol.html'">🌳 Árbol</button>
+      <button class="secundario" onclick="location.href='resumen.html'">📊 Resumen</button>
+      <button class="secundario" onclick="cerrarSesion()">Cerrar sesión</button>
+      <button style="background:#dc3545;" onclick="cerrarPagina()">❌ Cerrar</button>
+    </div>
+  </div>
+
+  <div class="filtros">
+    <select id="kb-filtro-buque"><option value="">Todos los buques</option></select>
+    <select id="kb-filtro-usuario" style="display:none;"><option value="">Todos los usuarios</option></select>
+    <label id="kb-wrap-mis-tareas" style="display:none;"><input type="checkbox" id="kb-chk-mis-tareas"> Solo mis tareas</label>
+    <input type="text" id="kb-buscar" placeholder="🔍 Buscar por código o nombre...">
+  </div>
+
+  <div id="tablero-contenido">
+    <p>Cargando...</p>
+  </div>
+
+  <div id="menu-ficha-kanban"></div>
+  <div id="submenu-estado-kanban"></div>
+
+  <div class="overlay" id="modal-aviso-kanban">
+    <div class="overlay-caja" style="max-width:400px; text-align:center;">
+      <p id="modal-aviso-kanban-texto" style="font-size:14px; margin:10px 0 18px; white-space:pre-line;"></p>
+      <button onclick="document.getElementById('modal-aviso-kanban').style.display='none';">Aceptar</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="modal-confirmacion-kanban">
+    <div class="overlay-caja" style="max-width:400px; text-align:center;">
+      <p id="modal-confirmacion-kanban-texto" style="font-size:14px; margin:10px 0 18px; white-space:pre-line;"></p>
+      <div class="overlay-botones" style="justify-content:center;">
+        <button class="secundario" id="confirmacion-kanban-no">Cancelar</button>
+        <button id="confirmacion-kanban-si">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="modal-pedirtexto-kanban">
+    <div class="overlay-caja" style="max-width:420px;">
+      <p id="modal-pedirtexto-kanban-texto" style="font-size:14px; margin:10px 0 10px; white-space:pre-line;"></p>
+      <textarea id="pedirtexto-kanban-input" rows="3"></textarea>
+      <div class="overlay-botones">
+        <button class="secundario" id="pedirtexto-kanban-cancel">Cancelar</button>
+        <button id="pedirtexto-kanban-ok">Aceptar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="modal-asignar-kanban">
+    <div class="overlay-caja">
+      <h3>Asignar usuario / supervisor</h3>
+      <label>Usuario</label>
+      <select id="ak-trabajador"><option value="">— Sin asignar —</option></select>
+      <label>Supervisor</label>
+      <select id="ak-revisor"><option value="">— Sin asignar —</option></select>
+      <div class="estado-msg" id="ak-estado"></div>
+      <div class="overlay-botones">
+        <button class="secundario" onclick="cerrarModalAsignarKanban()">Cancelar</button>
+        <button onclick="guardarAsignacionKanban()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const SUPABASE_URL = 'https://wuarkraddnndmgvfnkmm.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const esMovil = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || window.innerWidth < 768;
+    const TIPOS_SIN_ASIGNACION = new Set(['BUQUE']);
+
+    let miPerfil = null;
+    let mapaNodoPorId = {};
+    let perfilesCache = [];
+    let todosLosNodosKanban = [];
+    let filtroBuqueId = '';
+    let filtroUsuarioIdKanban = '';
+    let soloMisTareasKanban = false;
+    let filtroTextoKanban = '';
+
+    function rutaCompleta(nodo) {
+      const partes = [];
+      let actual = nodo;
+      while (actual) {
+        partes.unshift(actual.codigo);
+        actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
+      }
+      return partes.join('>');
+    }
+
+    function buqueDeNodo(nodo) {
+      let actual = nodo;
+      while (actual) {
+        if (actual.tipo === 'BUQUE') return actual;
+        actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
+      }
+      return null;
+    }
+
+    function calcularEstadoPropio(nodo) {
+      if (nodo.revision_estado === 'APROBADO') return 'aprobado';
+      if (nodo.revision_estado === 'RECHAZADO') return 'rechazado';
+      if (nodo.revision_estado === 'PENDIENTE' || nodo.revision_estado === 'EN_REVISION') return 'pendiente_revision';
+      if (nodo.trabajo_estado === 'EN_TRABAJO') return 'en_proceso';
+      if (nodo.trabajo_estado === 'PENDIENTE_DUDAS') return 'pendiente_dudas';
+      if (nodo.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO') return 'pendiente_cambios_modelo';
+      if (nodo.trabajador_id) return 'asignada_sin_empezar';
+      return 'sin_asignar';
+    }
+
+    // Columna del tablero a la que pertenece cada tarea. "En proceso" agrupa
+    // también las bloqueadas por dudas o por cambios de modelo (se marcan
+    // con una etiqueta en la ficha en vez de tener su propia columna).
+    function calcularColumna(nodo) {
+      const estado = calcularEstadoPropio(nodo);
+      if (estado === 'sin_asignar') return 'sin_asignar';
+      if (estado === 'asignada_sin_empezar') return 'pendiente';
+      if (estado === 'en_proceso' || estado === 'pendiente_dudas' || estado === 'pendiente_cambios_modelo') return 'en_proceso';
+      if (estado === 'pendiente_revision') return 'pendiente_revision';
+      if (estado === 'rechazado') return 'rechazado';
+      return 'aprobado';
+    }
+
+    const COLUMNAS = [
+      { clave: 'sin_asignar', titulo: '⬜ Sin asignar' },
+      { clave: 'pendiente', titulo: '📋 Pendiente de hacer' },
+      { clave: 'en_proceso', titulo: '🔧 En proceso' },
+      { clave: 'pendiente_revision', titulo: '👀 Pendiente de revisión' },
+      { clave: 'rechazado', titulo: '✘ Rechazado' },
+      { clave: 'aprobado', titulo: '✔ Aprobado' }
+    ];
+
+    function nodoRetrasado(nodo) {
+      if (!nodo.fecha_fin_prevista) return false;
+      if (calcularEstadoPropio(nodo) === 'aprobado') return false;
+      const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+      return new Date(nodo.fecha_fin_prevista + 'T00:00:00') < hoy;
+    }
+
+    async function registrarLog(accion, descripcion, nodeId) {
+      try {
+        await supabaseClient.from('audit_log').insert({ accion, descripcion, node_id: nodeId || null, user_agent: navigator.userAgent });
+      } catch (e) {
+        console.warn('No se pudo registrar el log:', e);
+      }
+    }
+
+    async function cerrarSesion() {
+      await registrarLog('LOGOUT', `Cerró sesión (${miPerfil?.username || ''})`);
+      await supabaseClient.auth.signOut();
+      window.location.href = 'login.html';
+    }
+    function cerrarPagina() {
+      window.close();
+      setTimeout(() => { history.back(); }, 150);
+    }
+    function esGestor() { return miPerfil.rol === 'ADMIN' || miPerfil.rol === 'REVISOR'; }
+    function esInvitado() { return miPerfil.rol === 'INVITADO'; }
+
+    function aplicarTema(tema) {
+      document.body.classList.toggle('tema-oscuro', tema === 'oscuro');
+      localStorage.setItem('estructura_tema', tema);
+    }
+    function alternarTema() {
+      aplicarTema(document.body.classList.contains('tema-oscuro') ? 'claro' : 'oscuro');
+    }
+    aplicarTema(localStorage.getItem('estructura_tema') || 'claro');
+
+    function mostrarAvisoModal(mensaje) {
+      document.getElementById('modal-aviso-kanban-texto').textContent = mensaje;
+      document.getElementById('modal-aviso-kanban').style.display = 'flex';
+    }
+    function mostrarConfirmacion(mensaje) {
+      return new Promise((resolve) => {
+        document.getElementById('modal-confirmacion-kanban-texto').textContent = mensaje;
+        document.getElementById('modal-confirmacion-kanban').style.display = 'flex';
+        const btnSi = document.getElementById('confirmacion-kanban-si');
+        const btnNo = document.getElementById('confirmacion-kanban-no');
+        const limpiar = () => { btnSi.onclick = null; btnNo.onclick = null; document.getElementById('modal-confirmacion-kanban').style.display = 'none'; };
+        btnSi.onclick = () => { limpiar(); resolve(true); };
+        btnNo.onclick = () => { limpiar(); resolve(false); };
+      });
+    }
+    function pedirTexto(mensaje) {
+      return new Promise((resolve) => {
+        document.getElementById('modal-pedirtexto-kanban-texto').textContent = mensaje;
+        const input = document.getElementById('pedirtexto-kanban-input');
+        input.value = '';
+        document.getElementById('modal-pedirtexto-kanban').style.display = 'flex';
+        setTimeout(() => input.focus(), 50);
+        const btnOk = document.getElementById('pedirtexto-kanban-ok');
+        const btnCancel = document.getElementById('pedirtexto-kanban-cancel');
+        const limpiar = () => { btnOk.onclick = null; btnCancel.onclick = null; document.getElementById('modal-pedirtexto-kanban').style.display = 'none'; };
+        btnOk.onclick = () => { const v = input.value; limpiar(); resolve(v); };
+        btnCancel.onclick = () => { limpiar(); resolve(null); };
+      });
+    }
+    function traducirError(mensaje) {
+      if (!mensaje) return 'Ha ocurrido un error inesperado.';
+      const m = mensaje.toLowerCase();
+      if (m.includes('duplicate key')) return 'Ya existe un registro con ese mismo dato — no se puede repetir.';
+      if (m.includes('violates foreign key constraint')) return 'No se puede completar: hace referencia a algo que ya no existe.';
+      if (m.includes('new row violates row-level security') || m.includes('permission denied')) return 'No tienes permiso para hacer esto.';
+      if (m.includes('failed to fetch') || m.includes('networkerror')) return 'No se pudo conectar — comprueba tu conexión a internet.';
+      if (m.includes('jwt') || m.includes('token') || m.includes('session')) return 'Tu sesión ha caducado — vuelve a iniciar sesión.';
+      return mensaje;
+    }
+
+    async function iniciar() {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (!session) { window.location.href = 'login.html?next=kanban.html'; return; }
+
+      const { data: perfil, error } = await supabaseClient
+        .from('profiles').select('*').eq('id', session.user.id).single();
+      if (error || !perfil || !perfil.activo) {
+        document.body.innerHTML = '<p style="color:red; font-weight:bold; margin-top:60px; text-align:center;">No tienes acceso.</p>';
+        return;
+      }
+      miPerfil = perfil;
+      document.body.classList.toggle('vista-movil', esMovil);
+      document.getElementById('texto-usuario').textContent =
+        `${perfil.nombre_completo} (${perfil.username}) — ${perfil.rol === 'TRABAJADOR' ? 'USUARIO' : (perfil.rol === 'REVISOR' ? 'SUPERVISOR' : perfil.rol)}`;
+
+      if (miPerfil.rol === 'TRABAJADOR') {
+        document.getElementById('kb-wrap-mis-tareas').style.display = 'flex';
+        document.getElementById('kb-chk-mis-tareas').checked = true;
+        soloMisTareasKanban = true;
+      }
+      if (esGestor()) {
+        document.getElementById('kb-filtro-usuario').style.display = 'inline-block';
+        const { data: perfiles } = await supabaseClient.from('profiles').select('*').eq('activo', true);
+        perfilesCache = (perfiles || []).sort((a, b) => (a.nombre_completo || '').localeCompare(b.nombre_completo || '', 'es'));
+        const selUsuario = document.getElementById('kb-filtro-usuario');
+        perfilesCache.filter(p => p.rol === 'TRABAJADOR').forEach(p => {
+          selUsuario.insertAdjacentHTML('beforeend', `<option value="${p.id}">${p.nombre_completo}</option>`);
+        });
+      }
+
+      document.getElementById('kb-filtro-buque').addEventListener('change', (e) => { filtroBuqueId = e.target.value; pintarTablero(); });
+      document.getElementById('kb-filtro-usuario').addEventListener('change', (e) => { filtroUsuarioIdKanban = e.target.value; pintarTablero(); });
+      document.getElementById('kb-chk-mis-tareas').addEventListener('change', (e) => { soloMisTareasKanban = e.target.checked; pintarTablero(); });
+      document.getElementById('kb-buscar').addEventListener('input', (e) => { filtroTextoKanban = e.target.value.trim().toLowerCase(); pintarTablero(); });
+
+      await cargarKanban();
+      suscribirseARealtimeKanban();
+    }
+
+    async function cargarKanban() {
+      const { data: nodos, error } = await supabaseClient
+        .from('v_nodes_with_workflow').select('*').eq('activo', true);
+      if (error) {
+        document.getElementById('tablero-contenido').innerHTML = `<p style="color:red;">Error: ${error.message}</p>`;
+        return;
+      }
+      mapaNodoPorId = {};
+      nodos.forEach(n => { mapaNodoPorId[n.id] = n; });
+      todosLosNodosKanban = nodos.filter(n => !TIPOS_SIN_ASIGNACION.has(n.tipo));
+
+      const selBuque = document.getElementById('kb-filtro-buque');
+      const buquesActuales = new Set(Array.from(selBuque.options).map(o => o.value));
+      Object.values(mapaNodoPorId).filter(n => n.tipo === 'BUQUE').sort((a, b) => a.codigo.localeCompare(b.codigo, 'es')).forEach(b => {
+        if (!buquesActuales.has(b.id)) selBuque.insertAdjacentHTML('beforeend', `<option value="${b.id}">${b.codigo} — ${b.nombre}</option>`);
+      });
+
+      pintarTablero();
+    }
+
+    let debounceKanban = null;
+    function recargarKanbanConDebounce() {
+      clearTimeout(debounceKanban);
+      debounceKanban = setTimeout(() => cargarKanban(), 400);
+    }
+    function suscribirseARealtimeKanban() {
+      supabaseClient.channel('kanban_node_workflow')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'node_workflow' }, () => recargarKanbanConDebounce())
+        .subscribe();
+      supabaseClient.channel('kanban_nodes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'nodes' }, () => recargarKanbanConDebounce())
+        .subscribe();
+    }
+
+    function coincideFiltrosKanban(n) {
+      if (filtroBuqueId) { const b = buqueDeNodo(n); if (!b || b.id !== filtroBuqueId) return false; }
+      if (soloMisTareasKanban && n.trabajador_id !== miPerfil.id) return false;
+      if (filtroUsuarioIdKanban && n.trabajador_id !== filtroUsuarioIdKanban) return false;
+      if (filtroTextoKanban) {
+        const t = filtroTextoKanban;
+        if (!n.codigo.toLowerCase().includes(t) && !n.nombre.toLowerCase().includes(t)) return false;
+      }
+      return true;
+    }
+
+    function renderFicha(n) {
+      const badges = [];
+      if (nodoRetrasado(n)) badges.push(`<span class="badge-ficha badge-retraso">⏰ retrasada</span>`);
+      if (n.trabajo_estado === 'PENDIENTE_DUDAS') badges.push(`<span class="badge-ficha badge-dudas">❓ dudas</span>`);
+      if (n.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO') badges.push(`<span class="badge-ficha badge-cambios">🛠 cambios modelo</span>`);
+
+      const puedeTomar = !n.trabajador_id && !esInvitado();
+      return `
+        <div class="ficha" data-id="${n.id}">
+          <span class="btn-mas" onclick="mostrarMenuFichaKanban(event, '${n.id}')" title="Más acciones">⋯</span>
+          <div class="cod">${n.codigo}</div>
+          <div>${n.nombre}</div>
+          <div class="ruta-nodo">${rutaCompleta(n)}</div>
+          ${n.trabajador_nombre ? `<div class="asignado">👷 ${n.trabajador_nombre}</div>` : ''}
+          ${badges.length ? `<div class="badges">${badges.join('')}</div>` : ''}
+          ${n.revision_estado === 'RECHAZADO' && n.comentario_revision ? `<div class="motivo">✘ ${n.comentario_revision}</div>` : ''}
+          ${puedeTomar ? `<button class="btn-tomar" onclick="accionTomarTareaKanban('${n.id}')">🖐 Tomar</button>` : ''}
+        </div>
+      `;
+    }
+
+    function pintarTablero() {
+      const relevantes = todosLosNodosKanban.filter(coincideFiltrosKanban);
+      const porColumna = {};
+      COLUMNAS.forEach(c => { porColumna[c.clave] = []; });
+      relevantes.forEach(n => porColumna[calcularColumna(n)].push(n));
+
+      document.getElementById('tablero-contenido').innerHTML = `
+        <div class="tablero">
+          ${COLUMNAS.map(c => `
+            <div class="card-col col-${c.clave}">
+              <h2>${c.titulo}<span class="contador-col">${porColumna[c.clave].length}</span></h2>
+              <div class="lista-fichas">
+                ${porColumna[c.clave].length === 0 ? '<div class="vacio-col">Nada aquí</div>' : porColumna[c.clave].map(renderFicha).join('')}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    // -------------------- Acciones sobre una ficha --------------------
+
+    async function accionTomarTareaKanban(nodeId) {
+      if (esInvitado()) { mostrarAvisoModal('Eres un usuario Invitado: solo puedes consultar, no puedes realizar cambios.'); return; }
+      const { error } = await supabaseClient.rpc('tomar_tarea', { p_node_id: nodeId });
+      if (error) { mostrarAvisoModal('Error: ' + traducirError(error.message)); return; }
+      const nodo = mapaNodoPorId[nodeId];
+      registrarLog('TOMAR_TAREA', `Tomó la tarea "${nodo?.codigo}" desde el Kanban`, nodeId);
+      await cargarKanban();
+    }
+
+    async function accionEstadoKanban(rpc, nodeId, params) {
+      const { error } = await supabaseClient.rpc(rpc, { p_node_id: nodeId, ...(params || {}) });
+      if (error) { mostrarAvisoModal('Error: ' + traducirError(error.message)); return; }
+      const nodo = mapaNodoPorId[nodeId];
+      registrarLog('CAMBIO_ESTADO_KANBAN', `Cambió el estado de "${nodo?.codigo}" desde el Kanban (${rpc})`, nodeId);
+      await cargarKanban();
+    }
+
+    let nodoMenuKanbanActual = null;
+
+    function mostrarMenuFichaKanban(evento, nodeId) {
+      evento.stopPropagation();
+      nodoMenuKanbanActual = nodeId;
+      const menu = document.getElementById('menu-ficha-kanban');
+      menu.innerHTML = `
+        <div class="mc-item" id="mfk-asignar">👤 Asignar usuario / supervisor</div>
+        <div class="mc-item mc-padre" id="mfk-estado">Estado tarea</div>
+      `;
+      const avisoInvitado = () => mostrarAvisoModal('Eres un usuario Invitado: solo puedes consultar, no puedes realizar cambios.');
+      document.getElementById('mfk-asignar').addEventListener('click', (e) => {
+        e.stopPropagation();
+        cerrarMenuFichaKanban();
+        if (esInvitado()) { avisoInvitado(); return; }
+        abrirModalAsignarKanban(nodeId);
+      });
+      document.getElementById('mfk-estado').addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (esInvitado()) { cerrarMenuFichaKanban(); avisoInvitado(); return; }
+        mostrarSubmenuEstadoKanban(document.getElementById('mfk-estado'), nodeId);
+      });
+      menu.style.left = evento.clientX + 'px';
+      menu.style.top = evento.clientY + 'px';
+      menu.style.display = 'block';
+    }
+    function cerrarMenuFichaKanban() {
+      document.getElementById('menu-ficha-kanban').style.display = 'none';
+      document.getElementById('submenu-estado-kanban').style.display = 'none';
+    }
+    document.addEventListener('click', cerrarMenuFichaKanban);
+
+    function mostrarSubmenuEstadoKanban(elementoPadre, nodeId) {
+      const opciones = [
+        { label: '✔ Aprobado', fn: () => accionEstadoKanban('revisar_nodo', nodeId, { p_aprobado: true }) },
+        { label: '✘ Rechazado', fn: async () => {
+            const comentario = await pedirTexto('Motivo del rechazo (obligatorio):');
+            if (!comentario || !comentario.trim()) return;
+            accionEstadoKanban('revisar_nodo', nodeId, { p_aprobado: false, p_comentario: comentario });
+          } },
+        { label: 'Sin asignar', fn: async () => { if (await mostrarConfirmacion('¿Quitar el usuario asignado?')) accionEstadoKanban('desasignar_trabajador', nodeId); } },
+        { label: 'Pendiente de hacer', fn: async () => { if (await mostrarConfirmacion('¿Reiniciar esta tarea?')) accionEstadoKanban('reiniciar_tarea', nodeId); } },
+        { label: 'En proceso', fn: () => accionEstadoKanban('marcar_en_trabajo', nodeId) },
+        { label: 'Pendiente de revisión', fn: () => accionEstadoKanban('marcar_terminado', nodeId) },
+        { label: 'Pendiente de dudas', fn: () => accionEstadoKanban('marcar_pendiente_dudas', nodeId) },
+        { label: 'Pendiente cambios en modelo', fn: () => accionEstadoKanban('marcar_pendiente_cambios_modelo', nodeId) }
+      ];
+      const sub = document.getElementById('submenu-estado-kanban');
+      sub.innerHTML = opciones.map((o, i) => `<div class="mc-item" data-idx="${i}">${o.label}</div>`).join('');
+      sub.querySelectorAll('.mc-item').forEach(el => {
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          cerrarMenuFichaKanban();
+          opciones[parseInt(el.dataset.idx, 10)].fn();
+        });
+      });
+      const rect = elementoPadre.getBoundingClientRect();
+      let x = rect.right + 2;
+      if (x + 260 > window.innerWidth) x = rect.left - 262;
+      let y = rect.top;
+      if (y + 300 > window.innerHeight) y = window.innerHeight - 300;
+      sub.style.left = x + 'px';
+      sub.style.top = Math.max(y, 10) + 'px';
+      sub.style.display = 'block';
+    }
+
+    function abrirModalAsignarKanban(nodeId) {
+      const nodo = mapaNodoPorId[nodeId];
+      const selTrab = document.getElementById('ak-trabajador');
+      const selRev = document.getElementById('ak-revisor');
+      const usuarios = perfilesCache.filter(p => p.rol === 'TRABAJADOR');
+      const revisores = perfilesCache.filter(p => p.rol === 'REVISOR');
+      selTrab.innerHTML = '<option value="">— Sin asignar —</option>' +
+        usuarios.map(p => `<option value="${p.id}" ${p.id === nodo.trabajador_id ? 'selected' : ''}>${p.nombre_completo}</option>`).join('');
+      selRev.innerHTML = '<option value="">— Sin asignar —</option>' +
+        revisores.map(p => `<option value="${p.id}" ${p.id === nodo.revisor_id ? 'selected' : ''}>${p.nombre_completo}</option>`).join('');
+      document.getElementById('ak-estado').textContent = '';
+      document.getElementById('modal-asignar-kanban').style.display = 'flex';
+      nodoMenuKanbanActual = nodeId;
+    }
+    function cerrarModalAsignarKanban() {
+      document.getElementById('modal-asignar-kanban').style.display = 'none';
+    }
+    async function guardarAsignacionKanban() {
+      const estadoEl = document.getElementById('ak-estado');
+      const trabajadorId = document.getElementById('ak-trabajador').value || null;
+      const revisorId = document.getElementById('ak-revisor').value || null;
+      const { error } = await supabaseClient.rpc('asignar_trabajo', {
+        p_node_id: nodoMenuKanbanActual, p_trabajador_id: trabajadorId, p_revisor_id: revisorId
+      });
+      if (error) { estadoEl.textContent = 'Error: ' + traducirError(error.message); estadoEl.className = 'estado-msg error'; return; }
+      const nodo = mapaNodoPorId[nodoMenuKanbanActual];
+      registrarLog('ASIGNAR_TRABAJO', `Asignó "${nodo?.codigo}" desde el Kanban`, nodoMenuKanbanActual);
+      cerrarModalAsignarKanban();
+      await cargarKanban();
+    }
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    }
+
+    iniciar();
+  </script>
+</body>
+</html>

@@ -56,6 +56,7 @@
     .col-nombre .toggle { width: 14px; cursor: pointer; user-select: none; color: #666; font-size: 10px; flex-shrink: 0; }
     .col-nombre .toggle.vacio { visibility: hidden; }
     .col-nombre .tipo-tag { font-size: 8px; background: #e9ecef; padding: 1px 4px; border-radius: 8px; color: #777; margin-left: 3px; }
+    .badge-holgura { font-size: 8px; background: #e2e3e5; padding: 1px 4px; border-radius: 8px; color: #6c757d; margin-left: 3px; white-space: nowrap; }
     .col-fecha { width: 130px; min-width: 130px; padding: 6px 6px; font-size: 11px; color: #555; box-sizing: border-box; }
     .col-avance { width: 60px; min-width: 60px; padding: 6px 6px; font-size: 11px; color: #333; box-sizing: border-box; text-align: center; }
     .col-avance .pct { font-weight: bold; padding: 1px 6px; border-radius: 10px; background: #e9f7ec; color: #218838; }
@@ -167,6 +168,7 @@
     <span><span class="muestra c-espera"></span>Esperando revisión</span>
     <span><span class="muestra c-cuello-botella"></span>Esperando revisión, lleva demasiado</span>
     <span>🔺 En la ruta crítica (según fechas previstas + dependencias)</span>
+    <span><span class="badge-holgura">⏳3d</span>Holgura — días de margen antes de afectar a la ruta crítica</span>
     <span><span style="display:inline-block; width:14px; height:4px; border:1px solid #6c757d; border-radius:2px; vertical-align:middle; margin-right:4px;"></span>Previsto (línea fina arriba de la barra)</span>
     <span>🚩 Hito</span>
   </div>
@@ -241,6 +243,10 @@
     let dependenciasCache = [];
     let soloRutaCritica = false;
     let nodosEnRutaCritica = new Set();
+    // Días de margen (LS - ES) de cada tarea con fechas previstas antes de
+    // que un retraso suyo empiece a afectar a la ruta crítica. 0 en las
+    // tareas críticas (por eso solo se muestra en las que no lo son).
+    let holguraPorNodo = new Map();
     let hitosCache = [];
 
     // Vista móvil: filtros/vistas se pliegan tras el botón ☰ en vez de
@@ -746,7 +752,7 @@
         }
       });
       const ids = Object.keys(rango);
-      if (ids.length === 0) return new Set();
+      if (ids.length === 0) return { criticos: new Set(), holguras: new Map() };
 
       const sucesoresDe = {}, predecesoresDe = {};
       ids.forEach(id => { sucesoresDe[id] = []; predecesoresDe[id] = []; });
@@ -788,9 +794,15 @@
       ids.forEach(id => { ES[id] = new Date(EF[id].getTime() - duracionMs(id)); });
 
       const criticos = new Set();
+      const holguras = new Map();
       const UNA_HORA_MS = 3600000;
-      ids.forEach(id => { if (Math.abs(LS[id] - ES[id]) < UNA_HORA_MS) criticos.add(id); });
-      return criticos;
+      const UN_DIA_MS = 86400000;
+      ids.forEach(id => {
+        const holguraMs = LS[id].getTime() - ES[id].getTime();
+        holguras.set(id, Math.round(holguraMs / UN_DIA_MS));
+        if (Math.abs(holguraMs) < UNA_HORA_MS) criticos.add(id);
+      });
+      return { criticos, holguras };
     }
 
     function nodoOAlgunDescendienteEsDeUsuario(nodeId) {
@@ -827,7 +839,9 @@
 
     function pintarGantt() {
       const contenedor = document.getElementById('gantt-contenido');
-      nodosEnRutaCritica = calcularRutaCritica();
+      const resultadoRuta = calcularRutaCritica();
+      nodosEnRutaCritica = resultadoRuta.criticos;
+      holguraPorNodo = resultadoRuta.holguras;
       const filas = [];
       generarFilasVisibles(raizGanttId, 0, filas);
 
@@ -953,7 +967,12 @@
             <div class="col-info">
               <div class="col-nombre" style="padding-left:${8 + nivel * 16}px;">
                 <span class="toggle ${tieneHijos ? '' : 'vacio'}" onclick="toggleNodoGantt('${id}')">${abierto ? '▼' : '▶'}</span>
-                <strong>${nodo.codigo}</strong> ${nodo.nombre}${nodosEnRutaCritica.has(id) ? ' <span title="En la ruta crítica" style="color:#6f42c1;">🔺</span>' : ''}
+                <strong>${nodo.codigo}</strong> ${nodo.nombre}${nodosEnRutaCritica.has(id) ? ' <span title="En la ruta crítica" style="color:#6f42c1;">🔺</span>' : ''}${(() => {
+                  if (nodosEnRutaCritica.has(id) || !holguraPorNodo.has(id)) return '';
+                  const dias = holguraPorNodo.get(id);
+                  if (dias <= 0) return '';
+                  return ` <span class="badge-holgura" title="Holgura: ${dias} día(s) de margen antes de que un retraso aquí afecte a la ruta crítica">⏳${dias}d</span>`;
+                })()}
                 <span class="tipo-tag">${nodo.tipo}</span>
               </div>
               <div class="col-avance">${(() => { const pct = calcularPorcentajeAvanceGantt(id); return pct !== null ? `<span class="pct">${pct}%</span>` : '—'; })()}</div>
