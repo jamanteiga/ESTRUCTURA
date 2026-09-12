@@ -601,6 +601,126 @@
       if (pareceGestor()) pintarVistaGestor(); else pintarVistaUsuario();
     }
 
+    let comentariosModeloCache = { GHE: [], NAV: [] };
+
+    async function cargarComentariosModeloParaKPIs() {
+      if (!esGestor()) { comentariosModeloCache = { GHE: [], NAV: [] }; return; }
+      const [rGhe, rNav] = await Promise.all([
+        supabaseClient.rpc('listar_todos_comentarios_modelo', { p_origen: 'GHE' }),
+        supabaseClient.rpc('listar_todos_comentarios_modelo', { p_origen: 'NAV' })
+      ]);
+      comentariosModeloCache = {
+        GHE: rGhe.error ? [] : (rGhe.data || []),
+        NAV: rNav.error ? [] : (rNav.data || [])
+      };
+    }
+
+    function buqueDeNodo(nodo) {
+      let actual = nodo;
+      while (actual) {
+        if (actual.tipo === 'BUQUE') return actual;
+        actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
+      }
+      return null;
+    }
+
+    const UMBRAL_CUELLO_BOTELLA_DIAS = 3;
+
+    function formatearMinutos(mins) {
+      if (mins === null || mins === undefined) return '—';
+      const totalMin = Math.round(mins);
+      if (totalMin <= 0) return '—';
+      const dias = Math.floor(totalMin / 1440);
+      const horas = Math.floor((totalMin % 1440) / 60);
+      const m = totalMin % 60;
+      if (dias > 0) return `${dias}d ${horas}h`;
+      if (horas > 0) return `${horas}h ${m}min`;
+      return `${m}min`;
+    }
+
+    function calcularKPIsPorBuque(nodos) {
+      const buques = Object.values(mapaNodoPorId).filter(n => n.tipo === 'BUQUE');
+      const ahora = new Date();
+
+      return buques.map(buque => {
+        const propios = nodos.filter(n => { const b = buqueDeNodo(n); return b && b.id === buque.id; });
+        const total = propios.length;
+        const aprobados = propios.filter(n => calcularEstadoPropio(n) === 'aprobado').length;
+        const rechazados = propios.filter(n => calcularEstadoPropio(n) === 'rechazado').length;
+        const avance = total > 0 ? Math.round((aprobados / total) * 100) : 0;
+        const revisados = aprobados + rechazados;
+        const pctRechazo = revisados > 0 ? Math.round((rechazados / revisados) * 100) : 0;
+
+        const enColaRevision = propios.filter(n =>
+          (n.revision_estado === 'PENDIENTE' || n.revision_estado === 'EN_REVISION') && n.trabajo_terminado_en
+        );
+        const cuellosBotella = enColaRevision.filter(n => {
+          const dias = (ahora - new Date(n.trabajo_terminado_en)) / 86400000;
+          return dias > UMBRAL_CUELLO_BOTELLA_DIAS;
+        }).length;
+
+        const revisionesConTiempo = propios.filter(n =>
+          n.trabajo_terminado_en && n.revisado_en && (n.revision_estado === 'APROBADO' || n.revision_estado === 'RECHAZADO')
+        );
+        let tiempoMedioRevisionMin = null;
+        if (revisionesConTiempo.length > 0) {
+          const totalMin = revisionesConTiempo.reduce((acc, n) =>
+            acc + (new Date(n.revisado_en) - new Date(n.trabajo_terminado_en)) / 60000, 0);
+          tiempoMedioRevisionMin = totalMin / revisionesConTiempo.length;
+        }
+
+        const comentariosBuque = (origen) => (comentariosModeloCache[origen] || []).filter(c => c.buque_id === buque.id);
+        const abiertosGhe = comentariosBuque('GHE').filter(c => !c.implementado);
+        const abiertosNav = comentariosBuque('NAV').filter(c => !c.implementado);
+        const masAntiguo = (lista) => lista.length === 0 ? null :
+          lista.reduce((min, c) => new Date(c.creado_en) < new Date(min.creado_en) ? c : min);
+        const diasAntiguedad = (c) => c ? Math.floor((ahora - new Date(c.creado_en)) / 86400000) : null;
+
+        return {
+          buque, total, avance, cuellosBotella, tiempoMedioRevisionMin, pctRechazo,
+          abiertosGhe: abiertosGhe.length, abiertosNav: abiertosNav.length,
+          antiguedadGheMax: diasAntiguedad(masAntiguo(abiertosGhe)),
+          antiguedadNavMax: diasAntiguedad(masAntiguo(abiertosNav))
+        };
+      }).sort((a, b) => b.cuellosBotella - a.cuellosBotella);
+    }
+
+    function renderKPIsPorBuque() {
+      const filas = calcularKPIsPorBuque(nodosGestorActual);
+      if (filas.length === 0) return '';
+      return `
+        <div class="card solo-escritorio">
+          <h2>📈 KPIs por buque</h2>
+          <p style="font-size:11px; color:#888; margin:-4px 0 8px;">
+            Ordenado por cuellos de botella (más críticos arriba). Cuello de botella = tarea esperando revisión desde hace más de ${UMBRAL_CUELLO_BOTELLA_DIAS} días.
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>Buque</th><th>Nodos</th><th>% Avance</th><th>⚠️ Cuellos de botella</th>
+                <th>Tiempo medio de revisión</th><th>% Rechazo</th>
+                <th>Ghenova abiertos</th><th>Navantia abiertos</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filas.map(f => `
+                <tr>
+                  <td><strong>${f.buque.codigo}</strong></td>
+                  <td class="num">${f.total}</td>
+                  <td class="num">${f.avance}%</td>
+                  <td class="num" style="${f.cuellosBotella > 0 ? 'color:#dc3545; font-weight:bold;' : ''}">${f.cuellosBotella}</td>
+                  <td class="num">${formatearMinutos(f.tiempoMedioRevisionMin)}</td>
+                  <td class="num">${f.pctRechazo}%</td>
+                  <td class="num">${f.abiertosGhe}${f.antiguedadGheMax !== null ? ` (máx ${f.antiguedadGheMax}d)` : ''}</td>
+                  <td class="num">${f.abiertosNav}${f.antiguedadNavMax !== null ? ` (máx ${f.antiguedadNavMax}d)` : ''}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
     async function renderVistaGestor(nodos) {
       nodosGestorActual = nodos;
 
@@ -612,6 +732,7 @@
         idsUsuariosGestor = new Set((perfiles || []).filter(p => p.rol === 'TRABAJADOR').map(p => p.id));
       }
 
+      await cargarComentariosModeloParaKPIs();
       pintarVistaGestor();
     }
 
@@ -628,10 +749,13 @@
       nodos.forEach(n => {
         if (n.trabajador_id && idsUsuariosGestor.has(n.trabajador_id)) {
           if (!conteoPorUsuario[n.trabajador_id]) {
-            conteoPorUsuario[n.trabajador_id] = { nombre: n.trabajador_nombre };
+            conteoPorUsuario[n.trabajador_id] = { nombre: n.trabajador_nombre, tiempoEnProcesoMs: 0 };
             ESTADOS_ORDEN.forEach(e => conteoPorUsuario[n.trabajador_id][e] = 0);
           }
           conteoPorUsuario[n.trabajador_id][calcularEstadoPropio(n)]++;
+          if (n.trabajo_estado === 'EN_TRABAJO' && n.trabajo_iniciado_en) {
+            conteoPorUsuario[n.trabajador_id].tiempoEnProcesoMs += (new Date() - new Date(n.trabajo_iniciado_en));
+          }
         }
       });
 
@@ -639,12 +763,17 @@
 
       const filasUsuario = Object.values(conteoPorUsuario)
         .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
-        .map(u => `
+        .map(u => {
+          const abiertas = columnasUsuario.reduce((acc, e) => acc + (e === 'aprobado' ? 0 : u[e]), 0);
+          return `
           <tr>
             <td>${u.nombre}</td>
+            <td class="num" style="font-weight:bold;">${abiertas}</td>
+            <td class="num">${formatearMinutos(u.tiempoEnProcesoMs / 60000)}</td>
             ${columnasUsuario.map(e => `<td class="num">${u[e]}</td>`).join('')}
           </tr>
-        `).join('');
+        `;
+        }).join('');
 
       const rechazados = nodos.filter(n => n.revision_estado === 'RECHAZADO');
       const dudas = nodos.filter(n => n.trabajo_estado === 'PENDIENTE_DUDAS');
@@ -688,6 +817,8 @@
           ${renderContadores(conteoGeneral, true, nodos.length)}
         </div>
 
+        ${renderKPIsPorBuque()}
+
         ${filtroDetalleEstado ? `
           <div class="card">
             <h2>${tituloDetalle}</h2>
@@ -706,15 +837,18 @@
         </div>
 
         <div class="card solo-escritorio">
-          <h2>Por usuario</h2>
+          <h2>👷 Carga de trabajo por usuario</h2>
+          <p style="font-size:11px; color:#888; margin:-4px 0 8px;">"Abiertas" = tareas sin aprobar todavía. "En proceso" = tiempo acumulado de las tareas que tiene empezadas ahora mismo (para repartir carga).</p>
           <table>
             <thead>
               <tr>
                 <th>Usuario</th>
+                <th>Abiertas</th>
+                <th>⏱️ En proceso</th>
                 ${columnasUsuario.map(e => `<th>${ETIQUETAS_ESTADO[e]}</th>`).join('')}
               </tr>
             </thead>
-            <tbody>${filasUsuario || `<tr><td colspan="${columnasUsuario.length + 1}">Nadie tiene tareas asignadas todavía.</td></tr>`}</tbody>
+            <tbody>${filasUsuario || `<tr><td colspan="${columnasUsuario.length + 3}">Nadie tiene tareas asignadas todavía.</td></tr>`}</tbody>
           </table>
         </div>
 
