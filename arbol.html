@@ -353,6 +353,7 @@
         <a class="menu-item" id="menu-link-importar" href="importar.html" target="_blank" style="display:none;">📥 Importar Excel</a>
         <a class="menu-item" id="menu-link-duplicados" href="duplicados.html" target="_blank" style="display:none;">🔍 Comprobar duplicados</a>
         <span class="menu-item" id="menu-item-exportar-excel" onclick="exportarArbolExcel()" style="display:none;">⬇ Exportar árbol a Excel</span>
+        <span class="menu-item" id="menu-item-resumen-comentarios" onclick="abrirResumenComentariosModelo()" style="display:none;">📋 Comentarios pendientes de modelo</span>
         <label class="menu-item" id="wrap-papelera" style="display:none;">
           <input type="checkbox" id="chk-papelera" onchange="togglePapelera()"> 🗑️ Ver papelera
         </label>
@@ -483,6 +484,26 @@
       <div class="overlay-botones">
         <button class="secundario" onclick="cerrarModalComentariosModelo()">Cerrar</button>
         <button id="comentarios-modelo-anadir" onclick="anadirComentarioModelo()">+ Añadir comentario</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="modal-resumen-comentarios-modelo">
+    <div class="overlay-caja" style="max-width:760px;">
+      <h3>📋 Comentarios pendientes de cambios en modelo</h3>
+      <p style="font-size:12px; color:#666; margin-top:-6px;">De todos los buques. ✅ = ya marcado como corregido/aprobado, ⭕ = todavía pendiente.</p>
+      <div style="display:flex; gap:18px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:260px;">
+          <h4 style="margin:6px 0; color:#333;">Ghenova</h4>
+          <div id="resumen-comentarios-ghe" style="max-height:400px; overflow-y:auto; overflow-x:hidden; font-size:12.5px;"></div>
+        </div>
+        <div style="flex:1; min-width:260px;">
+          <h4 style="margin:6px 0; color:#333;">Navantia</h4>
+          <div id="resumen-comentarios-nav" style="max-height:400px; overflow-y:auto; overflow-x:hidden; font-size:12.5px;"></div>
+        </div>
+      </div>
+      <div class="overlay-botones">
+        <button class="secundario" onclick="cerrarResumenComentariosModelo()">Cerrar</button>
       </div>
     </div>
   </div>
@@ -850,6 +871,9 @@
       }
       if (puedeSeleccionar()) {
         document.getElementById('wrap-modo-seleccion').style.display = 'flex';
+      }
+      if (esGestor()) {
+        document.getElementById('menu-item-resumen-comentarios').style.display = 'flex';
       }
 
       if (miPerfil.rol === 'TRABAJADOR') {
@@ -3200,6 +3224,59 @@
               ${c.aprobado ? '<span style="color:rgb(146,208,80); font-weight:bold; margin-left:6px;">✔ Aprobado</span>' : ''}
             </div>
           </div>`).join('');
+    }
+
+    // -------------------- Resumen de comentarios (todos los buques) --------------------
+
+    function filaResumenComentario(c) {
+      const hecho = c.implementado || c.aprobado;
+      const nodo = mapaNodoPorId[c.node_id];
+      const ruta = nodo ? rutaCompleta(nodo) : '(nodo no encontrado o desactivado)';
+      return `
+        <div style="display:flex; align-items:flex-start; gap:8px; padding:6px 0; border-bottom:1px solid #eee;">
+          <span style="flex-shrink:0; width:16px; text-align:center;" title="${hecho ? 'Hecho' : 'Pendiente'}">${hecho ? '✅' : '⭕'}</span>
+          <div style="flex:1; min-width:0; overflow-wrap:break-word;">
+            <div style="color:#888; font-size:11px;">${ruta}</div>
+            <div><b>${c.origen}${String(c.numero).padStart(3, '0')}</b> — ${c.texto}</div>
+          </div>
+        </div>`;
+    }
+
+    async function cargarResumenComentariosModelo() {
+      const contGhe = document.getElementById('resumen-comentarios-ghe');
+      const contNav = document.getElementById('resumen-comentarios-nav');
+      contGhe.innerHTML = 'Cargando...';
+      contNav.innerHTML = 'Cargando...';
+
+      const [rGhe, rNav] = await Promise.all([
+        supabaseClient.rpc('listar_todos_comentarios_modelo', { p_origen: 'GHE' }),
+        supabaseClient.rpc('listar_todos_comentarios_modelo', { p_origen: 'NAV' })
+      ]);
+
+      const pintar = (cont, resultado) => {
+        if (resultado.error) {
+          cont.innerHTML = `<p style="color:#dc3545;">Error: ${traducirError(resultado.error.message)}</p>`;
+          return;
+        }
+        const filas = resultado.data || [];
+        if (filas.length === 0) { cont.innerHTML = '<p style="color:#666;">Sin comentarios.</p>'; return; }
+        // Se agrupan visualmente por ruta (buque > ... ) ordenando por ella.
+        const conRuta = filas.map(c => ({ c, ruta: mapaNodoPorId[c.node_id] ? rutaCompleta(mapaNodoPorId[c.node_id]) : '' }));
+        conRuta.sort((a, b) => a.ruta.localeCompare(b.ruta));
+        cont.innerHTML = conRuta.map(x => filaResumenComentario(x.c)).join('');
+      };
+
+      pintar(contGhe, rGhe);
+      pintar(contNav, rNav);
+    }
+
+    async function abrirResumenComentariosModelo() {
+      document.getElementById('modal-resumen-comentarios-modelo').style.display = 'flex';
+      await cargarResumenComentariosModelo();
+    }
+
+    function cerrarResumenComentariosModelo() {
+      document.getElementById('modal-resumen-comentarios-modelo').style.display = 'none';
     }
 
     // Una sola casilla por comentario: para un ADMIN/REVISOR, marcarla
