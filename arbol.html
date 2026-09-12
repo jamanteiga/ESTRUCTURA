@@ -7,7 +7,7 @@
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#007bff">
   <style>
-    body { font-family: Arial, sans-serif; max-width: 1050px; margin: 30px auto; padding: 0 20px; color: #333; }
+    body { font-family: Arial, sans-serif; max-width: min(1600px, 96vw); margin: 30px auto; padding: 0 20px; color: #333; }
     h1 { font-size: 22px; }
     .card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 14px; margin-bottom: 16px; }
     #card-arbol { overflow-y: auto; overflow-x: auto; box-sizing: border-box; }
@@ -282,7 +282,7 @@
     <span class="leyenda-clic" onclick="filtrarPorEstadoLeyenda('pendiente_cambios_modelo')"><span class="flecha f-pendiente_cambios_modelo">▶</span>Pendiente de cambios de modelo</span>
     <span class="leyenda-clic" onclick="filtrarPorEstadoLeyenda('aprobado')"><span class="flecha f-aprobado">✔</span>Aprobado</span>
     <span class="leyenda-clic" onclick="filtrarPorEstadoLeyenda('rechazado')"><span class="flecha f-rechazado">✘</span>Rechazado</span>
-    <span title="No es un estado propio de una tarea — sale cuando una rama tiene hijos en varios estados distintos."><span class="flecha f-mezcla">▶</span>Estados mezclados</span>
+    <span class="leyenda-clic" onclick="filtrarPorEstadoLeyenda('mezcla')" title="Ramas con hijos en varios estados distintos"><span class="flecha f-mezcla">▶</span>Estados mezclados</span>
   </div>
 
   <!-- Menú hamburguesa -->
@@ -336,6 +336,7 @@
             <option value="pendiente_cambios_modelo">Pendiente de cambios de modelo</option>
             <option value="aprobado">Aprobado</option>
             <option value="rechazado">Rechazado</option>
+            <option value="mezcla">Estados mezclados</option>
           </select>
         </label>
         <label class="menu-item">
@@ -1050,7 +1051,12 @@
         ok = ok && (nodo.trabajador_id === filtroUsuarioId || nodo.revisor_id === filtroUsuarioId);
       }
       if (filtroEstado) {
-        ok = ok && calcularEstadoPropio(nodo) === filtroEstado;
+        // "mezcla" no es un estado propio de una tarea: es el estado de
+        // consenso de una rama cuyos hijos están en varios estados
+        // distintos, así que se calcula con calcularEstadoConsenso.
+        ok = ok && (filtroEstado === 'mezcla'
+          ? calcularEstadoConsenso(nodo) === 'mezcla'
+          : calcularEstadoPropio(nodo) === filtroEstado);
       }
       if (filtroSoloBloqueados) {
         ok = ok && !!nodo.bloqueado;
