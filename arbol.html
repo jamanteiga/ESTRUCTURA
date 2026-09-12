@@ -822,6 +822,10 @@
     let mapaHijosPorPadre = {};
     let mapaNodoPorId = {};
     let nodosAbiertos = new Set();
+    // Por nodo, si TODOS los comentarios de Ghenova y/o Navantia están
+    // aprobados/corregidos (cada uno con su check): { [nodeId]: { GHE: bool, NAV: bool } }.
+    // Solo true cuando hay al menos un comentario de ese origen y todos están hechos.
+    let estadoComentariosPorNodo = {};
 
     function guardarEstadoAbiertos() {
       if (!miPerfil) return;
@@ -1066,7 +1070,7 @@
     async function cargarArbol() {
       let query = supabaseClient.from('v_nodes_with_workflow').select('*').order('orden', { ascending: true });
       if (!mostrarDesactivados) query = query.eq('activo', true);
-      const { data, error } = await query;
+      const [{ data, error }] = await Promise.all([query, cargarEstadoComentariosModelo()]);
 
       const raiz = document.getElementById('arbol-raiz');
       if (error) { raiz.innerHTML = `<li style="color:red;">Error al cargar: ${error.message}</li>`; return; }
@@ -1083,6 +1087,33 @@
       });
 
       renderizarArbolCompleto();
+    }
+
+    // Recalcula, para cada nodo, si todos sus comentarios Ghenova y/o
+    // Navantia están aprobados/corregidos (se usa para pintar en verde la
+    // palabra "Ghenova"/"Navantia" en la fila del árbol). Se apoya en el
+    // mismo RPC que ya usa el resumen general de comentarios.
+    async function cargarEstadoComentariosModelo() {
+      const [rGhe, rNav] = await Promise.all([
+        supabaseClient.rpc('listar_todos_comentarios_modelo', { p_origen: 'GHE' }),
+        supabaseClient.rpc('listar_todos_comentarios_modelo', { p_origen: 'NAV' })
+      ]);
+      const nuevo = {};
+      const procesar = (clave, resultado) => {
+        if (resultado.error) return;
+        const porNodo = {};
+        (resultado.data || []).forEach(c => {
+          if (!porNodo[c.node_id]) porNodo[c.node_id] = [];
+          porNodo[c.node_id].push(!!(c.implementado || c.aprobado));
+        });
+        Object.entries(porNodo).forEach(([nodeId, hechos]) => {
+          if (!nuevo[nodeId]) nuevo[nodeId] = {};
+          nuevo[nodeId][clave] = hechos.length > 0 && hechos.every(h => h);
+        });
+      };
+      procesar('GHE', rGhe);
+      procesar('NAV', rNav);
+      estadoComentariosPorNodo = nuevo;
     }
 
     function coincideFiltro(nodo) {
@@ -1358,10 +1389,15 @@
         ? `<div class="motivo-rechazo" style="color:rgb(0,176,240);">❓ Pendiente de dudas</div>` : '';
 
       const notaCambiosModelo = (!sinAsignacion && !vistaSimplificada && nodo.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO')
-        ? `<div class="motivo-rechazo" style="color:rgb(255,192,0);">🛠 Pendiente cambios en modelo —
-             <span class="link-comentarios" onclick="event.stopPropagation(); accionAbrirComentariosModelo('${nodo.id}','GHE');">Ghenova</span> ·
-             <span class="link-comentarios" onclick="event.stopPropagation(); accionAbrirComentariosModelo('${nodo.id}','NAV');">Navantia</span>
-           </div>` : '';
+        ? (() => {
+            const estadoOrigenes = estadoComentariosPorNodo[nodo.id] || {};
+            const estiloGhe = estadoOrigenes.GHE ? ' style="color:rgb(146,208,80); font-weight:bold;"' : '';
+            const estiloNav = estadoOrigenes.NAV ? ' style="color:rgb(146,208,80); font-weight:bold;"' : '';
+            return `<div class="motivo-rechazo" style="color:rgb(255,192,0);">🛠 Pendiente cambios en modelo —
+             <span class="link-comentarios"${estiloGhe} onclick="event.stopPropagation(); accionAbrirComentariosModelo('${nodo.id}','GHE');">Ghenova</span> ·
+             <span class="link-comentarios"${estiloNav} onclick="event.stopPropagation(); accionAbrirComentariosModelo('${nodo.id}','NAV');">Navantia</span>
+           </div>`;
+          })() : '';
 
       const motivoRechazo = (!sinAsignacion && !vistaSimplificada && nodo.revision_estado === 'RECHAZADO' && nodo.comentario_revision)
         ? `<div class="motivo-rechazo">✘ Motivo: ${nodo.comentario_revision}</div>` : '';
@@ -1693,6 +1729,13 @@
 
     // -------------------- Menú contextual (clic derecho) --------------------
 
+    // Igual que el nombre "Ghenova"/"Navantia" en la fila del árbol: en verde
+    // cuando todos los comentarios de ese origen para el nodo están aprobados/corregidos.
+    function etiquetaOrigenComentarios(nodeId, origen, texto) {
+      const hecho = (estadoComentariosPorNodo[nodeId] || {})[origen];
+      return hecho ? `<span style="color:rgb(146,208,80); font-weight:bold;">${texto}</span>` : texto;
+    }
+
     function mostrarMenuContextual(evento, nodeId) {
       evento.preventDefault();
       evento.stopPropagation();
@@ -1766,8 +1809,8 @@
                 submenu: true,
                 label: 'Pendiente cambios en modelo',
                 subitems: [
-                  { label: 'Ghenova', tip: 'Pendiente por cambios en el modelo — comentarios GHE001, GHE002... (numeración compartida por todo el buque)', fn: () => accionAbrirComentariosModelo(nodeId, 'GHE') },
-                  { label: 'Navantia', tip: 'Pendiente por cambios en el modelo — comentarios NAV001, NAV002... (numeración compartida por todo el buque)', fn: () => accionAbrirComentariosModelo(nodeId, 'NAV') }
+                  { label: etiquetaOrigenComentarios(nodeId, 'GHE', 'Ghenova'), tip: 'Pendiente por cambios en el modelo — comentarios GHE001, GHE002... (numeración compartida por todo el buque)', fn: () => accionAbrirComentariosModelo(nodeId, 'GHE') },
+                  { label: etiquetaOrigenComentarios(nodeId, 'NAV', 'Navantia'), tip: 'Pendiente por cambios en el modelo — comentarios NAV001, NAV002... (numeración compartida por todo el buque)', fn: () => accionAbrirComentariosModelo(nodeId, 'NAV') }
                 ]
               }
             ]
@@ -1812,8 +1855,8 @@
                 submenu: true,
                 label: 'Pendiente cambios en modelo',
                 subitems: [
-                  { label: 'Ghenova', tip: 'Pendiente por cambios en el modelo — comentarios GHE001, GHE002... (numeración compartida por todo el buque)', fn: () => accionAbrirComentariosModelo(nodeId, 'GHE') },
-                  { label: 'Navantia', tip: 'Pendiente por cambios en el modelo — comentarios NAV001, NAV002... (numeración compartida por todo el buque)', fn: () => accionAbrirComentariosModelo(nodeId, 'NAV') }
+                  { label: etiquetaOrigenComentarios(nodeId, 'GHE', 'Ghenova'), tip: 'Pendiente por cambios en el modelo — comentarios GHE001, GHE002... (numeración compartida por todo el buque)', fn: () => accionAbrirComentariosModelo(nodeId, 'GHE') },
+                  { label: etiquetaOrigenComentarios(nodeId, 'NAV', 'Navantia'), tip: 'Pendiente por cambios en el modelo — comentarios NAV001, NAV002... (numeración compartida por todo el buque)', fn: () => accionAbrirComentariosModelo(nodeId, 'NAV') }
                 ]
               }
             ]
@@ -3632,6 +3675,7 @@
       }
       await cargarResumenComentariosModelo();
       await actualizarContadorComentariosPendientes();
+      await refrescarEstadoComentariosEnArbol();
     }
 
     // Contador del badge del menú lateral: total de comentarios GHE+NAV (de
@@ -3710,6 +3754,7 @@
       registrarLog('PENDIENTE_CAMBIOS_MODELO', `${aprobado ? 'Aprobó' : 'Quitó el aprobado de'} un comentario ${comentariosModeloOrigenActual} de "${nodo?.codigo}"`, comentariosModeloNodoActual);
       await cargarComentariosModelo();
       await actualizarContadorComentariosPendientes();
+      await refrescarEstadoComentariosEnArbol();
     }
 
     async function accionMarcarImplementadoComentario(comentarioId, implementado) {
@@ -3724,6 +3769,15 @@
       registrarLog('PENDIENTE_CAMBIOS_MODELO', `Marcó un comentario ${comentariosModeloOrigenActual} de "${nodo?.codigo}" como ${implementado ? 'corregido' : 'sin corregir'}`, comentariosModeloNodoActual);
       await cargarComentariosModelo();
       await actualizarContadorComentariosPendientes();
+      await refrescarEstadoComentariosEnArbol();
+    }
+
+    // Tras marcar/aprobar un comentario desde el modal de un nodo o desde el
+    // resumen general, recalcula qué palabras (Ghenova/Navantia) deben verse
+    // en verde en el árbol y repinta (sin recargar los nodos desde cero).
+    async function refrescarEstadoComentariosEnArbol() {
+      await cargarEstadoComentariosModelo();
+      renderizarArbolCompleto();
     }
 
     async function anadirComentarioModelo() {
