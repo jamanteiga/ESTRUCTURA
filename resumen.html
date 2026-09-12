@@ -165,6 +165,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script>
     const SUPABASE_URL = 'https://wuarkraddnndmgvfnkmm.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
@@ -555,6 +556,21 @@
       return { texto: `${horas}h ${String(mins).padStart(2, '0')}min`, tareas: tareasHoy.size };
     }
 
+    // "De hoy" = ya en marcha (En proceso, dudas, cambios de modelo), o
+    // planificada para caer hoy según su fecha prevista, o ya debería
+    // estar terminada (fecha fin prevista ya pasada) y sigue sin aprobar.
+    function calcularPendientesHoy(nodos) {
+      const hoyIso = new Date().toISOString().slice(0, 10);
+      return nodos.filter(n => {
+        const estado = calcularEstadoPropio(n);
+        if (estado === 'aprobado' || estado === 'sin_asignar') return false;
+        if (estado === 'en_proceso' || estado === 'pendiente_dudas' || estado === 'pendiente_cambios_modelo') return true;
+        if (n.fecha_inicio_prevista && n.fecha_fin_prevista) return n.fecha_inicio_prevista <= hoyIso && hoyIso <= n.fecha_fin_prevista;
+        if (n.fecha_fin_prevista) return n.fecha_fin_prevista <= hoyIso;
+        return false;
+      });
+    }
+
     function pintarVistaUsuario() {
       const conteo = {};
       misNodosActual.forEach(n => {
@@ -563,6 +579,7 @@
       });
 
       const jornada = calcularJornadaHoy(misNodosActual);
+      const pendientesHoy = calcularPendientesHoy(misNodosActual);
 
       const nodosDetalle = filtroDetalleEstado
         ? misNodosActual.filter(n => calcularEstadoPropio(n) === filtroDetalleEstado)
@@ -576,6 +593,13 @@
         <div class="card">
           <h2>☀️ Tu jornada de hoy</h2>
           <p style="font-size:13px;">Tiempo trabajado hoy: <strong>${jornada.texto}</strong> · Tareas con movimiento hoy: <strong>${jornada.tareas}</strong></p>
+        </div>
+        <div class="card">
+          <h2>📆 Mis pendientes de hoy (${pendientesHoy.length})</h2>
+          <p style="font-size:11px; color:#888; margin:-4px 0 8px;">Lo que ya tienes en marcha, lo planificado para hoy, o lo que ya debería estar terminado.</p>
+          <ul class="lista-nodos" style="max-height:260px; overflow-y:auto;">
+            ${renderListaNodos(pendientesHoy, 'Nada urgente para hoy.')}
+          </ul>
         </div>
         <div class="card">
           <h2>Tus tareas asignadas (${misNodosActual.length})</h2>
@@ -721,6 +745,71 @@
       `;
     }
 
+    const NUM_SEMANAS_PREVISION = 6;
+
+    function calcularPrevisionCargaFutura(nodos) {
+      const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+      const diaSemanaISO = hoy.getDay() || 7; // lunes=1 ... domingo=7
+      const lunes = new Date(hoy); lunes.setDate(hoy.getDate() - (diaSemanaISO - 1));
+      const semanas = [];
+      for (let i = 0; i < NUM_SEMANAS_PREVISION; i++) {
+        const inicio = new Date(lunes); inicio.setDate(inicio.getDate() + i * 7);
+        const fin = new Date(inicio); fin.setDate(fin.getDate() + 6);
+        semanas.push({ inicio, fin });
+      }
+
+      const porUsuario = {};
+      nodos.forEach(n => {
+        if (!n.trabajador_id || !idsUsuariosGestor.has(n.trabajador_id)) return;
+        if (calcularEstadoPropio(n) === 'aprobado') return;
+        if (!n.fecha_inicio_prevista && !n.fecha_fin_prevista) return;
+        const ini = n.fecha_inicio_prevista ? new Date(n.fecha_inicio_prevista + 'T00:00:00') : new Date(n.fecha_fin_prevista + 'T00:00:00');
+        const fin = n.fecha_fin_prevista ? new Date(n.fecha_fin_prevista + 'T00:00:00') : ini;
+        if (!porUsuario[n.trabajador_id]) porUsuario[n.trabajador_id] = { nombre: n.trabajador_nombre, semanas: new Array(NUM_SEMANAS_PREVISION).fill(0) };
+        semanas.forEach((s, i) => { if (ini <= s.fin && fin >= s.inicio) porUsuario[n.trabajador_id].semanas[i]++; });
+      });
+
+      return { semanas, filas: Object.values(porUsuario).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')) };
+    }
+
+    function colorCeldaCarga(n) {
+      if (n === 0) return '';
+      if (n <= 1) return 'background:#fff3cd;';
+      if (n <= 3) return 'background:#ffc107;';
+      return 'background:#dc3545; color:#fff;';
+    }
+
+    function renderPrevisionCargaFutura() {
+      const { semanas, filas } = calcularPrevisionCargaFutura(nodosGestorActual);
+      return `
+        <div class="card solo-escritorio">
+          <h2>📅 Previsión de carga futura</h2>
+          <p style="font-size:11px; color:#888; margin:-4px 0 8px;">
+            Tareas pendientes (sin aprobar) por usuario que caen en cada semana según su fecha prevista. Sirve para ver quién se va a saturar antes de que pase, no solo quién está ocupado hoy.
+            ${filas.length === 0 ? ' Todavía no hay tareas con fechas previstas para calcularla.' : ''}
+          </p>
+          ${filas.length === 0 ? '' : `
+            <table>
+              <thead>
+                <tr>
+                  <th>Usuario</th>
+                  ${semanas.map(s => `<th>${String(s.inicio.getDate()).padStart(2, '0')}/${String(s.inicio.getMonth() + 1).padStart(2, '0')}</th>`).join('')}
+                </tr>
+              </thead>
+              <tbody>
+                ${filas.map(f => `
+                  <tr>
+                    <td>${f.nombre}</td>
+                    ${f.semanas.map(n => `<td class="num" style="${colorCeldaCarga(n)}">${n || ''}</td>`).join('')}
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `}
+        </div>
+      `;
+    }
+
     async function renderVistaGestor(nodos) {
       nodosGestorActual = nodos;
 
@@ -819,6 +908,8 @@
 
         ${renderKPIsPorBuque()}
 
+        ${renderCurvaAvanceCard()}
+
         ${filtroDetalleEstado ? `
           <div class="card">
             <h2>${tituloDetalle}</h2>
@@ -835,6 +926,8 @@
             ${filasColaRevision}
           </ul>
         </div>
+
+        ${renderPrevisionCargaFutura()}
 
         <div class="card solo-escritorio">
           <h2>👷 Carga de trabajo por usuario</h2>
@@ -872,6 +965,102 @@
           ${envolverListaConScroll(sinAsignar, 'Todo tiene usuario asignado.', true)}
         </div>
       `;
+
+      pintarCurvaAvance();
+    }
+
+    // -------------------- Curva de avance (plan vs. real) --------------------
+
+    let chartCurvaAvance = null;
+    let buqueCurvaSeleccionado = null;
+
+    function renderCurvaAvanceCard() {
+      const buques = Object.values(mapaNodoPorId).filter(n => n.tipo === 'BUQUE');
+      if (buques.length === 0) return '';
+      if (!buqueCurvaSeleccionado || !buques.some(b => b.id === buqueCurvaSeleccionado)) {
+        buqueCurvaSeleccionado = buques[0].id;
+      }
+      return `
+        <div class="card">
+          <h2>📈 Curva de avance — plan vs. real</h2>
+          <p style="font-size:11px; color:#888; margin:-4px 0 8px;">
+            La línea de plan solo cuenta las tareas que ya tienen fecha fin prevista fijada (menú del árbol → Fechas previstas).
+          </p>
+          <label style="display:inline-block; font-size:12px; font-weight:bold; margin-bottom:6px;">Buque:
+            <select id="sel-curva-buque" onchange="buqueCurvaSeleccionado = this.value; pintarCurvaAvance();" style="padding:4px; border-radius:4px; border:1px solid #ccc; margin-left:6px;">
+              ${buques.map(b => `<option value="${b.id}" ${b.id === buqueCurvaSeleccionado ? 'selected' : ''}>${b.codigo}</option>`).join('')}
+            </select>
+          </label>
+          <div id="curva-avance-vacio" style="display:none; font-size:12px; color:#888;">Todavía no hay fechas previstas ni tareas aprobadas en este buque para dibujar la curva.</div>
+          <div style="height:280px;"><canvas id="chart-curva-avance"></canvas></div>
+        </div>
+      `;
+    }
+
+    function construirCurvaAvance(buqueId) {
+      const propios = nodosGestorActual.filter(n => { const b = buqueDeNodo(n); return b && b.id === buqueId; });
+      const total = propios.length;
+      if (total === 0) return null;
+
+      const eventosPlan = propios.filter(n => n.fecha_fin_prevista).map(n => n.fecha_fin_prevista);
+      const eventosReal = propios.filter(n => n.revision_estado === 'APROBADO' && n.revisado_en).map(n => n.revisado_en.slice(0, 10));
+      if (eventosPlan.length === 0 && eventosReal.length === 0) return null;
+
+      const hoyIso = new Date().toISOString().slice(0, 10);
+      const fechas = [...new Set([...eventosPlan, ...eventosReal, hoyIso])].sort();
+
+      const contarPlan = {}, contarReal = {};
+      eventosPlan.forEach(f => contarPlan[f] = (contarPlan[f] || 0) + 1);
+      eventosReal.forEach(f => contarReal[f] = (contarReal[f] || 0) + 1);
+
+      let acumPlan = 0, acumReal = 0;
+      const puntosPlan = [], puntosReal = [];
+      fechas.forEach(f => {
+        acumPlan += (contarPlan[f] || 0);
+        acumReal += (contarReal[f] || 0);
+        puntosPlan.push(Math.round((acumPlan / total) * 100));
+        puntosReal.push(f <= hoyIso ? Math.round((acumReal / total) * 100) : null);
+      });
+
+      return { labels: fechas.map(f => formatearFechaEjeCurva(f)), plan: puntosPlan, real: puntosReal };
+    }
+
+    function formatearFechaEjeCurva(iso) {
+      const [a, m, d] = iso.split('-');
+      return `${d}/${m}`;
+    }
+
+    function pintarCurvaAvance() {
+      const canvas = document.getElementById('chart-curva-avance');
+      if (!canvas || typeof Chart === 'undefined') return;
+      const datos = construirCurvaAvance(buqueCurvaSeleccionado);
+      const vacioEl = document.getElementById('curva-avance-vacio');
+
+      if (chartCurvaAvance) { chartCurvaAvance.destroy(); chartCurvaAvance = null; }
+
+      if (!datos) {
+        canvas.style.display = 'none';
+        if (vacioEl) vacioEl.style.display = 'block';
+        return;
+      }
+      canvas.style.display = 'block';
+      if (vacioEl) vacioEl.style.display = 'none';
+
+      chartCurvaAvance = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: datos.labels,
+          datasets: [
+            { label: 'Plan (% previsto acumulado)', data: datos.plan, borderColor: '#6c757d', borderDash: [5, 4], pointRadius: 0, tension: 0.1 },
+            { label: 'Real (% aprobado acumulado)', data: datos.real, borderColor: '#007bff', pointRadius: 0, tension: 0.1, spanGaps: false }
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          scales: { y: { min: 0, max: 100, ticks: { callback: v => v + '%' } } },
+          plugins: { legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 11 } } } }
+        }
+      });
     }
 
     document.addEventListener('keydown', (e) => {

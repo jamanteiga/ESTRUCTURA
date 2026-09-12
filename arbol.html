@@ -531,6 +531,8 @@
       <input type="date" id="fp-fin">
       <p id="fp-sugerencia" style="font-size:12px; color:#0069d9; margin:6px 0; display:none;"></p>
       <p id="fp-base" style="font-size:12px; color:#888; margin:6px 0;"></p>
+      <p style="font-size:11px; color:#888; margin:10px 0 2px; font-weight:bold;">📜 Historial de replanificaciones</p>
+      <div id="fp-historial" style="font-size:11px; color:#777; max-height:110px; overflow-y:auto;"></div>
       <div class="estado-msg" id="fp-estado"></div>
       <div class="overlay-botones">
         <button class="secundario" id="fp-btn-reiniciar-base" style="margin-right:auto; display:none;" onclick="accionReiniciarLineaBase()">🔁 Reiniciar línea base</button>
@@ -2140,6 +2142,21 @@
       }
 
       document.getElementById('modal-fechas-previstas').style.display = 'flex';
+
+      const historialEl = document.getElementById('fp-historial');
+      historialEl.textContent = 'Cargando...';
+      const { data: historial, error: errorHist } = await supabaseClient
+        .from('historial_fechas_previstas').select('*').eq('node_id', nodeId).order('cambiado_en', { ascending: false }).limit(15);
+      if (errorHist || !historial || historial.length === 0) {
+        historialEl.textContent = 'Sin cambios registrados todavía.';
+      } else {
+        const fmt = iso => iso ? formatearFechaCorta(new Date(iso + 'T00:00:00')) : '—';
+        historialEl.innerHTML = historial.map(h => {
+          const quien = perfilesCache.find(p => p.id === h.cambiado_por)?.nombre_completo || 'alguien';
+          const cuando = new Date(h.cambiado_en).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+          return `<div style="padding:3px 0; border-bottom:1px solid #eee;">${cuando} — ${quien}: ${fmt(h.fecha_inicio_anterior)}→${fmt(h.fecha_fin_anterior)} ⟶ ${fmt(h.fecha_inicio_nueva)}→${fmt(h.fecha_fin_nueva)}</div>`;
+        }).join('');
+      }
     }
 
     function contarDiasLaborablesEntre(fechaInicio, fechaFin, sede, usuarioId) {

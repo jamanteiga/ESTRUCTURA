@@ -71,6 +71,8 @@
     .gantt-dia.hoy { background: #fff3cd; font-weight: bold; }
     #gantt-contenido { position: relative; }
     .linea-hoy { position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(220,53,69,0.6); z-index: 1; pointer-events: none; }
+    .linea-hito { position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(40,167,69,0.7); z-index: 1; cursor: help; }
+    .linea-hito .bandera-hito { position: absolute; top: -2px; left: -1px; font-size: 13px; }
 
     .estado-msg { font-size: 13px; color: #666; }
 
@@ -154,6 +156,7 @@
     <button class="secundario" onclick="abrirModalVerRama()">🔎 Ver Bloque/Subbloque...</button>
     <button class="secundario" onclick="verTodoElBuqueGantt()">👁️ Ver todo</button>
     <button class="secundario" onclick="verSoloBloquesRaizGantt()">⬛ B-raíz</button>
+    <button class="secundario" onclick="abrirModalHitos()">🚩 Hitos</button>
     <span id="badge-rama-filtrada" style="display:none; font-size:12px; background:#e9f7ec; color:#218838; padding:4px 8px; border-radius:10px;"></span>
   </div>
 
@@ -165,6 +168,30 @@
     <span><span class="muestra c-cuello-botella"></span>Esperando revisión, lleva demasiado</span>
     <span>🔺 En la ruta crítica (según fechas previstas + dependencias)</span>
     <span><span style="display:inline-block; width:14px; height:4px; border:1px solid #6c757d; border-radius:2px; vertical-align:middle; margin-right:4px;"></span>Previsto (línea fina arriba de la barra)</span>
+    <span>🚩 Hito</span>
+  </div>
+
+  <div class="overlay" id="modal-hitos">
+    <div class="overlay-caja" style="max-width:520px;">
+      <h3>🚩 Hitos de <span id="hitos-nombre-buque"></span></h3>
+      <p style="font-size:12px; color:#666; margin-top:-6px;">Fechas clave del buque, marcadas como línea vertical en el Gantt (entrega de un Bloque, botadura, pruebas de mar...).</p>
+      <div id="hitos-lista" style="max-height:220px; overflow-y:auto; margin-bottom:10px;"></div>
+      <label>Nombre</label>
+      <input type="text" id="hito-nombre" placeholder="Ej: Botadura">
+      <label>Fecha</label>
+      <input type="date" id="hito-fecha">
+      <label>Descripción (opcional)</label>
+      <input type="text" id="hito-descripcion" placeholder="Opcional">
+      <label>Enlazar a un nodo (opcional)</label>
+      <input type="text" id="hito-buscar-nodo" placeholder="Buscar Bloque/Subbloque para enlazar...">
+      <div class="lista-ramas" id="hito-lista-candidatos" style="max-height:120px; display:none;"></div>
+      <div id="hito-nodo-elegido" style="font-size:12px; color:#0069d9; margin:4px 0; display:none;"></div>
+      <div class="estado-msg" id="hitos-estado"></div>
+      <div class="overlay-botones">
+        <button class="secundario" onclick="cerrarModalHitos()">Cerrar</button>
+        <button onclick="guardarHito()">+ Añadir hito</button>
+      </div>
+    </div>
   </div>
 
   <div class="overlay" id="modal-ver-rama">
@@ -214,6 +241,7 @@
     let dependenciasCache = [];
     let soloRutaCritica = false;
     let nodosEnRutaCritica = new Set();
+    let hitosCache = [];
 
     // Vista móvil: filtros/vistas se pliegan tras el botón ☰ en vez de
     // mostrar todo el panel de escritorio apretado.
@@ -432,6 +460,103 @@
       pintarGantt();
     }
 
+    // -------------------- Hitos --------------------
+
+    let nodoHitoElegido = null;
+
+    function abrirModalHitos() {
+      document.getElementById('hitos-nombre-buque').textContent = mapaNodoPorId[buqueActualId]?.codigo || '';
+      document.getElementById('hito-nombre').value = '';
+      document.getElementById('hito-fecha').value = '';
+      document.getElementById('hito-descripcion').value = '';
+      document.getElementById('hito-buscar-nodo').value = '';
+      document.getElementById('hito-lista-candidatos').style.display = 'none';
+      document.getElementById('hito-nodo-elegido').style.display = 'none';
+      nodoHitoElegido = null;
+      document.getElementById('hitos-estado').textContent = '';
+      document.getElementById('hito-buscar-nodo').oninput = (e) => pintarCandidatosHito(e.target.value);
+      pintarListaHitos();
+      document.getElementById('modal-hitos').style.display = 'flex';
+    }
+
+    function cerrarModalHitos() { document.getElementById('modal-hitos').style.display = 'none'; }
+
+    function pintarListaHitos() {
+      const cont = document.getElementById('hitos-lista');
+      cont.innerHTML = hitosCache.length === 0
+        ? '<p style="font-size:12px; color:#888;">Todavía no hay hitos para este buque.</p>'
+        : hitosCache.map(h => `
+            <div style="display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid #eee; font-size:13px;">
+              <span style="flex-shrink:0;">🚩 ${formatearFechaCorta(new Date(h.fecha + 'T00:00:00')).split(' ')[0]}</span>
+              <span style="flex:1;"><strong>${h.nombre}</strong>${h.descripcion ? ' — ' + h.descripcion : ''}${h.node_id && mapaNodoPorId[h.node_id] ? ' <span style="color:#888;">(' + mapaNodoPorId[h.node_id].codigo + ')</span>' : ''}</span>
+              <button class="secundario" style="padding:3px 8px; font-size:11px;" onclick="eliminarHito('${h.id}')">✕</button>
+            </div>`).join('');
+    }
+
+    function pintarCandidatosHito(texto) {
+      const cont = document.getElementById('hito-lista-candidatos');
+      const t = texto.trim().toLowerCase();
+      if (!t) { cont.style.display = 'none'; return; }
+      const candidatos = Object.values(mapaNodoPorId)
+        .filter(n => n.id !== buqueActualId && esDescendienteDe(n.id, buqueActualId))
+        .filter(n => n.codigo.toLowerCase().includes(t) || n.nombre.toLowerCase().includes(t))
+        .slice(0, 20);
+      cont.style.display = 'block';
+      cont.innerHTML = candidatos.length === 0
+        ? '<div class="opcion-rama">Sin resultados.</div>'
+        : candidatos.map(n => `<div class="opcion-rama" onclick="elegirNodoHito('${n.id}')"><strong>${n.codigo}</strong> ${n.nombre}</div>`).join('');
+    }
+
+    function elegirNodoHito(nodeId) {
+      nodoHitoElegido = nodeId;
+      const nodo = mapaNodoPorId[nodeId];
+      const el = document.getElementById('hito-nodo-elegido');
+      el.textContent = `Enlazado a: ${nodo.codigo} — ${nodo.nombre} (quitar buscando otro o borrando el texto)`;
+      el.style.display = 'block';
+      document.getElementById('hito-lista-candidatos').style.display = 'none';
+      document.getElementById('hito-buscar-nodo').value = '';
+    }
+
+    async function guardarHito() {
+      const estadoEl = document.getElementById('hitos-estado');
+      const nombre = document.getElementById('hito-nombre').value.trim();
+      const fecha = document.getElementById('hito-fecha').value;
+      const descripcion = document.getElementById('hito-descripcion').value.trim() || null;
+
+      if (!nombre || !fecha) { estadoEl.textContent = 'Rellena nombre y fecha.'; estadoEl.className = 'estado-msg error'; return; }
+
+      const { error } = await supabaseClient.rpc('anadir_hito', {
+        p_buque_id: buqueActualId, p_nombre: nombre, p_fecha: fecha, p_descripcion: descripcion, p_node_id: nodoHitoElegido
+      });
+      if (error) {
+        estadoEl.textContent = 'Error: ' + error.message; estadoEl.className = 'estado-msg error';
+        registrarLog('INTENTO_FALLIDO', `Intento de añadir hito "${nombre}" denegado: ${error.message}`);
+        return;
+      }
+      registrarLog('HITO', `Añadió el hito "${nombre}" (${fecha}) en ${mapaNodoPorId[buqueActualId]?.codigo}`);
+      estadoEl.textContent = '';
+      document.getElementById('hito-nombre').value = '';
+      document.getElementById('hito-fecha').value = '';
+      document.getElementById('hito-descripcion').value = '';
+      document.getElementById('hito-nodo-elegido').style.display = 'none';
+      nodoHitoElegido = null;
+
+      const { data: hitosCrudos } = await supabaseClient.from('hitos').select('*').eq('buque_id', buqueActualId).order('fecha');
+      hitosCache = hitosCrudos || [];
+      pintarListaHitos();
+      pintarGantt();
+    }
+
+    async function eliminarHito(id) {
+      if (!confirm('¿Quitar este hito?')) return;
+      const { error } = await supabaseClient.rpc('eliminar_hito', { p_id: id });
+      if (error) { alert('Error: ' + error.message); return; }
+      registrarLog('HITO', 'Quitó un hito');
+      hitosCache = hitosCache.filter(h => h.id !== id);
+      pintarListaHitos();
+      pintarGantt();
+    }
+
     // Botón "Ver todo": vuelve a ver el Buque completo con todo expandido,
     // sin pasar por el modal (acceso directo desde la barra de filtros).
     function verTodoElBuqueGantt() {
@@ -482,6 +607,9 @@
 
       const { data: depsCrudas } = await supabaseClient.from('node_dependencias').select('*');
       dependenciasCache = depsCrudas || [];
+
+      const { data: hitosCrudos } = await supabaseClient.from('hitos').select('*').eq('buque_id', buqueActualId).order('fecha');
+      hitosCache = hitosCrudos || [];
 
       const todosNodos = filasCrudas.map(n => {
         const wf = Array.isArray(n.node_workflow) ? n.node_workflow[0] : n.node_workflow;
@@ -851,6 +979,19 @@
         linea.title = 'Hoy';
         contenedor.appendChild(linea);
       }
+
+      // Líneas verticales de hitos del buque (fechas fuera del rango visible
+      // no se dibujan).
+      hitosCache.forEach(h => {
+        const posHito = posX(new Date(h.fecha + 'T00:00:00'));
+        if (posHito < 0 || posHito > anchoTotalLinea) return;
+        const linea = document.createElement('div');
+        linea.className = 'linea-hito';
+        linea.style.left = (anchoColInfo + posHito) + 'px';
+        linea.title = `🚩 ${h.nombre} — ${formatearFechaCorta(new Date(h.fecha + 'T00:00:00')).split(' ')[0]}${h.descripcion ? ' — ' + h.descripcion : ''}`;
+        linea.innerHTML = '<span class="bandera-hito">🚩</span>';
+        contenedor.appendChild(linea);
+      });
 
       ajustarAlturaGantt();
     }
