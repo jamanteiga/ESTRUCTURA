@@ -503,14 +503,33 @@
       sub.style.display = 'block';
     }
 
+    // Nº de tareas abiertas (sin aprobar) que tiene ahora mismo cada usuario —
+    // para sugerir, al asignar, a quién le viene mejor una tarea nueva.
+    function calcularCargaAbiertaPorUsuario() {
+      const carga = {};
+      todosLosNodosKanban.forEach(n => {
+        if (!n.trabajador_id || calcularEstadoPropio(n) === 'aprobado') return;
+        carga[n.trabajador_id] = (carga[n.trabajador_id] || 0) + 1;
+      });
+      return carga;
+    }
+
+    function opcionesTrabajadorConCarga(usuarios, actualId) {
+      const carga = calcularCargaAbiertaPorUsuario();
+      const minCarga = usuarios.length ? Math.min(...usuarios.map(p => carga[p.id] || 0)) : null;
+      return usuarios.map(p => {
+        const n = carga[p.id] || 0;
+        return `<option value="${p.id}" ${p.id === actualId ? 'selected' : ''}>${p.nombre_completo} — ${n} abierta(s)${n === minCarga ? ' 📉 menos carga' : ''}</option>`;
+      }).join('');
+    }
+
     function abrirModalAsignarKanban(nodeId) {
       const nodo = mapaNodoPorId[nodeId];
       const selTrab = document.getElementById('ak-trabajador');
       const selRev = document.getElementById('ak-revisor');
       const usuarios = perfilesCache.filter(p => p.rol === 'TRABAJADOR');
       const revisores = perfilesCache.filter(p => p.rol === 'REVISOR');
-      selTrab.innerHTML = '<option value="">— Sin asignar —</option>' +
-        usuarios.map(p => `<option value="${p.id}" ${p.id === nodo.trabajador_id ? 'selected' : ''}>${p.nombre_completo}</option>`).join('');
+      selTrab.innerHTML = '<option value="">— Sin asignar —</option>' + opcionesTrabajadorConCarga(usuarios, nodo.trabajador_id);
       selRev.innerHTML = '<option value="">— Sin asignar —</option>' +
         revisores.map(p => `<option value="${p.id}" ${p.id === nodo.revisor_id ? 'selected' : ''}>${p.nombre_completo}</option>`).join('');
       document.getElementById('ak-estado').textContent = '';

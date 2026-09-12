@@ -166,6 +166,21 @@
     </div>
   </div>
 
+  <div class="overlay" id="modal-reasignar-masivo">
+    <div class="overlay-caja" style="max-width:480px;">
+      <h3>↔ Reasignar tareas de <span id="rm-origen-nombre"></span></h3>
+      <label>Pasar a</label>
+      <select id="rm-destino"><option value="">Elige un usuario...</option></select>
+      <p style="font-size:12px; color:#666; margin:10px 0 2px;">Tareas abiertas (desmarca las que no quieras mover):</p>
+      <div id="rm-lista-tareas" style="max-height:240px; overflow-y:auto; border:1px solid #eee; border-radius:6px; padding:6px;"></div>
+      <div class="estado-msg" id="rm-estado"></div>
+      <div class="overlay-botones">
+        <button class="secundario" onclick="cerrarModalReasignarMasivo()">Cancelar</button>
+        <button onclick="confirmarReasignarMasivo()">Reasignar seleccionadas</button>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script>
@@ -194,6 +209,7 @@
     let filtroDetalleEstado = null;
     let mapaNodoPorId = {};
     let dependenciasCache = [];
+    let historialMotivosCache = [];
 
     function rutaCompleta(nodo) {
       const partes = [];
@@ -409,6 +425,26 @@
       sub.style.display = 'block';
     }
 
+    // Nº de tareas abiertas (sin aprobar) que tiene ahora mismo cada usuario —
+    // para sugerir, al asignar, a quién le viene mejor una tarea nueva.
+    function calcularCargaAbiertaPorUsuario() {
+      const carga = {};
+      nodosGestorActual.forEach(n => {
+        if (!n.trabajador_id || calcularEstadoPropio(n) === 'aprobado') return;
+        carga[n.trabajador_id] = (carga[n.trabajador_id] || 0) + 1;
+      });
+      return carga;
+    }
+
+    function opcionesTrabajadorConCarga(usuarios, actualId) {
+      const carga = calcularCargaAbiertaPorUsuario();
+      const minCarga = usuarios.length ? Math.min(...usuarios.map(p => carga[p.id] || 0)) : null;
+      return usuarios.map(p => {
+        const n = carga[p.id] || 0;
+        return `<option value="${p.id}" ${p.id === actualId ? 'selected' : ''}>${p.nombre_completo} — ${n} abierta(s)${n === minCarga ? ' 📉 menos carga' : ''}</option>`;
+      }).join('');
+    }
+
     function abrirModalAsignarResumen(nodeId) {
       const nodo = mapaNodoPorId[nodeId];
       const selTrab = document.getElementById('ar-trabajador');
@@ -417,8 +453,7 @@
       const usuarios = perfilesCache.filter(p => p.rol === 'TRABAJADOR');
       const revisores = perfilesCache.filter(p => p.rol === 'REVISOR');
 
-      selTrab.innerHTML = '<option value="">— Sin asignar —</option>' +
-        usuarios.map(p => `<option value="${p.id}" ${p.id === nodo.trabajador_id ? 'selected' : ''}>${p.nombre_completo}</option>`).join('');
+      selTrab.innerHTML = '<option value="">— Sin asignar —</option>' + opcionesTrabajadorConCarga(usuarios, nodo.trabajador_id);
       selRev.innerHTML = '<option value="">— Sin asignar —</option>' +
         revisores.map(p => `<option value="${p.id}" ${p.id === nodo.revisor_id ? 'selected' : ''}>${p.nombre_completo}</option>`).join('');
 
@@ -441,6 +476,72 @@
       if (error) { estadoEl.textContent = 'Error: ' + traducirError(error.message); estadoEl.className = 'estado-msg error'; return; }
 
       cerrarModalAsignarResumen();
+      await recargarDatos();
+    }
+
+    // -------------------- Reasignación masiva (por usuario) --------------------
+
+    let usuarioReasignarOrigenId = null;
+
+    function abrirModalReasignarMasivo(usuarioOrigenId) {
+      usuarioReasignarOrigenId = usuarioOrigenId;
+      const origen = perfilesCache.find(p => p.id === usuarioOrigenId);
+      document.getElementById('rm-origen-nombre').textContent = origen ? origen.nombre_completo : '';
+
+      const abiertas = nodosGestorActual.filter(n => n.trabajador_id === usuarioOrigenId && calcularEstadoPropio(n) !== 'aprobado');
+      const lista = document.getElementById('rm-lista-tareas');
+      lista.innerHTML = abiertas.length === 0
+        ? '<p style="font-size:12px; color:#888; margin:0;">Sin tareas abiertas.</p>'
+        : abiertas.map(n => `
+            <label style="display:flex; align-items:center; gap:6px; font-size:12px; padding:3px 0; font-weight:normal;">
+              <input type="checkbox" class="rm-chk-tarea" value="${n.id}" checked style="width:auto;">
+              <span><strong>${n.codigo}</strong> ${n.nombre} <span style="color:#888;">(${ETIQUETAS_ESTADO[calcularEstadoPropio(n)]})</span></span>
+            </label>
+          `).join('');
+
+      const destinos = perfilesCache.filter(p => p.rol === 'TRABAJADOR' && p.id !== usuarioOrigenId);
+      document.getElementById('rm-destino').innerHTML = '<option value="">Elige un usuario...</option>' +
+        opcionesTrabajadorConCarga(destinos, null);
+
+      document.getElementById('rm-estado').textContent = '';
+      document.getElementById('modal-reasignar-masivo').style.display = 'flex';
+    }
+
+    function cerrarModalReasignarMasivo() {
+      document.getElementById('modal-reasignar-masivo').style.display = 'none';
+    }
+
+    async function confirmarReasignarMasivo() {
+      const estadoEl = document.getElementById('rm-estado');
+      const destinoId = document.getElementById('rm-destino').value;
+      if (!destinoId) { estadoEl.textContent = 'Elige a quién se reasignan.'; estadoEl.className = 'estado-msg error'; return; }
+
+      const idsSeleccionados = Array.from(document.querySelectorAll('.rm-chk-tarea:checked')).map(chk => chk.value);
+      if (idsSeleccionados.length === 0) { estadoEl.textContent = 'No has seleccionado ninguna tarea.'; estadoEl.className = 'estado-msg error'; return; }
+
+      estadoEl.textContent = `Reasignando ${idsSeleccionados.length} tarea(s)...`; estadoEl.className = 'estado-msg';
+
+      let fallos = 0;
+      for (const nodeId of idsSeleccionados) {
+        const nodo = mapaNodoPorId[nodeId];
+        const { error } = await supabaseClient.rpc('asignar_trabajo', {
+          p_node_id: nodeId, p_trabajador_id: destinoId, p_revisor_id: nodo?.revisor_id || null
+        });
+        if (error) fallos++;
+      }
+
+      const origen = perfilesCache.find(p => p.id === usuarioReasignarOrigenId);
+      const destino = perfilesCache.find(p => p.id === destinoId);
+      await registrarLog('REASIGNACION_MASIVA', `Reasignó ${idsSeleccionados.length - fallos} tarea(s) de ${origen?.nombre_completo || '?'} a ${destino?.nombre_completo || '?'}${fallos > 0 ? ` (${fallos} fallaron)` : ''}`);
+
+      if (fallos > 0) {
+        estadoEl.textContent = `${idsSeleccionados.length - fallos} reasignada(s), ${fallos} con error.`;
+        estadoEl.className = 'estado-msg error';
+        await recargarDatos();
+        return;
+      }
+
+      cerrarModalReasignarMasivo();
       await recargarDatos();
     }
 
@@ -489,9 +590,10 @@
     }
 
     async function recargarDatos() {
-      const [{ data: nodos, error: errorNodos }, { data: dependencias }] = await Promise.all([
+      const [{ data: nodos, error: errorNodos }, { data: dependencias }, { data: historialMotivos }] = await Promise.all([
         supabaseClient.from('v_nodes_with_workflow').select('*').eq('activo', true),
-        supabaseClient.from('node_dependencias').select('*')
+        supabaseClient.from('node_dependencias').select('*'),
+        supabaseClient.from('historial_fechas_previstas').select('node_id, motivo_categoria, cambiado_en').not('motivo_categoria', 'is', null)
       ]);
 
       if (errorNodos) {
@@ -502,6 +604,7 @@
       mapaNodoPorId = {};
       nodos.forEach(n => { mapaNodoPorId[n.id] = n; });
       dependenciasCache = dependencias || [];
+      historialMotivosCache = historialMotivos || [];
 
       const nodosRelevantes = nodos.filter(n => !TIPOS_SIN_ASIGNACION.has(n.tipo));
 
@@ -782,6 +885,50 @@
         </div>`;
     }
 
+    const ETIQUETAS_MOTIVO_RETRASO = {
+      FALTA_MATERIAL: 'Falta de material',
+      CAMBIO_DISENO: 'Cambio de diseño',
+      AUSENCIA_PERSONAL: 'Ausencia de personal',
+      DEPENDENCIA_EXTERNA: 'Dependencia externa',
+      OTRO: 'Otro'
+    };
+    let chartMotivosRetraso = null;
+
+    function renderMotivosRetrasoCard() {
+      if (historialMotivosCache.length === 0) return '';
+      return `
+        <div class="card">
+          <h2>📊 Motivos de retraso (${historialMotivosCache.length})</h2>
+          <p style="font-size:11px; color:#888; margin:-4px 0 8px;">De todas las veces que se ha retrasado una fecha fin prevista y se ha indicado el motivo — de todos los buques, histórico completo.</p>
+          <div style="height:220px;"><canvas id="chart-motivos-retraso"></canvas></div>
+        </div>
+      `;
+    }
+
+    function pintarMotivosRetraso() {
+      const canvas = document.getElementById('chart-motivos-retraso');
+      if (!canvas || typeof Chart === 'undefined') return;
+      if (chartMotivosRetraso) { chartMotivosRetraso.destroy(); chartMotivosRetraso = null; }
+
+      const conteo = {};
+      historialMotivosCache.forEach(h => { conteo[h.motivo_categoria] = (conteo[h.motivo_categoria] || 0) + 1; });
+      const claves = Object.keys(conteo).sort((a, b) => conteo[b] - conteo[a]);
+
+      chartMotivosRetraso = new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: claves.map(c => ETIQUETAS_MOTIVO_RETRASO[c] || c),
+          datasets: [{ label: 'Veces', data: claves.map(c => conteo[c]), backgroundColor: '#fd7e14' }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true, maintainAspectRatio: false,
+          scales: { x: { beginAtZero: true, ticks: { precision: 0 } } },
+          plugins: { legend: { display: false } }
+        }
+      });
+    }
+
     const UMBRAL_CUELLO_BOTELLA_DIAS = 3;
 
     function formatearMinutos(mins) {
@@ -973,7 +1120,7 @@
       nodos.forEach(n => {
         if (n.trabajador_id && idsUsuariosGestor.has(n.trabajador_id)) {
           if (!conteoPorUsuario[n.trabajador_id]) {
-            conteoPorUsuario[n.trabajador_id] = { nombre: n.trabajador_nombre, tiempoEnProcesoMs: 0 };
+            conteoPorUsuario[n.trabajador_id] = { id: n.trabajador_id, nombre: n.trabajador_nombre, tiempoEnProcesoMs: 0 };
             ESTADOS_ORDEN.forEach(e => conteoPorUsuario[n.trabajador_id][e] = 0);
           }
           conteoPorUsuario[n.trabajador_id][calcularEstadoPropio(n)]++;
@@ -995,6 +1142,7 @@
             <td class="num" style="font-weight:bold;">${abiertas}</td>
             <td class="num">${formatearMinutos(u.tiempoEnProcesoMs / 60000)}</td>
             ${columnasUsuario.map(e => `<td class="num">${u[e]}</td>`).join('')}
+            <td class="num">${abiertas > 0 ? `<button class="secundario" style="padding:3px 8px; font-size:11px;" onclick="abrirModalReasignarMasivo('${u.id}')">↔ Reasignar</button>` : ''}</td>
           </tr>
         `;
         }).join('');
@@ -1047,6 +1195,8 @@
 
         ${renderCurvaAvanceCard()}
 
+        ${renderMotivosRetrasoCard()}
+
         ${filtroDetalleEstado ? `
           <div class="card">
             <h2>${tituloDetalle}</h2>
@@ -1076,9 +1226,10 @@
                 <th>Abiertas</th>
                 <th>⏱️ En proceso</th>
                 ${columnasUsuario.map(e => `<th>${ETIQUETAS_ESTADO[e]}</th>`).join('')}
+                <th></th>
               </tr>
             </thead>
-            <tbody>${filasUsuario || `<tr><td colspan="${columnasUsuario.length + 3}">Nadie tiene tareas asignadas todavía.</td></tr>`}</tbody>
+            <tbody>${filasUsuario || `<tr><td colspan="${columnasUsuario.length + 4}">Nadie tiene tareas asignadas todavía.</td></tr>`}</tbody>
           </table>
         </div>
 
@@ -1104,6 +1255,7 @@
       `;
 
       pintarCurvaAvance();
+      pintarMotivosRetraso();
     }
 
     // -------------------- Curva de avance (plan vs. real) --------------------

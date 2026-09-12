@@ -213,6 +213,33 @@
         </table>
       </div>
     </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;">💾 Copia de seguridad</h2>
+      <p style="font-size:12px; color:#666; margin-top:-6px;">
+        Descarga un archivo con toda la estructura, fechas, dependencias, comentarios, hitos, festivos, ausencias y usuarios — por si hace falta un respaldo aparte de Supabase.
+      </p>
+      <button onclick="descargarCopiaSeguridad()">💾 Descargar copia de seguridad</button>
+      <div id="estado-backup" class="estado"></div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;">✅ Checklist de calidad</h2>
+      <p style="font-size:12px; color:#666; margin-top:-6px;">
+        Puntos que hay que marcar, todos, antes de poder aprobar una tarea (ej. "medidas verificadas", "soldadura revisada"). Se aplica a todas las tareas por igual. Un punto desactivado deja de exigirse, pero no se borra su histórico.
+      </p>
+      <div style="display:flex; gap:10px;">
+        <input type="text" id="checklist-texto" placeholder="Ej: Medidas verificadas" style="flex:1;">
+        <button onclick="anadirItemChecklist()" style="white-space:nowrap;">+ Añadir punto</button>
+      </div>
+      <div id="estado-checklist" class="estado"></div>
+      <div style="max-height:260px; overflow-y:auto; border:1px solid #eee; border-radius:6px; margin-top:12px;">
+        <table>
+          <thead><tr><th>Punto</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="tabla-checklist-body"><tr><td colspan="3">Cargando...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <!-- Modal editar usuario -->
@@ -330,6 +357,7 @@
       await cargarUsuarios();
       cargarAusencias();
       cargarFestivos();
+      cargarChecklistCalidad();
     }
 
     async function cerrarSesion() {
@@ -560,6 +588,115 @@
       if (error) { mostrarAvisoModal('Error: ' + traducirError(error.message)); return; }
       registrarLog('CALENDARIO_LABORAL', 'Quitó un festivo');
       cargarFestivos();
+    }
+
+    // -------------------- Checklist de calidad --------------------
+
+    let checklistCalidadCache = [];
+
+    async function cargarChecklistCalidad() {
+      const tbody = document.getElementById('tabla-checklist-body');
+      const { data, error } = await supabaseClient.from('checklist_calidad_items').select('*').order('creado_en');
+      if (error) { tbody.innerHTML = `<tr><td colspan="3" style="color:red;">Error: ${traducirError(error.message)}</td></tr>`; return; }
+      checklistCalidadCache = data || [];
+      pintarChecklistCalidad();
+    }
+
+    function pintarChecklistCalidad() {
+      const tbody = document.getElementById('tabla-checklist-body');
+      if (checklistCalidadCache.length === 0) { tbody.innerHTML = '<tr><td colspan="3">No hay puntos configurados todavía.</td></tr>'; return; }
+      tbody.innerHTML = checklistCalidadCache.map(i => `
+        <tr>
+          <td>${i.texto}</td>
+          <td>${i.activo ? '<span style="color:#28a745;">Activo</span>' : '<span style="color:#999;">Inactivo</span>'}</td>
+          <td style="white-space:nowrap;">
+            <button class="secundario" onclick="alternarActivoChecklist('${i.id}', ${!i.activo})">${i.activo ? 'Desactivar' : 'Activar'}</button>
+            <button class="secundario" onclick="eliminarItemChecklist('${i.id}')">✕ Eliminar</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    async function anadirItemChecklist() {
+      const estadoEl = document.getElementById('estado-checklist');
+      const input = document.getElementById('checklist-texto');
+      const texto = input.value.trim();
+      if (!texto) { estadoEl.textContent = 'Escribe el texto del punto.'; estadoEl.className = 'estado error'; return; }
+
+      const { error } = await supabaseClient.rpc('anadir_item_checklist_calidad', { p_texto: texto });
+      if (error) {
+        estadoEl.textContent = 'Error: ' + traducirError(error.message); estadoEl.className = 'estado error';
+        registrarLog('INTENTO_FALLIDO', `Intento de añadir punto de checklist denegado: ${error.message}`);
+        return;
+      }
+      estadoEl.textContent = 'Punto añadido.'; estadoEl.className = 'estado ok';
+      registrarLog('CHECKLIST_CALIDAD', `Añadió el punto de checklist "${texto}"`);
+      input.value = '';
+      cargarChecklistCalidad();
+    }
+
+    async function alternarActivoChecklist(id, nuevoActivo) {
+      const { error } = await supabaseClient.rpc('establecer_activo_item_checklist', { p_id: id, p_activo: nuevoActivo });
+      if (error) { mostrarAvisoModal('Error: ' + traducirError(error.message)); return; }
+      const item = checklistCalidadCache.find(i => i.id === id);
+      registrarLog('CHECKLIST_CALIDAD', `${nuevoActivo ? 'Activó' : 'Desactivó'} el punto de checklist "${item?.texto || ''}"`);
+      cargarChecklistCalidad();
+    }
+
+    async function eliminarItemChecklist(id) {
+      if (!await mostrarConfirmacion('¿Eliminar este punto del checklist? Se perderá también su histórico en las tareas ya marcadas.')) return;
+      const item = checklistCalidadCache.find(i => i.id === id);
+      const { error } = await supabaseClient.rpc('eliminar_item_checklist_calidad', { p_id: id });
+      if (error) { mostrarAvisoModal('Error: ' + traducirError(error.message)); return; }
+      registrarLog('CHECKLIST_CALIDAD', `Eliminó el punto de checklist "${item?.texto || ''}"`);
+      cargarChecklistCalidad();
+    }
+
+    // -------------------- Copia de seguridad --------------------
+
+    // Descarga, tal cual, el contenido de las tablas principales — no es una
+    // copia restaurable con un clic (para eso está el propio Supabase), es
+    // un respaldo legible aparte por si hiciera falta consultarlo o
+    // reconstruir algo a mano.
+    const TABLAS_COPIA_SEGURIDAD = [
+      'nodes', 'node_workflow', 'node_comentarios_modelo', 'node_dependencias',
+      'festivos', 'ausencias', 'hitos', 'historial_fechas_previstas', 'profiles'
+    ];
+
+    async function descargarCopiaSeguridad() {
+      const estadoEl = document.getElementById('estado-backup');
+      estadoEl.textContent = 'Generando copia de seguridad...'; estadoEl.className = 'estado';
+
+      const resultados = await Promise.all(
+        TABLAS_COPIA_SEGURIDAD.map(tabla => supabaseClient.from(tabla).select('*'))
+      );
+
+      const errorTabla = resultados.findIndex(r => r.error);
+      if (errorTabla !== -1) {
+        estadoEl.textContent = `Error al leer "${TABLAS_COPIA_SEGURIDAD[errorTabla]}": ${traducirError(resultados[errorTabla].error.message)}`;
+        estadoEl.className = 'estado error';
+        return;
+      }
+
+      const copia = {
+        generado_en: new Date().toISOString(),
+        generado_por: miPerfil?.username || null
+      };
+      TABLAS_COPIA_SEGURIDAD.forEach((tabla, i) => { copia[tabla] = resultados[i].data || []; });
+
+      const blob = new Blob([JSON.stringify(copia, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const fecha = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `estructura_copia_seguridad_${fecha}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
+      estadoEl.textContent = 'Copia de seguridad descargada.'; estadoEl.className = 'estado ok';
+      registrarLog('COPIA_SEGURIDAD', 'Descargó una copia de seguridad completa');
     }
 
     function abrirModalEditar(id) {
