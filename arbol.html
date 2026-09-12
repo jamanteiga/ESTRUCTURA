@@ -751,6 +751,19 @@
     </div>
   </div>
 
+  <div class="overlay" id="modal-checklist-calidad" style="z-index:5000;">
+    <div class="overlay-caja" style="max-width:420px;">
+      <h3 style="margin-top:0;">✅ Checklist de calidad</h3>
+      <p style="font-size:13px; color:#666; margin-top:-6px;">Marca todos los puntos antes de poder aprobar esta tarea.</p>
+      <div id="checklist-calidad-lista" style="max-height:280px; overflow-y:auto; margin:10px 0;"></div>
+      <div class="estado" id="checklist-calidad-estado"></div>
+      <div class="overlay-botones">
+        <button class="secundario" id="checklist-calidad-cancelar">Cancelar</button>
+        <button id="checklist-calidad-continuar" disabled>Continuar</button>
+      </div>
+    </div>
+  </div>
+
   <div class="overlay" id="modal-eliminar" style="z-index:5000;">
     <div class="overlay-caja" style="max-width:420px;">
       <h3>🗑️ Eliminar definitivamente</h3>
@@ -2925,8 +2938,7 @@
         : tipos.map(t => `<option value="${t}">${t}</option>`).join('');
 
       const selTrab = document.getElementById('modal-lote-trabajador');
-      selTrab.innerHTML = '<option value="">— Sin asignar —</option>' +
-        perfilesCache.map(p => `<option value="${p.id}">${p.nombre_completo} (${p.rol === 'TRABAJADOR' ? 'USUARIO' : (p.rol === 'REVISOR' ? 'SUPERVISOR' : p.rol)})</option>`).join('');
+      selTrab.innerHTML = '<option value="">— Sin asignar —</option>' + opcionesUsuarioConCarga(null);
 
       const revisores = perfilesCache.filter(p => p.rol === 'REVISOR');
       const selRev = document.getElementById('modal-lote-revisor');
@@ -3149,6 +3161,67 @@
       });
     }
 
+    // Antes de aprobar una tarea, exige marcar el checklist de calidad
+    // (si hay puntos activos configurados en Usuarios). Devuelve true si
+    // se puede continuar con la aprobación, false si se cancela o falla.
+    function pedirChecklistCalidad(nodeId) {
+      return new Promise(async (resolve) => {
+        const { data: items, error } = await supabaseClient.rpc('listar_checklist_calidad_nodo', { p_node_id: nodeId });
+        if (error) {
+          mostrarAvisoModal('Error al cargar el checklist de calidad: ' + traducirError(error.message));
+          resolve(false);
+          return;
+        }
+        if (!items || items.length === 0) { resolve(true); return; }
+
+        const cont = document.getElementById('checklist-calidad-lista');
+        const estadoEl = document.getElementById('checklist-calidad-estado');
+        const btnContinuar = document.getElementById('checklist-calidad-continuar');
+        const btnCancelar = document.getElementById('checklist-calidad-cancelar');
+        const modal = document.getElementById('modal-checklist-calidad');
+
+        estadoEl.textContent = ''; estadoEl.className = 'estado';
+        cont.innerHTML = items.map(it => `
+          <label style="display:flex; align-items:flex-start; gap:8px; font-weight:normal; padding:6px 0; border-bottom:1px solid #f0f0f0;">
+            <input type="checkbox" class="chk-checklist-calidad" data-item-id="${it.item_id}" ${it.marcado ? 'checked' : ''} style="width:auto; margin-top:3px;">
+            <span>${it.texto}</span>
+          </label>
+        `).join('');
+
+        const actualizarBoton = () => {
+          const cajas = cont.querySelectorAll('.chk-checklist-calidad');
+          btnContinuar.disabled = !Array.from(cajas).every(c => c.checked);
+        };
+        cont.querySelectorAll('.chk-checklist-calidad').forEach(chk => {
+          chk.onchange = async () => {
+            const marcado = chk.checked;
+            chk.disabled = true;
+            const { error } = await supabaseClient.rpc('marcar_checklist_item', {
+              p_node_id: nodeId, p_item_id: chk.dataset.itemId, p_marcado: marcado
+            });
+            chk.disabled = false;
+            if (error) {
+              estadoEl.textContent = 'Error: ' + traducirError(error.message);
+              estadoEl.className = 'estado error';
+              chk.checked = !marcado;
+            } else {
+              estadoEl.textContent = ''; estadoEl.className = 'estado';
+            }
+            actualizarBoton();
+          };
+        });
+        actualizarBoton();
+        modal.style.display = 'flex';
+
+        const limpiar = () => {
+          btnContinuar.onclick = null; btnCancelar.onclick = null;
+          modal.style.display = 'none';
+        };
+        btnContinuar.onclick = () => { limpiar(); resolve(true); };
+        btnCancelar.onclick = () => { limpiar(); resolve(false); };
+      });
+    }
+
     function traducirError(mensaje) {
       if (!mensaje) return 'Ha ocurrido un error inesperado.';
       const m = mensaje.toLowerCase();
@@ -3184,14 +3257,49 @@
       await cargarArbol();
     }
 
+    // Nº de tareas abiertas (sin aprobar) que tiene ahora mismo cada usuario —
+    // para sugerir, al asignar, a quién le viene mejor una tarea nueva.
+    function calcularCargaAbiertaPorUsuario() {
+      const carga = {};
+      todosLosNodos.forEach(n => {
+        if (!n.trabajador_id || calcularEstadoPropio(n) === 'aprobado') return;
+        carga[n.trabajador_id] = (carga[n.trabajador_id] || 0) + 1;
+      });
+      return carga;
+    }
+
+    function opcionesUsuarioConCarga(nodoActualTrabajadorId) {
+      const carga = calcularCargaAbiertaPorUsuario();
+      const trabajadores = perfilesCache.filter(p => p.rol === 'TRABAJADOR');
+      const minCarga = trabajadores.length ? Math.min(...trabajadores.map(p => carga[p.id] || 0)) : null;
+      return perfilesCache.map(p => {
+        const esTrabajador = p.rol === 'TRABAJADOR';
+        const n = carga[p.id] || 0;
+        const etiquetaRol = p.rol === 'TRABAJADOR' ? 'USUARIO' : (p.rol === 'REVISOR' ? 'SUPERVISOR' : p.rol);
+        const sufijo = esTrabajador ? ` — ${n} abierta(s)${n === minCarga ? ' 📉 menos carga' : ''}` : '';
+        return `<option value="${p.id}" ${p.id === nodoActualTrabajadorId ? 'selected' : ''}>${p.nombre_completo} (${etiquetaRol})${sufijo}</option>`;
+      }).join('');
+    }
+
+    // Igual que la anterior, pero solo con rol USUARIO (TRABAJADOR) — para los
+    // selects que ya se limitaban a ese rol.
+    function opcionesTrabajadorConCarga(nodoActualTrabajadorId) {
+      const carga = calcularCargaAbiertaPorUsuario();
+      const trabajadores = perfilesCache.filter(p => p.rol === 'TRABAJADOR');
+      const minCarga = trabajadores.length ? Math.min(...trabajadores.map(p => carga[p.id] || 0)) : null;
+      return trabajadores.map(p => {
+        const n = carga[p.id] || 0;
+        return `<option value="${p.id}" ${p.id === nodoActualTrabajadorId ? 'selected' : ''}>${p.nombre_completo} — ${n} abierta(s)${n === minCarga ? ' 📉 menos carga' : ''}</option>`;
+      }).join('');
+    }
+
     function abrirModalAsignar(nodeId) {
       nodoAsignarActual = nodeId;
       const nodo = mapaNodoPorId[nodeId];
       const selTrab = document.getElementById('modal-asignar-trabajador');
       const selRev = document.getElementById('modal-asignar-revisor');
 
-      selTrab.innerHTML = '<option value="">— Sin asignar —</option>' +
-        perfilesCache.map(p => `<option value="${p.id}" ${p.id === nodo.trabajador_id ? 'selected' : ''}>${p.nombre_completo} (${p.rol === 'TRABAJADOR' ? 'USUARIO' : (p.rol === 'REVISOR' ? 'SUPERVISOR' : p.rol)})</option>`).join('');
+      selTrab.innerHTML = '<option value="">— Sin asignar —</option>' + opcionesUsuarioConCarga(nodo.trabajador_id);
 
       const revisores = perfilesCache.filter(p => p.rol === 'REVISOR');
       selRev.innerHTML = '<option value="">— Sin asignar —</option>' +
@@ -3446,11 +3554,9 @@
     function abrirModalAsignacionMasiva() {
       document.getElementById('masivo-contador').textContent = `Se asignará a ${nodosSeleccionados.size} tarea(s) seleccionada(s).`;
 
-      const usuarios = perfilesCache.filter(p => p.rol === 'TRABAJADOR');
       const revisores = perfilesCache.filter(p => p.rol === 'REVISOR');
 
-      document.getElementById('masivo-trabajador').innerHTML = '<option value="">— Sin asignar —</option>' +
-        usuarios.map(p => `<option value="${p.id}">${p.nombre_completo}</option>`).join('');
+      document.getElementById('masivo-trabajador').innerHTML = '<option value="">— Sin asignar —</option>' + opcionesTrabajadorConCarga(null);
       document.getElementById('masivo-revisor').innerHTML = '<option value="">— Sin asignar —</option>' +
         revisores.map(p => `<option value="${p.id}">${p.nombre_completo}</option>`).join('');
 
@@ -3910,6 +4016,10 @@
     }
 
     async function accionRevisar(nodeId, aprobado) {
+      if (aprobado) {
+        const listo = await pedirChecklistCalidad(nodeId);
+        if (!listo) return;
+      }
       let comentario = null;
       if (!aprobado) {
         comentario = await pedirTexto('Motivo del rechazo (obligatorio):');
