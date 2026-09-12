@@ -296,6 +296,7 @@
         <a class="menu-item solo-escritorio" id="menu-link-log" href="log.html" style="display:none;">🗒️ Logs</a>
         <span class="menu-item solo-escritorio" id="menu-item-buque" onclick="esInvitado() ? mostrarAvisoModal('Eres un usuario Invitado: solo puedes consultar, no puedes realizar cambios.') : abrirModalCrear(null, 'BUQUE')" style="display:none;">+ Añadir Buque</span>
         <a class="menu-item" href="resumen.html">📊 Resumen</a>
+        <span class="menu-item" id="menu-item-resumen-comentarios" onclick="abrirResumenComentariosModelo()" style="display:none;">📋 Comentarios pendientes de modelo</span>
         <a class="menu-item solo-escritorio" id="menu-link-usuarios" href="usuarios.html" style="display:none;">👤 Usuarios</a>
         <span class="menu-item" onclick="cerrarSesion()">🚪 Cerrar sesión</span>
       </div>
@@ -353,7 +354,6 @@
         <a class="menu-item" id="menu-link-importar" href="importar.html" target="_blank" style="display:none;">📥 Importar Excel</a>
         <a class="menu-item" id="menu-link-duplicados" href="duplicados.html" target="_blank" style="display:none;">🔍 Comprobar duplicados</a>
         <span class="menu-item" id="menu-item-exportar-excel" onclick="exportarArbolExcel()" style="display:none;">⬇ Exportar árbol a Excel</span>
-        <span class="menu-item" id="menu-item-resumen-comentarios" onclick="abrirResumenComentariosModelo()" style="display:none;">📋 Comentarios pendientes de modelo</span>
         <label class="menu-item" id="wrap-papelera" style="display:none;">
           <input type="checkbox" id="chk-papelera" onchange="togglePapelera()"> 🗑️ Ver papelera
         </label>
@@ -489,17 +489,17 @@
   </div>
 
   <div class="overlay" id="modal-resumen-comentarios-modelo">
-    <div class="overlay-caja" style="max-width:760px;">
+    <div class="overlay-caja" style="max-width:min(1500px, 96vw); width:96vw;">
       <h3>📋 Comentarios pendientes de cambios en modelo</h3>
-      <p style="font-size:12px; color:#666; margin-top:-6px;">De todos los buques. ✅ = ya marcado como corregido/aprobado, ⭕ = todavía pendiente.</p>
+      <p style="font-size:12px; color:#666; margin-top:-6px;">De todos los buques. Marca la casilla para dar un comentario por revisado (cualquiera puede revisar comentarios de otro usuario).</p>
       <div style="display:flex; gap:18px; flex-wrap:wrap;">
-        <div style="flex:1; min-width:260px;">
+        <div style="flex:1; min-width:320px;">
           <h4 style="margin:6px 0; color:#333;">Ghenova</h4>
-          <div id="resumen-comentarios-ghe" style="max-height:400px; overflow-y:auto; overflow-x:hidden; font-size:12.5px;"></div>
+          <div id="resumen-comentarios-ghe" style="max-height:60vh; overflow-y:auto; overflow-x:auto; font-size:12.5px;"></div>
         </div>
-        <div style="flex:1; min-width:260px;">
+        <div style="flex:1; min-width:320px;">
           <h4 style="margin:6px 0; color:#333;">Navantia</h4>
-          <div id="resumen-comentarios-nav" style="max-height:400px; overflow-y:auto; overflow-x:hidden; font-size:12.5px;"></div>
+          <div id="resumen-comentarios-nav" style="max-height:60vh; overflow-y:auto; overflow-x:auto; font-size:12.5px;"></div>
         </div>
       </div>
       <div class="overlay-botones">
@@ -872,7 +872,7 @@
       if (puedeSeleccionar()) {
         document.getElementById('wrap-modo-seleccion').style.display = 'flex';
       }
-      if (esGestor()) {
+      if (!esInvitado()) {
         document.getElementById('menu-item-resumen-comentarios').style.display = 'flex';
       }
 
@@ -3233,13 +3233,31 @@
       const nodo = mapaNodoPorId[c.node_id];
       const ruta = nodo ? rutaCompleta(nodo) : '(nodo no encontrado o desactivado)';
       return `
-        <div style="display:flex; align-items:flex-start; gap:8px; padding:6px 0; border-bottom:1px solid #eee;">
-          <span style="flex-shrink:0; width:16px; text-align:center;" title="${hecho ? 'Hecho' : 'Pendiente'}">${hecho ? '✅' : '⭕'}</span>
-          <div style="flex:1; min-width:0; overflow-wrap:break-word;">
-            <div style="color:#888; font-size:11px;">${ruta}</div>
-            <div><b>${c.origen}${String(c.numero).padStart(3, '0')}</b> — ${c.texto}</div>
-          </div>
+        <div style="display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid #eee; white-space:nowrap;">
+          <input type="checkbox" ${hecho ? 'checked' : ''}
+                 title="${esGestor() ? 'Marcar/quitar Aprobado' : 'Marcar/quitar como corregido'}"
+                 onclick="event.stopPropagation(); accionToggleChecklistComentarioResumen('${c.id}', this.checked)"
+                 style="width:auto; padding:0; border:none; margin:0; flex-shrink:0;">
+          <span style="color:#888;">${ruta}</span>
+          <b>${c.origen}${String(c.numero).padStart(3, '0')}</b>
+          <span>— ${c.texto}</span>
+          ${c.aprobado ? '<span style="color:rgb(146,208,80); font-weight:bold;">✔ Aprobado</span>' : ''}
         </div>`;
+    }
+
+    // Igual que accionToggleChecklistComentario, pero refresca el panel de
+    // resumen (no el modal de un nodo concreto) al terminar.
+    async function accionToggleChecklistComentarioResumen(comentarioId, marcado) {
+      const { error } = esGestor()
+        ? await supabaseClient.rpc('aprobar_comentario_modelo', { p_comentario_id: comentarioId, p_aprobado: marcado })
+        : await supabaseClient.rpc('marcar_comentario_implementado', { p_comentario_id: comentarioId, p_implementado: marcado });
+      if (error) {
+        mostrarAvisoModal('Error: ' + traducirError(error.message));
+        registrarLog('INTENTO_FALLIDO', `Intento de marcar comentario denegado: ${error.message}`);
+      } else {
+        registrarLog('PENDIENTE_CAMBIOS_MODELO', `${marcado ? 'Marcó' : 'Desmarcó'} un comentario desde el resumen general`);
+      }
+      await cargarResumenComentariosModelo();
     }
 
     async function cargarResumenComentariosModelo() {
