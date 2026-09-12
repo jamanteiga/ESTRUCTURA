@@ -85,6 +85,21 @@
     body.tema-oscuro .opcion-rama { border-bottom-color: #33373d; }
     body.tema-oscuro .opcion-rama:hover { background: #2f343b; }
 
+    /* ---- Vista móvil: filtros/vistas plegados tras ☰, no el panel de escritorio apretado ---- */
+    .btn-hamburguesa-gantt {
+      display: none; background: #fff; border: 2px solid #007bff; width: 38px; height: 38px; border-radius: 8px;
+      cursor: pointer; align-items: center; justify-content: center; font-size: 18px; color: #007bff; flex-shrink: 0; padding: 0;
+    }
+    body.tema-oscuro .btn-hamburguesa-gantt { background: #24282e; }
+    body.vista-movil .btn-hamburguesa-gantt { display: flex; }
+    body.vista-movil #card-filtros { display: none; }
+    body.vista-movil #card-filtros.abierto { display: flex; }
+    body.vista-movil .filtros select, body.vista-movil .filtros input[type=number] { flex: 1; min-width: 120px; }
+    body.vista-movil button { padding: 9px 14px; font-size: 14px; }
+    body.vista-movil .col-nombre { width: 190px; min-width: 190px; }
+    body.vista-movil .col-nombre .toggle { width: 20px; font-size: 14px; }
+    body.vista-movil .gantt-fila { min-height: 34px; }
+
     @media print {
       @page { size: A3 landscape; margin: 10mm; }
       .no-imprimir { display: none !important; }
@@ -97,9 +112,12 @@
 <body>
 
   <div class="header-bar no-imprimir">
-    <div>
-      <h1 id="titulo-pagina">🗓️ Gantt</h1>
-      <div class="subtitulo" id="subtitulo-fecha"></div>
+    <div style="display:flex; align-items:center; gap:10px;">
+      <button class="btn-hamburguesa-gantt" onclick="alternarFiltrosMovil()" title="Filtros y vistas">☰</button>
+      <div>
+        <h1 id="titulo-pagina">🗓️ Gantt</h1>
+        <div class="subtitulo" id="subtitulo-fecha"></div>
+      </div>
     </div>
     <div class="no-imprimir">
       <button class="secundario" onclick="alternarTema()">🌙/☀️</button>
@@ -112,7 +130,7 @@
 
   <div id="titulo-pagina-print" style="display:none;"></div>
 
-  <div class="card filtros no-imprimir">
+  <div class="card filtros no-imprimir" id="card-filtros">
     <label for="sel-buque" style="font-size:12px; font-weight:bold;">Buque:</label>
     <select id="sel-buque"></select>
     <label for="sel-usuario-gantt" style="font-size:12px; font-weight:bold;">Usuario:</label>
@@ -183,6 +201,15 @@
     let soloCriticas = false;
     let raizGanttId = null;
 
+    // Vista móvil: filtros/vistas se pliegan tras el botón ☰ en vez de
+    // mostrar todo el panel de escritorio apretado.
+    const esMovil = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || window.innerWidth < 768;
+    document.body.classList.toggle('vista-movil', esMovil);
+
+    function alternarFiltrosMovil() {
+      document.getElementById('card-filtros').classList.toggle('abierto');
+    }
+
     async function registrarLog(accion, descripcion) {
       try {
         await supabaseClient.from('audit_log').insert({ accion, descripcion, user_agent: navigator.userAgent });
@@ -219,13 +246,21 @@
     function formatearFechaCorta(fecha) {
       return `${String(fecha.getDate()).padStart(2,'0')}/${String(fecha.getMonth()+1).padStart(2,'0')}/${fecha.getFullYear()} ${String(fecha.getHours()).padStart(2,'0')}:${String(fecha.getMinutes()).padStart(2,'0')}`;
     }
+    // Por debajo de 24h se muestra h:mm (igual que antes). A partir de 24h se
+    // pasa a dd:h:mm (días:horas:minutos), para no acumular horas de tres
+    // cifras en tareas que se alargan varios días.
     function formatearDuracionHM(inicio, fin) {
       if (!inicio) return null;
-      const minutos = Math.floor((fin - inicio) / 60000);
-      if (minutos < 0) return null;
-      const horas = Math.floor(minutos / 60);
-      const mins = minutos % 60;
-      return `${horas}:${String(mins).padStart(2, '0')}`;
+      const minutosTotales = Math.floor((fin - inicio) / 60000);
+      if (minutosTotales < 0) return null;
+      const horasTotales = Math.floor(minutosTotales / 60);
+      const mins = minutosTotales % 60;
+      if (horasTotales >= 24) {
+        const dias = Math.floor(horasTotales / 24);
+        const horas = horasTotales % 24;
+        return `${String(dias).padStart(2, '0')}:${String(horas).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+      }
+      return `${horasTotales}:${String(mins).padStart(2, '0')}`;
     }
 
     function actualizarCabecera(codigoBuque) {
