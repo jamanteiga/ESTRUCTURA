@@ -166,15 +166,19 @@
       border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.25); min-width: 200px; padding: 4px 0;
       font-size: 13px;
     }
-    #menu-contextual .mc-item, #menu-submenu-flotante .mc-item {
+    #menu-contextual .mc-item, #menu-submenu-flotante .mc-item, #menu-submenu-flotante-2 .mc-item {
       padding: 8px 14px; cursor: pointer; display: flex; align-items: center; gap: 8px;
     }
-    #menu-contextual .mc-item:hover, #menu-submenu-flotante .mc-item:hover { background: #eef3ff; }
-    #menu-contextual .mc-item.mc-solo-lectura { cursor: default; color: #888; font-style: italic; font-size: 12px; }
-    #menu-contextual .mc-item.mc-solo-lectura:hover { background: transparent; }
+    #menu-contextual .mc-item:hover, #menu-submenu-flotante .mc-item:hover, #menu-submenu-flotante-2 .mc-item:hover { background: #eef3ff; }
+    #menu-contextual .mc-item.mc-solo-lectura, #menu-submenu-flotante .mc-item.mc-solo-lectura, #menu-submenu-flotante-2 .mc-item.mc-solo-lectura {
+      cursor: default; color: #888; font-style: italic; font-size: 12px;
+    }
+    #menu-contextual .mc-item.mc-solo-lectura:hover, #menu-submenu-flotante .mc-item.mc-solo-lectura:hover, #menu-submenu-flotante-2 .mc-item.mc-solo-lectura:hover { background: transparent; }
     #menu-contextual .mc-separador { border-top: 1px solid #eee; margin: 4px 0; }
     #menu-contextual .mc-titulo { padding: 6px 14px; font-size: 11px; color: #888; text-transform: uppercase; font-weight: bold; }
-    #menu-contextual .mc-item.mc-padre::after { content: '▸'; float: right; color: #999; margin-left: 10px; }
+    #menu-contextual .mc-item.mc-padre::after, #menu-submenu-flotante .mc-item.mc-padre::after, #menu-submenu-flotante-2 .mc-item.mc-padre::after {
+      content: '▸'; float: right; color: #999; margin-left: 10px;
+    }
 
     #menu-submenu-flotante, #menu-submenu-flotante-2 {
       display: none; position: fixed; z-index: 4050; background: #fff; border: 1px solid #ccc;
