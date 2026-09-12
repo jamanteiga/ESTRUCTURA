@@ -532,6 +532,8 @@
     <button id="btn-estado-masivo" style="display:none;" onclick="abrirModalEstadoMasivo()">📋 Estado tareas</button>
     <button id="btn-anadir-masivo" style="display:none;" onclick="abrirModalAnadirMasivo()">+ Añadir dentro de cada una</button>
     <button id="btn-desactivar-masivo" class="peligro" style="display:none;" onclick="confirmarDesactivarMasivo()">🗑️ Desactivar seleccionadas</button>
+    <button id="btn-bloquear-masivo" style="display:none;" onclick="confirmarBloqueoMasivo(true)">🔒 Bloquear</button>
+    <button id="btn-desbloquear-masivo" style="display:none;" onclick="confirmarBloqueoMasivo(false)">🔓 Desbloquear</button>
     <button id="btn-tomar-tarea" style="display:none;" onclick="abrirModalTomarTarea()">🔄 Tomar tarea</button>
     <button class="secundario" onclick="cancelarSeleccion()">✕ Cancelar</button>
   </div>
@@ -796,14 +798,16 @@
       return `${hh}:${mm} ${dd}/${mes}/${aaaa}`;
     }
 
+    // Ruta con solo los códigos, sin repetir el tipo delante (BAC2>B221>ANIDADOS>PL01),
+    // ya que el código o nombre de cada nodo ya deja claro de qué se trata.
     function rutaCompleta(nodo) {
       const partes = [];
       let actual = nodo;
       while (actual) {
-        partes.unshift(`${actual.tipo} ${actual.codigo}`);
+        partes.unshift(actual.codigo);
         actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
       }
-      return partes.join(' › ');
+      return partes.join('>');
     }
 
     async function iniciar() {
@@ -1156,15 +1160,23 @@
       renderizarArbolCompleto();
     }
 
+    // Por debajo de 24h se muestra h:mm. A partir de 24h pasa a dd:hh:mm
+    // (días:horas:minutos), para no acumular horas de tres cifras en tareas
+    // que se alargan varios días.
     function formatearDuracionHM(inicioIso, finIso) {
       if (!inicioIso) return null;
       const inicio = new Date(inicioIso);
       const fin = finIso ? new Date(finIso) : new Date();
       const minutosTotales = Math.floor((fin - inicio) / 60000);
       if (minutosTotales < 0) return null;
-      const horas = Math.floor(minutosTotales / 60);
+      const horasTotales = Math.floor(minutosTotales / 60);
       const minutos = minutosTotales % 60;
-      return `${horas}:${String(minutos).padStart(2, '0')}`;
+      if (horasTotales >= 24) {
+        const dias = Math.floor(horasTotales / 24);
+        const horas = horasTotales % 24;
+        return `${String(dias).padStart(2, '0')}:${String(horas).padStart(2, '0')}:${String(minutos).padStart(2, '0')}`;
+      }
+      return `${horasTotales}:${String(minutos).padStart(2, '0')}`;
     }
 
     function resaltarCoincidencia(texto) {
@@ -2232,10 +2244,10 @@
       const partes = [];
       let actual = nodo;
       while (actual) {
-        partes.unshift(`${actual.tipo} ${actual.codigo}`);
+        partes.unshift(actual.codigo);
         actual = actual.parent_id ? mapaTodoParaPapelera[actual.parent_id] : null;
       }
-      return partes.join(' › ');
+      return partes.join('>');
     }
 
     let inactivosCacheados = [];
@@ -2694,6 +2706,8 @@
       document.getElementById('btn-estado-masivo').style.display = esGestor() ? 'inline-block' : 'none';
       document.getElementById('btn-anadir-masivo').style.display = esGestor() ? 'inline-block' : 'none';
       document.getElementById('btn-desactivar-masivo').style.display = esGestor() ? 'inline-block' : 'none';
+      document.getElementById('btn-bloquear-masivo').style.display = esGestor() ? 'inline-block' : 'none';
+      document.getElementById('btn-desbloquear-masivo').style.display = esGestor() ? 'inline-block' : 'none';
       document.getElementById('btn-tomar-tarea').style.display = puedeSeleccionar() ? 'inline-block' : 'none';
       barra.classList.add('visible');
     }
@@ -2719,6 +2733,39 @@
       }
 
       registrarLog('DESACTIVAR_NODO', `Desactivó en lote ${hechos} de ${ids.length} nodo(s)${errores.length ? ` (${errores.length} fallaron)` : ''}`);
+      if (errores.length > 0) {
+        mostrarAvisoModal(`Hecho ${hechos} de ${ids.length}. Fallaron ${errores.length}:\n` + errores.map(e => `• ${e}`).join('\n'));
+      }
+
+      nodosSeleccionados.clear();
+      modoSeleccion = false;
+      document.getElementById('chk-modo-seleccion').checked = false;
+      actualizarBarraSeleccion();
+      await cargarArbol();
+    }
+
+    // Bloquear/Desbloquear varias ramas o nodos sueltos de una vez, desde
+    // selección múltiple. Cada uno se bloquea/desbloquea con cascada, así
+    // que si alguno de los seleccionados tiene hijos que no se marcaron
+    // a mano, se incluyen igualmente.
+    async function confirmarBloqueoMasivo(nuevoValor) {
+      const ids = [...nodosSeleccionados];
+      if (ids.length === 0) return;
+      if (!await mostrarConfirmacion(`¿${nuevoValor ? 'Bloquear' : 'Desbloquear'} ${ids.length} nodo(s) seleccionados (con cascada a lo que cuelgue de cada uno)?`)) return;
+
+      let hechos = 0;
+      const errores = [];
+      for (const id of ids) {
+        const nodo = mapaNodoPorId[id];
+        const { error } = await supabaseClient.rpc('establecer_bloqueo_nodo', {
+          p_node_id: id, p_bloqueado: nuevoValor, p_cascada: true
+        });
+        if (error) { errores.push(`${nodo?.codigo || id}: ${error.message}`); continue; }
+        hechos++;
+      }
+
+      registrarLog(nuevoValor ? 'BLOQUEAR_NODO' : 'DESBLOQUEAR_NODO',
+        `${nuevoValor ? 'Bloqueó' : 'Desbloqueó'} en lote ${hechos} de ${ids.length} nodo(s)${errores.length ? ` (${errores.length} fallaron)` : ''}`);
       if (errores.length > 0) {
         mostrarAvisoModal(`Hecho ${hechos} de ${ids.length}. Fallaron ${errores.length}:\n` + errores.map(e => `• ${e}`).join('\n'));
       }

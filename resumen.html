@@ -195,10 +195,10 @@
       const partes = [];
       let actual = nodo;
       while (actual) {
-        partes.unshift(`${actual.tipo} ${actual.codigo}`);
+        partes.unshift(actual.codigo);
         actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
       }
-      return partes.join(' › ');
+      return partes.join('>');
     }
 
     function calcularEstadoPropio(nodo) {

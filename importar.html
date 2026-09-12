@@ -153,8 +153,8 @@
       function ruta(n) {
         const partes = [];
         let actual = n;
-        while (actual) { partes.unshift(`${actual.tipo} ${actual.codigo}`); actual = actual.parent_id ? mapa[actual.parent_id] : null; }
-        return partes.join(' › ');
+        while (actual) { partes.unshift(actual.codigo); actual = actual.parent_id ? mapa[actual.parent_id] : null; }
+        return partes.join('>');
       }
 
       const sel = document.getElementById('sel-destino');
