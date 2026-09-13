@@ -193,6 +193,36 @@
 
     const TIPOS_SIN_ASIGNACION = new Set(['BUQUE']);
 
+    const ETIQUETAS_TIPO = {
+      BUQUE: 'Buque',
+      BLOQUE: 'Bloque',
+      SB: 'Subbloque',
+      SBE: 'Unión de subbloques',
+      SBL: 'Unión en grada',
+      CS: 'Conjunto simple',
+      UA: 'Unidad abierta',
+      GR: 'Grupo',
+      UL: 'Unidad longitudinal',
+      NL: 'Panel',
+      PS: 'Previa simple',
+      PT: 'Previa en T',
+      PE: 'Pieza especial',
+      PM: 'Piezas menores',
+      UC: 'Unidad fabricada de forro',
+      NC: 'Panel curvo de forro',
+      PI: 'Producto intermedio',
+      ANIDADOS: 'Anidados',
+      PDB: 'Plano de bloque',
+      PANELES: 'Paneles',
+      PL: 'Plancha',
+      PERF: 'Perfil',
+      PLANCHA_1000: 'Plancha 1000',
+      PLANCHA_2000: 'Plancha 2000',
+      PLANCHA_3000: 'Plancha 3000',
+      PERFIL_4000: 'Perfil 4000',
+      PERFIL_6000: 'Perfil 6000'
+    };
+
     const ESTADOS_ORDEN = ['sin_asignar', 'asignada_sin_empezar', 'en_proceso', 'pendiente_revision', 'pendiente_dudas', 'pendiente_cambios_modelo', 'aprobado', 'rechazado'];
     const ETIQUETAS_ESTADO = {
       sin_asignar: 'Sin asignar',
@@ -207,6 +237,83 @@
 
     let miPerfil = null;
     let filtroDetalleEstado = null;
+
+    let mostrarKPIsBuque = localStorage.getItem('estructura_resumen_ver_kpis') !== 'false';
+    let mostrarCurvaAvance = localStorage.getItem('estructura_resumen_ver_curva') !== 'false';
+
+    function alternarKPIsBuque() {
+      mostrarKPIsBuque = !mostrarKPIsBuque;
+      localStorage.setItem('estructura_resumen_ver_kpis', mostrarKPIsBuque ? 'true' : 'false');
+      pintarVistaGestor();
+    }
+
+    function alternarCurvaAvance() {
+      mostrarCurvaAvance = !mostrarCurvaAvance;
+      localStorage.setItem('estructura_resumen_ver_curva', mostrarCurvaAvance ? 'true' : 'false');
+      pintarVistaGestor();
+    }
+
+    // Filtros de la vista de gestor: por usuario individual/Todos y por estado.
+    let filtroTipoUsuarioId = null;
+    let filtroCargaUsuarioId = null;
+    let filtroCargaEstado = null;
+
+    // Usuarios (trabajadores) que tienen alguna tarea asignada, para rellenar
+    // los selectores "Usuario: Todos / <nombre>" de las tablas de abajo.
+    function usuariosConTareasAsignadas(nodos) {
+      const ids = [...new Set(nodos.filter(n => n.trabajador_id && idsUsuariosGestor.has(n.trabajador_id)).map(n => n.trabajador_id))];
+      return ids
+        .map(id => ({ id, nombre: nodos.find(n => n.trabajador_id === id)?.trabajador_nombre || '—' }))
+        .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+    }
+
+    function calcularTareasPorTipo(nodos, usuarioId) {
+      const base = usuarioId ? nodos.filter(n => n.trabajador_id === usuarioId) : nodos;
+      const conteo = {};
+      base.forEach(n => {
+        if (!conteo[n.tipo]) {
+          conteo[n.tipo] = { total: 0 };
+          ESTADOS_ORDEN.forEach(e => conteo[n.tipo][e] = 0);
+        }
+        conteo[n.tipo][calcularEstadoPropio(n)]++;
+        conteo[n.tipo].total++;
+      });
+      return conteo;
+    }
+
+    function renderTareasPorTipoCard() {
+      const nodos = nodosGestorActual;
+      const usuarios = usuariosConTareasAsignadas(nodos);
+      const conteo = calcularTareasPorTipo(nodos, filtroTipoUsuarioId);
+      const tipos = Object.keys(conteo).sort((a, b) => (ETIQUETAS_TIPO[a] || a).localeCompare(ETIQUETAS_TIPO[b] || b, 'es'));
+      if (tipos.length === 0) return '';
+      return `
+        <div class="card solo-escritorio">
+          <h2>🔧 Tareas por tipo</h2>
+          <p style="font-size:11px; color:#888; margin:-4px 0 8px;">Cuántas tareas hay en cada estado, por tipo de nodo.</p>
+          <label style="display:inline-block; font-size:12px; font-weight:bold; margin-bottom:8px;">Usuario:
+            <select onchange="filtroTipoUsuarioId = this.value || null; pintarVistaGestor();" style="padding:4px; border-radius:4px; border:1px solid #ccc; margin-left:6px;">
+              <option value="" ${!filtroTipoUsuarioId ? 'selected' : ''}>Todos</option>
+              ${usuarios.map(u => `<option value="${u.id}" ${u.id === filtroTipoUsuarioId ? 'selected' : ''}>${u.nombre}</option>`).join('')}
+            </select>
+          </label>
+          <table>
+            <thead>
+              <tr><th>Tipo</th>${ESTADOS_ORDEN.map(e => `<th>${ETIQUETAS_ESTADO[e]}</th>`).join('')}<th>Total</th></tr>
+            </thead>
+            <tbody>
+              ${tipos.map(t => `
+                <tr>
+                  <td>${ETIQUETAS_TIPO[t] || t}</td>
+                  ${ESTADOS_ORDEN.map(e => `<td class="num">${conteo[t][e]}</td>`).join('')}
+                  <td class="num" style="font-weight:bold;">${conteo[t].total}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
     let mapaNodoPorId = {};
     let dependenciasCache = [];
     let historialMotivosCache = [];
@@ -1116,8 +1223,14 @@
         conteoGeneral[e] = (conteoGeneral[e] || 0) + 1;
       });
 
+      const usuariosParaFiltroCarga = usuariosConTareasAsignadas(nodos);
+      const nodosParaCarga = nodos.filter(n =>
+        (!filtroCargaUsuarioId || n.trabajador_id === filtroCargaUsuarioId) &&
+        (!filtroCargaEstado || calcularEstadoPropio(n) === filtroCargaEstado)
+      );
+
       const conteoPorUsuario = {};
-      nodos.forEach(n => {
+      nodosParaCarga.forEach(n => {
         if (n.trabajador_id && idsUsuariosGestor.has(n.trabajador_id)) {
           if (!conteoPorUsuario[n.trabajador_id]) {
             conteoPorUsuario[n.trabajador_id] = { id: n.trabajador_id, nombre: n.trabajador_nombre, tiempoEnProcesoMs: 0 };
@@ -1189,11 +1302,17 @@
           ${renderContadores(conteoGeneral, true, nodos.length)}
         </div>
 
+        <div class="card" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <strong style="font-size:12px; color:#888;">Mostrar:</strong>
+          <button class="${mostrarKPIsBuque ? '' : 'secundario'}" onclick="alternarKPIsBuque()">📈 KPIs por buque ${mostrarKPIsBuque ? '👁️' : '🚫'}</button>
+          <button class="${mostrarCurvaAvance ? '' : 'secundario'}" onclick="alternarCurvaAvance()">📉 Curva de avance ${mostrarCurvaAvance ? '👁️' : '🚫'}</button>
+        </div>
+
         ${renderPanelRiesgos()}
 
-        ${renderKPIsPorBuque()}
+        ${mostrarKPIsBuque ? renderKPIsPorBuque() : ''}
 
-        ${renderCurvaAvanceCard()}
+        ${mostrarCurvaAvance ? renderCurvaAvanceCard() : ''}
 
         ${renderMotivosRetrasoCard()}
 
@@ -1216,9 +1335,26 @@
 
         ${renderPrevisionCargaFutura()}
 
+        ${renderTareasPorTipoCard()}
+
         <div class="card solo-escritorio">
           <h2>👷 Carga de trabajo por usuario</h2>
           <p style="font-size:11px; color:#888; margin:-4px 0 8px;">"Abiertas" = tareas sin aprobar todavía. "En proceso" = tiempo acumulado de las tareas que tiene empezadas ahora mismo (para repartir carga).</p>
+          <div style="display:flex; gap:14px; flex-wrap:wrap; align-items:center; margin-bottom:8px;">
+            <label style="font-size:12px; font-weight:bold;">Usuario:
+              <select onchange="filtroCargaUsuarioId = this.value || null; pintarVistaGestor();" style="padding:4px; border-radius:4px; border:1px solid #ccc; margin-left:6px;">
+                <option value="" ${!filtroCargaUsuarioId ? 'selected' : ''}>Todos</option>
+                ${usuariosParaFiltroCarga.map(u => `<option value="${u.id}" ${u.id === filtroCargaUsuarioId ? 'selected' : ''}>${u.nombre}</option>`).join('')}
+              </select>
+            </label>
+            <label style="font-size:12px; font-weight:bold;">Estado:
+              <select onchange="filtroCargaEstado = this.value || null; pintarVistaGestor();" style="padding:4px; border-radius:4px; border:1px solid #ccc; margin-left:6px;">
+                <option value="" ${!filtroCargaEstado ? 'selected' : ''}>Todos</option>
+                ${columnasUsuario.map(e => `<option value="${e}" ${e === filtroCargaEstado ? 'selected' : ''}>${ETIQUETAS_ESTADO[e]}</option>`).join('')}
+              </select>
+            </label>
+            ${(filtroCargaUsuarioId || filtroCargaEstado) ? `<button class="secundario" style="padding:3px 10px; font-size:11px;" onclick="filtroCargaUsuarioId=null; filtroCargaEstado=null; pintarVistaGestor();">✕ Quitar filtros</button>` : ''}
+          </div>
           <table>
             <thead>
               <tr>
@@ -1229,7 +1365,7 @@
                 <th></th>
               </tr>
             </thead>
-            <tbody>${filasUsuario || `<tr><td colspan="${columnasUsuario.length + 4}">Nadie tiene tareas asignadas todavía.</td></tr>`}</tbody>
+            <tbody>${filasUsuario || `<tr><td colspan="${columnasUsuario.length + 4}">${(filtroCargaUsuarioId || filtroCargaEstado) ? 'Nadie cumple ese filtro.' : 'Nadie tiene tareas asignadas todavía.'}</td></tr>`}</tbody>
           </table>
         </div>
 
