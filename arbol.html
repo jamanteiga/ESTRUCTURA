@@ -161,6 +161,17 @@
     .menu-item input[type="checkbox"] { width: auto; }
     .menu-item select { flex: 1; padding: 3px; border: 1px solid #ccc; border-radius: 4px; font-size: 11.5px; }
 
+    .menu-item-expandible {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 16px;
+      font-size: 12.5px; color: #333; border-bottom: 1px solid #f0f0f0; cursor: pointer; line-height: 1.3;
+    }
+    .menu-item-expandible:hover { background: #f5f8ff; }
+    .menu-item-expandible .flecha-menu { transition: transform 0.15s; color: #007bff; }
+    .menu-item-expandible.abierta .flecha-menu { transform: rotate(90deg); }
+    .menu-submenu-contenido { display: none; }
+    .menu-submenu-contenido.abierta { display: block; }
+    .menu-submenu-contenido .menu-item { padding-left: 32px; }
+
     body.modo-menu-fijo { padding-left: 320px; }
     body.modo-menu-fijo .btn-hamburguesa { display: none; }
     body.modo-menu-fijo .menu-overlay-fondo {
@@ -235,6 +246,8 @@
     body.tema-oscuro .menu-seccion-titulo { border-top-color: #3a3f47; color: #6fb3ff; }
     body.tema-oscuro .menu-item { color: #e0e0e0; border-bottom-color: #33373d; }
     body.tema-oscuro .menu-item:hover { background: #2f343b; }
+    body.tema-oscuro .menu-item-expandible { color: #e0e0e0; border-bottom-color: #33373d; }
+    body.tema-oscuro .menu-item-expandible:hover { background: #2f343b; }
     body.tema-oscuro .menu-buscador-wrap { border-bottom-color: #3a3f47; }
     body.tema-oscuro .menu-buscador-wrap input,
     body.tema-oscuro select, body.tema-oscuro input[type="text"], body.tema-oscuro input[type="number"],
@@ -304,7 +317,19 @@
         <a class="menu-item" href="index.html">🏠 Inicio</a>
         <a class="menu-item solo-escritorio" id="menu-link-log" href="log.html" style="display:none;">🗒️ Logs</a>
         <span class="menu-item solo-escritorio" id="menu-item-buque" onclick="esInvitado() ? mostrarAvisoModal('Eres un usuario Invitado: solo puedes consultar, no puedes realizar cambios.') : abrirModalCrear(null, 'BUQUE')" style="display:none;">+ Añadir Buque</span>
-        <a class="menu-item" href="resumen.html">📊 Resumen</a>
+        <div class="menu-item-expandible" onclick="toggleSeccionMenu(this)">📊 Resumen <span class="flecha-menu">›</span></div>
+        <div class="menu-submenu-contenido">
+          <a class="menu-item" href="avances.html">📉 Avances</a>
+          <a class="menu-item" href="cambiosmodelo.html">🔧 Cambios de modelo</a>
+          <a class="menu-item" href="cargatrabajo.html">👷 Carga de trabajo</a>
+          <a class="menu-item" href="revision.html">⏳ Cola de revisión</a>
+          <a class="menu-item" href="kpi.html">📈 KPIs</a>
+          <a class="menu-item" href="pendientedudas.html">❓ Pendiente de dudas</a>
+          <a class="menu-item" href="previsioncarga.html">📅 Previsión de carga</a>
+          <a class="menu-item" href="rechazados.html">✘ Rechazados</a>
+          <a class="menu-item" href="resumen.html">📊 Resumen general</a>
+          <a class="menu-item" href="sinasignar.html">🚫 Sin asignar</a>
+        </div>
         <a class="menu-item" href="kanban.html">🗂️ Kanban</a>
         <a class="menu-item" id="menu-item-alertas" href="resumen.html" style="display:none;" title="Tareas retrasadas y usuarios con demasiada carga hoy — detalle en Resumen">⚠️ Alertas<span id="badge-alertas" style="display:none; background:#dc3545; color:#fff; border-radius:10px; padding:1px 7px; font-size:11px; font-weight:bold; margin-left:6px;"></span></a>
         <span class="menu-item" id="menu-item-resumen-comentarios" onclick="abrirResumenComentariosModelo()" style="display:none;">📋 Comentarios pendientes de modelo<span id="badge-comentarios-pendientes" style="display:none; background:#dc3545; color:#fff; border-radius:10px; padding:1px 7px; font-size:11px; font-weight:bold; margin-left:6px;"></span></span>

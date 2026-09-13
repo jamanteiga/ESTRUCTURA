@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESTRUCTURA - Previsión de carga</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#007bff">
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 1050px; margin: 30px auto; padding: 0 20px; color: #333; }
+    h1 { font-size: 22px; }
+    h2 { font-size: 15px; margin-top: 0; }
+    .card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    body.vista-movil .solo-escritorio { display: none !important; }
+    body.tema-oscuro { background: #1a1d21; color: #e0e0e0; }
+    body.tema-oscuro .card { background: #24282e; border-color: #3a3f47; }
+    body.tema-oscuro h1, body.tema-oscuro h2 { color: #f0f0f0; }
+    body.tema-oscuro table { color: #e0e0e0; }
+    body.tema-oscuro th { background: #14395c; }
+    body.tema-oscuro td { border-color: #3a3f47; }
+    .header-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+    button { padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; }
+    button.secundario { background: #6c757d; }
+    button.secundario:hover { background: #5a6268; }
+    .estado-msg { font-size: 13px; }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; background: white; font-size: 12px; }
+    th, td { padding: 6px; text-align: left; border-bottom: 1px solid #ddd; }
+    th { background: #1c6e8c; color: white; font-size: 11px; }
+    td.num { text-align: center; }
+  </style>
+</head>
+<body>
+
+  <div class="header-bar">
+    <h1>📅 Previsión de carga</h1>
+    <div>
+      <span id="texto-usuario" class="estado-msg"></span>
+      <button class="secundario" onclick="alternarTema()">🌙/☀️</button>
+      <button class="secundario" onclick="location.href='index.html'">🏠 Inicio</button>
+      <button class="secundario" onclick="location.href='arbol.html'">🌳 Árbol</button>
+      <button class="secundario" onclick="location.href='kanban.html'">🗂️ Kanban</button>
+      <button class="secundario" id="btn-informe" onclick="location.href='informe.html'" style="display:none;">🖨️ Informe</button>
+      <button class="secundario" onclick="cerrarSesion()">Cerrar sesión</button>
+      <button style="background:#dc3545; color:white; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:13px;" onclick="cerrarPagina()">❌ Cerrar</button>
+    </div>
+  </div>
+
+  <div id="contenido">
+    <p>Cargando...</p>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const SUPABASE_URL = 'https://wuarkraddnndmgvfnkmm.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const esMovil = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || window.innerWidth < 768;
+    document.body.classList.toggle('vista-movil', esMovil);
+
+    const TIPOS_SIN_ASIGNACION = new Set(['BUQUE']);
+
+    let miPerfil = null;
+    let mapaNodoPorId = {};
+    let nodosGestorActual = [];
+    let idsUsuariosGestor = new Set();
+
+    function esGestor() { return miPerfil.rol === 'ADMIN' || miPerfil.rol === 'REVISOR'; }
+    function esInvitado() { return miPerfil.rol === 'INVITADO'; }
+    function pareceGestor() { return esGestor() || esInvitado(); }
+
+    function calcularEstadoPropio(nodo) {
+      if (nodo.revision_estado === 'APROBADO') return 'aprobado';
+      if (nodo.revision_estado === 'RECHAZADO') return 'rechazado';
+      if (nodo.revision_estado === 'PENDIENTE' || nodo.revision_estado === 'EN_REVISION') return 'pendiente_revision';
+      if (nodo.trabajo_estado === 'EN_TRABAJO') return 'en_proceso';
+      if (nodo.trabajo_estado === 'PENDIENTE_DUDAS') return 'pendiente_dudas';
+      if (nodo.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO') return 'pendiente_cambios_modelo';
+      if (nodo.trabajador_id) return 'asignada_sin_empezar';
+      return 'sin_asignar';
+    }
+
+    async function registrarLog(accion, descripcion) {
+      try {
+        await supabaseClient.from('audit_log').insert({ accion, descripcion, user_agent: navigator.userAgent });
+      } catch (e) {
+        console.warn('No se pudo registrar el log:', e);
+      }
+    }
+
+    async function cerrarSesion() {
+      await registrarLog('LOGOUT', `Cerró sesión (${miPerfil?.username || ''})`);
+      await supabaseClient.auth.signOut();
+      window.location.href = 'login.html';
+    }
+
+    function cerrarPagina() {
+      window.close();
+      setTimeout(() => { history.back(); }, 150);
+    }
+
+    function aplicarTema(tema) {
+      document.body.classList.toggle('tema-oscuro', tema === 'oscuro');
+      localStorage.setItem('estructura_tema', tema);
+    }
+    function alternarTema() {
+      aplicarTema(document.body.classList.contains('tema-oscuro') ? 'claro' : 'oscuro');
+    }
+    aplicarTema(localStorage.getItem('estructura_tema') || 'claro');
+
+    // -------------------- Previsión de carga futura --------------------
+
+    const NUM_SEMANAS_PREVISION = 6;
+
+    function calcularPrevisionCargaFutura(nodos) {
+      const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+      const diaSemanaISO = hoy.getDay() || 7; // lunes=1 ... domingo=7
+      const lunes = new Date(hoy); lunes.setDate(hoy.getDate() - (diaSemanaISO - 1));
+      const semanas = [];
+      for (let i = 0; i < NUM_SEMANAS_PREVISION; i++) {
+        const inicio = new Date(lunes); inicio.setDate(inicio.getDate() + i * 7);
+        const fin = new Date(inicio); fin.setDate(fin.getDate() + 6);
+        semanas.push({ inicio, fin });
+      }
+
+      const porUsuario = {};
+      nodos.forEach(n => {
+        if (!n.trabajador_id || !idsUsuariosGestor.has(n.trabajador_id)) return;
+        if (calcularEstadoPropio(n) === 'aprobado') return;
+        if (!n.fecha_inicio_prevista && !n.fecha_fin_prevista) return;
+        const ini = n.fecha_inicio_prevista ? new Date(n.fecha_inicio_prevista + 'T00:00:00') : new Date(n.fecha_fin_prevista + 'T00:00:00');
+        const fin = n.fecha_fin_prevista ? new Date(n.fecha_fin_prevista + 'T00:00:00') : ini;
+        if (!porUsuario[n.trabajador_id]) porUsuario[n.trabajador_id] = { nombre: n.trabajador_nombre, semanas: new Array(NUM_SEMANAS_PREVISION).fill(0) };
+        semanas.forEach((s, i) => { if (ini <= s.fin && fin >= s.inicio) porUsuario[n.trabajador_id].semanas[i]++; });
+      });
+
+      return { semanas, filas: Object.values(porUsuario).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')) };
+    }
+
+    function colorCeldaCarga(n) {
+      if (n === 0) return '';
+      if (n <= 1) return 'background:#fff3cd;';
+      if (n <= 3) return 'background:#ffc107;';
+      return 'background:#dc3545; color:#fff;';
+    }
+
+    function renderPrevisionCargaFutura() {
+      const { semanas, filas } = calcularPrevisionCargaFutura(nodosGestorActual);
+      return `
+        <div class="card">
+          <h2>📅 Previsión de carga futura</h2>
+          <p style="font-size:11px; color:#888; margin:-4px 0 8px;">
+            Tareas pendientes (sin aprobar) por usuario que caen en cada semana según su fecha prevista. Sirve para ver quién se va a saturar antes de que pase, no solo quién está ocupado hoy.
+            ${filas.length === 0 ? ' Todavía no hay tareas con fechas previstas para calcularla.' : ''}
+          </p>
+          ${filas.length === 0 ? '' : `
+            <table>
+              <thead>
+                <tr>
+                  <th>Usuario</th>
+                  ${semanas.map(s => `<th>${String(s.inicio.getDate()).padStart(2, '0')}/${String(s.inicio.getMonth() + 1).padStart(2, '0')}</th>`).join('')}
+                </tr>
+              </thead>
+              <tbody>
+                ${filas.map(f => `
+                  <tr>
+                    <td>${f.nombre}</td>
+                    ${f.semanas.map(n => `<td class="num" style="${colorCeldaCarga(n)}">${n || ''}</td>`).join('')}
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `}
+        </div>
+      `;
+    }
+
+    function pintar() {
+      document.getElementById('contenido').innerHTML = renderPrevisionCargaFutura();
+    }
+
+    async function cargarYPintar() {
+      const { data: nodos, error } = await supabaseClient.from('v_nodes_with_workflow').select('*').eq('activo', true);
+      if (error) { document.getElementById('contenido').innerHTML = `<p style="color:red;">Error: ${error.message}</p>`; return; }
+      mapaNodoPorId = {};
+      nodos.forEach(n => { mapaNodoPorId[n.id] = n; });
+      nodosGestorActual = nodos.filter(n => !TIPOS_SIN_ASIGNACION.has(n.tipo));
+
+      const idsConTarea = [...new Set(nodosGestorActual.filter(n => n.trabajador_id).map(n => n.trabajador_id))];
+      idsUsuariosGestor = new Set();
+      if (idsConTarea.length > 0) {
+        const { data: perfiles } = await supabaseClient.from('profiles').select('id, rol').in('id', idsConTarea);
+        idsUsuariosGestor = new Set((perfiles || []).filter(p => p.rol === 'TRABAJADOR').map(p => p.id));
+      }
+
+      pintar();
+    }
+
+    let debounceRecarga = null;
+    function recargarConDebounce() { clearTimeout(debounceRecarga); debounceRecarga = setTimeout(() => cargarYPintar(), 400); }
+    function suscribirseARealtime() {
+      supabaseClient.channel('prevision_node_workflow').on('postgres_changes', { event: '*', schema: 'public', table: 'node_workflow' }, () => recargarConDebounce()).subscribe();
+      supabaseClient.channel('prevision_nodes').on('postgres_changes', { event: '*', schema: 'public', table: 'nodes' }, () => recargarConDebounce()).subscribe();
+    }
+
+    async function iniciar() {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (!session) { window.location.href = 'login.html?next=previsioncarga.html'; return; }
+
+      const { data: perfil, error } = await supabaseClient
+        .from('profiles').select('*').eq('id', session.user.id).single();
+
+      if (error || !perfil || !perfil.activo) {
+        document.body.innerHTML = '<p style="color:red; font-weight:bold; margin-top:60px; text-align:center;">No tienes acceso.</p>';
+        return;
+      }
+
+      miPerfil = perfil;
+      document.getElementById('texto-usuario').textContent =
+        `${perfil.nombre_completo} (${perfil.username}) — ${perfil.rol === 'TRABAJADOR' ? 'USUARIO' : (perfil.rol === 'REVISOR' ? 'SUPERVISOR' : perfil.rol)}`;
+      if (perfil.rol === 'ADMIN' || perfil.rol === 'REVISOR') document.getElementById('btn-informe').style.display = 'inline-block';
+
+      if (!pareceGestor()) {
+        document.getElementById('contenido').innerHTML = '<div class="card"><p>Esta página es para gestores. Ve a <a href="resumen.html">Resumen</a> para ver tus tareas.</p></div>';
+        return;
+      }
+
+      await cargarYPintar();
+      suscribirseARealtime();
+    }
+
+    iniciar();
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    }
+  </script>
+</body>
+</html>

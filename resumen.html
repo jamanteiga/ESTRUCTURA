@@ -21,6 +21,7 @@
     body.tema-oscuro .ruta-nodo { color: #a0a0a0; }
     body.tema-oscuro .overlay-caja { background: #24282e; color: #e0e0e0; }
     body.tema-oscuro select, body.tema-oscuro input { background: #1a1d21; color: #e0e0e0; border-color: #4a4f57; }
+    body.tema-oscuro a { color: #6cb2eb; }
     .header-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
     button { padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; }
     button.secundario { background: #6c757d; }
@@ -166,21 +167,6 @@
     </div>
   </div>
 
-  <div class="overlay" id="modal-reasignar-masivo">
-    <div class="overlay-caja" style="max-width:480px;">
-      <h3>↔ Reasignar tareas de <span id="rm-origen-nombre"></span></h3>
-      <label>Pasar a</label>
-      <select id="rm-destino"><option value="">Elige un usuario...</option></select>
-      <p style="font-size:12px; color:#666; margin:10px 0 2px;">Tareas abiertas (desmarca las que no quieras mover):</p>
-      <div id="rm-lista-tareas" style="max-height:240px; overflow-y:auto; border:1px solid #eee; border-radius:6px; padding:6px;"></div>
-      <div class="estado-msg" id="rm-estado"></div>
-      <div class="overlay-botones">
-        <button class="secundario" onclick="cerrarModalReasignarMasivo()">Cancelar</button>
-        <button onclick="confirmarReasignarMasivo()">Reasignar seleccionadas</button>
-      </div>
-    </div>
-  </div>
-
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script>
@@ -238,77 +224,11 @@
     let miPerfil = null;
     let filtroDetalleEstado = null;
 
-    // Cada tarjeta de la vista de gestor se puede mostrar u ocultar por
-    // separado, con la preferencia guardada en localStorage.
-    const SECCIONES_RESUMEN = [
-      { key: 'kpisBuque', storage: 'estructura_resumen_ver_kpis', label: '📈 KPIs por buque' },
-      { key: 'curvaBuque', storage: 'estructura_resumen_ver_curva', label: '📉 Avance por buque' },
-      { key: 'kpisBloque', storage: 'estructura_resumen_ver_kpis_bloque', label: '📈 KPIs por bloque' },
-      { key: 'curvaBloque', storage: 'estructura_resumen_ver_curva_bloque', label: '📉 Avance por bloque' },
-      { key: 'colaRevision', storage: 'estructura_resumen_ver_cola', label: '⏳ Cola de revisión' },
-      { key: 'previsionCarga', storage: 'estructura_resumen_ver_prevision', label: '🗓️ Previsión de carga' },
-      { key: 'tareasPorTipo', storage: 'estructura_resumen_ver_tipo', label: '🔧 Tareas por tipo' },
-      { key: 'cargaTrabajo', storage: 'estructura_resumen_ver_carga', label: '👷 Carga de trabajo' },
-      { key: 'dudas', storage: 'estructura_resumen_ver_dudas', label: '❓ Pendientes de dudas' },
-      { key: 'cambiosModelo', storage: 'estructura_resumen_ver_cambios', label: '🔧 Cambios de modelo' },
-      { key: 'rechazados', storage: 'estructura_resumen_ver_rechazados', label: '✘ Rechazados' },
-      { key: 'sinAsignar', storage: 'estructura_resumen_ver_sinasignar', label: '🚫 Sin asignar' }
-    ];
-
-    const visibilidadSecciones = {};
-    SECCIONES_RESUMEN.forEach(s => { visibilidadSecciones[s.key] = localStorage.getItem(s.storage) !== 'false'; });
-
-    function alternarSeccion(key) {
-      visibilidadSecciones[key] = !visibilidadSecciones[key];
-      const cfg = SECCIONES_RESUMEN.find(s => s.key === key);
-      localStorage.setItem(cfg.storage, visibilidadSecciones[key] ? 'true' : 'false');
-      pintarVistaGestor();
-    }
-
-    function mostrarTodasLasSecciones() {
-      SECCIONES_RESUMEN.forEach(s => {
-        visibilidadSecciones[s.key] = true;
-        localStorage.setItem(s.storage, 'true');
-      });
-      pintarVistaGestor();
-    }
-
-    function renderToolbarVisibilidad() {
-      return `
-        <div class="card" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-          <strong style="font-size:12px; color:#888; margin-right:2px;">Mostrar:</strong>
-          ${SECCIONES_RESUMEN.map(s => `
-            <button class="${visibilidadSecciones[s.key] ? '' : 'secundario'}" style="padding:4px 9px; font-size:11px;" onclick="alternarSeccion('${s.key}')">${s.label} ${visibilidadSecciones[s.key] ? '👁️' : '🚫'}</button>
-          `).join('')}
-          <button style="padding:4px 9px; font-size:11px; background:#28a745;" onclick="mostrarTodasLasSecciones()">✅ Ver todo</button>
-        </div>
-      `;
-    }
-
-    // Nodo BLOQUE al que pertenece un nodo (subiendo por la jerarquía),
-    // igual que buqueDeNodo() pero un nivel más concreto.
-    function bloqueDeNodo(nodo) {
-      let actual = nodo;
-      while (actual) {
-        if (actual.tipo === 'BLOQUE') return actual;
-        actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
-      }
-      return null;
-    }
-
-    function listaBloques() {
-      return Object.values(mapaNodoPorId)
-        .filter(n => n.tipo === 'BLOQUE')
-        .sort((a, b) => (a.codigo || '').localeCompare(b.codigo || '', 'es', { numeric: true }));
-    }
-
-    // Filtros de la vista de gestor: por usuario individual/Todos y por estado.
+    // Filtro de usuario de la tabla "Tareas por tipo" (Todos / individual).
     let filtroTipoUsuarioId = null;
-    let filtroCargaUsuarioId = null;
-    let filtroCargaEstado = null;
 
     // Usuarios (trabajadores) que tienen alguna tarea asignada, para rellenar
-    // los selectores "Usuario: Todos / <nombre>" de las tablas de abajo.
+    // el selector "Usuario: Todos / <nombre>" de Tareas por tipo.
     function usuariosConTareasAsignadas(nodos) {
       const ids = [...new Set(nodos.filter(n => n.trabajador_id && idsUsuariosGestor.has(n.trabajador_id)).map(n => n.trabajador_id))];
       return ids
@@ -635,72 +555,6 @@
       await recargarDatos();
     }
 
-    // -------------------- Reasignación masiva (por usuario) --------------------
-
-    let usuarioReasignarOrigenId = null;
-
-    function abrirModalReasignarMasivo(usuarioOrigenId) {
-      usuarioReasignarOrigenId = usuarioOrigenId;
-      const origen = perfilesCache.find(p => p.id === usuarioOrigenId);
-      document.getElementById('rm-origen-nombre').textContent = origen ? origen.nombre_completo : '';
-
-      const abiertas = nodosGestorActual.filter(n => n.trabajador_id === usuarioOrigenId && calcularEstadoPropio(n) !== 'aprobado');
-      const lista = document.getElementById('rm-lista-tareas');
-      lista.innerHTML = abiertas.length === 0
-        ? '<p style="font-size:12px; color:#888; margin:0;">Sin tareas abiertas.</p>'
-        : abiertas.map(n => `
-            <label style="display:flex; align-items:center; gap:6px; font-size:12px; padding:3px 0; font-weight:normal;">
-              <input type="checkbox" class="rm-chk-tarea" value="${n.id}" checked style="width:auto;">
-              <span><strong>${n.codigo}</strong> ${n.nombre} <span style="color:#888;">(${ETIQUETAS_ESTADO[calcularEstadoPropio(n)]})</span></span>
-            </label>
-          `).join('');
-
-      const destinos = perfilesCache.filter(p => p.rol === 'TRABAJADOR' && p.id !== usuarioOrigenId);
-      document.getElementById('rm-destino').innerHTML = '<option value="">Elige un usuario...</option>' +
-        opcionesTrabajadorConCarga(destinos, null);
-
-      document.getElementById('rm-estado').textContent = '';
-      document.getElementById('modal-reasignar-masivo').style.display = 'flex';
-    }
-
-    function cerrarModalReasignarMasivo() {
-      document.getElementById('modal-reasignar-masivo').style.display = 'none';
-    }
-
-    async function confirmarReasignarMasivo() {
-      const estadoEl = document.getElementById('rm-estado');
-      const destinoId = document.getElementById('rm-destino').value;
-      if (!destinoId) { estadoEl.textContent = 'Elige a quién se reasignan.'; estadoEl.className = 'estado-msg error'; return; }
-
-      const idsSeleccionados = Array.from(document.querySelectorAll('.rm-chk-tarea:checked')).map(chk => chk.value);
-      if (idsSeleccionados.length === 0) { estadoEl.textContent = 'No has seleccionado ninguna tarea.'; estadoEl.className = 'estado-msg error'; return; }
-
-      estadoEl.textContent = `Reasignando ${idsSeleccionados.length} tarea(s)...`; estadoEl.className = 'estado-msg';
-
-      let fallos = 0;
-      for (const nodeId of idsSeleccionados) {
-        const nodo = mapaNodoPorId[nodeId];
-        const { error } = await supabaseClient.rpc('asignar_trabajo', {
-          p_node_id: nodeId, p_trabajador_id: destinoId, p_revisor_id: nodo?.revisor_id || null
-        });
-        if (error) fallos++;
-      }
-
-      const origen = perfilesCache.find(p => p.id === usuarioReasignarOrigenId);
-      const destino = perfilesCache.find(p => p.id === destinoId);
-      await registrarLog('REASIGNACION_MASIVA', `Reasignó ${idsSeleccionados.length - fallos} tarea(s) de ${origen?.nombre_completo || '?'} a ${destino?.nombre_completo || '?'}${fallos > 0 ? ` (${fallos} fallaron)` : ''}`);
-
-      if (fallos > 0) {
-        estadoEl.textContent = `${idsSeleccionados.length - fallos} reasignada(s), ${fallos} con error.`;
-        estadoEl.className = 'estado-msg error';
-        await recargarDatos();
-        return;
-      }
-
-      cerrarModalReasignarMasivo();
-      await recargarDatos();
-    }
-
     function aplicarTema(tema) {
       document.body.classList.toggle('tema-oscuro', tema === 'oscuro');
       localStorage.setItem('estructura_tema', tema);
@@ -891,20 +745,6 @@
       if (pareceGestor()) pintarVistaGestor(); else pintarVistaUsuario();
     }
 
-    let comentariosModeloCache = { GHE: [], NAV: [] };
-
-    async function cargarComentariosModeloParaKPIs() {
-      if (!esGestor()) { comentariosModeloCache = { GHE: [], NAV: [] }; return; }
-      const [rGhe, rNav] = await Promise.all([
-        supabaseClient.rpc('listar_todos_comentarios_modelo', { p_origen: 'GHE' }),
-        supabaseClient.rpc('listar_todos_comentarios_modelo', { p_origen: 'NAV' })
-      ]);
-      comentariosModeloCache = {
-        GHE: rGhe.error ? [] : (rGhe.data || []),
-        NAV: rNav.error ? [] : (rNav.data || [])
-      };
-    }
-
     function buqueDeNodo(nodo) {
       let actual = nodo;
       while (actual) {
@@ -1085,213 +925,6 @@
       });
     }
 
-    const UMBRAL_CUELLO_BOTELLA_DIAS = 3;
-
-    function formatearMinutos(mins) {
-      if (mins === null || mins === undefined) return '—';
-      const totalMin = Math.round(mins);
-      if (totalMin <= 0) return '—';
-      const dias = Math.floor(totalMin / 1440);
-      const horas = Math.floor((totalMin % 1440) / 60);
-      const m = totalMin % 60;
-      if (dias > 0) return `${dias}d ${horas}h`;
-      if (horas > 0) return `${horas}h ${m}min`;
-      return `${m}min`;
-    }
-
-    // KPIs comunes de un conjunto de nodos (un buque, un bloque, etc.).
-    function calcularKPIsConjunto(propios) {
-      const ahora = new Date();
-      const total = propios.length;
-      const aprobados = propios.filter(n => calcularEstadoPropio(n) === 'aprobado').length;
-      const rechazados = propios.filter(n => calcularEstadoPropio(n) === 'rechazado').length;
-      const avance = total > 0 ? Math.round((aprobados / total) * 100) : 0;
-      const revisados = aprobados + rechazados;
-      const pctRechazo = revisados > 0 ? Math.round((rechazados / revisados) * 100) : 0;
-
-      const enColaRevision = propios.filter(n =>
-        (n.revision_estado === 'PENDIENTE' || n.revision_estado === 'EN_REVISION') && n.trabajo_terminado_en
-      );
-      const cuellosBotella = enColaRevision.filter(n => {
-        const dias = (ahora - new Date(n.trabajo_terminado_en)) / 86400000;
-        return dias > UMBRAL_CUELLO_BOTELLA_DIAS;
-      }).length;
-
-      const revisionesConTiempo = propios.filter(n =>
-        n.trabajo_terminado_en && n.revisado_en && (n.revision_estado === 'APROBADO' || n.revision_estado === 'RECHAZADO')
-      );
-      let tiempoMedioRevisionMin = null;
-      if (revisionesConTiempo.length > 0) {
-        const totalMin = revisionesConTiempo.reduce((acc, n) =>
-          acc + (new Date(n.revisado_en) - new Date(n.trabajo_terminado_en)) / 60000, 0);
-        tiempoMedioRevisionMin = totalMin / revisionesConTiempo.length;
-      }
-
-      return { total, avance, cuellosBotella, tiempoMedioRevisionMin, pctRechazo };
-    }
-
-    function calcularKPIsPorBuque(nodos) {
-      const buques = Object.values(mapaNodoPorId).filter(n => n.tipo === 'BUQUE');
-      const ahora = new Date();
-
-      return buques.map(buque => {
-        const propios = nodos.filter(n => { const b = buqueDeNodo(n); return b && b.id === buque.id; });
-        const base = calcularKPIsConjunto(propios);
-
-        const comentariosBuque = (origen) => (comentariosModeloCache[origen] || []).filter(c => c.buque_id === buque.id);
-        const abiertosGhe = comentariosBuque('GHE').filter(c => !c.implementado);
-        const abiertosNav = comentariosBuque('NAV').filter(c => !c.implementado);
-        const masAntiguo = (lista) => lista.length === 0 ? null :
-          lista.reduce((min, c) => new Date(c.creado_en) < new Date(min.creado_en) ? c : min);
-        const diasAntiguedad = (c) => c ? Math.floor((ahora - new Date(c.creado_en)) / 86400000) : null;
-
-        return {
-          buque, ...base,
-          abiertosGhe: abiertosGhe.length, abiertosNav: abiertosNav.length,
-          antiguedadGheMax: diasAntiguedad(masAntiguo(abiertosGhe)),
-          antiguedadNavMax: diasAntiguedad(masAntiguo(abiertosNav))
-        };
-      }).sort((a, b) => b.cuellosBotella - a.cuellosBotella);
-    }
-
-    let filtroKPIBloqueId = null;
-
-    function renderKPIsBloqueCard() {
-      const bloques = listaBloques();
-      if (bloques.length === 0) return '';
-      if (!filtroKPIBloqueId || !bloques.some(b => b.id === filtroKPIBloqueId)) {
-        filtroKPIBloqueId = bloques[0].id;
-      }
-      const propios = nodosGestorActual.filter(n => { const b = bloqueDeNodo(n); return b && b.id === filtroKPIBloqueId; });
-      const kpi = propios.length === 0 ? null : calcularKPIsConjunto(propios);
-      return `
-        <div class="card solo-escritorio">
-          <h2>📈 KPIs por bloque</h2>
-          <label style="display:inline-block; font-size:12px; font-weight:bold; margin-bottom:8px;">Bloque:
-            <select onchange="filtroKPIBloqueId = this.value; pintarVistaGestor();" style="padding:4px; border-radius:4px; border:1px solid #ccc; margin-left:6px;">
-              ${bloques.map(b => `<option value="${b.id}" ${b.id === filtroKPIBloqueId ? 'selected' : ''}>${b.codigo}</option>`).join('')}
-            </select>
-          </label>
-          ${!kpi ? '<p style="font-size:12px; color:#888;">Este bloque no tiene tareas todavía.</p>' : `
-            <table>
-              <thead><tr><th>Nodos</th><th>% Avance</th><th>⚠️ Cuellos de botella</th><th>Tiempo medio de revisión</th><th>% Rechazo</th></tr></thead>
-              <tbody>
-                <tr>
-                  <td class="num">${kpi.total}</td>
-                  <td class="num">${kpi.avance}%</td>
-                  <td class="num" style="${kpi.cuellosBotella > 0 ? 'color:#dc3545; font-weight:bold;' : ''}">${kpi.cuellosBotella}</td>
-                  <td class="num">${formatearMinutos(kpi.tiempoMedioRevisionMin)}</td>
-                  <td class="num">${kpi.pctRechazo}%</td>
-                </tr>
-              </tbody>
-            </table>
-          `}
-        </div>
-      `;
-    }
-
-    function renderKPIsPorBuque() {
-      const filas = calcularKPIsPorBuque(nodosGestorActual);
-      if (filas.length === 0) return '';
-      return `
-        <div class="card solo-escritorio">
-          <h2>📈 KPIs por buque</h2>
-          <p style="font-size:11px; color:#888; margin:-4px 0 8px;">
-            Ordenado por cuellos de botella (más críticos arriba). Cuello de botella = tarea esperando revisión desde hace más de ${UMBRAL_CUELLO_BOTELLA_DIAS} días.
-          </p>
-          <table>
-            <thead>
-              <tr>
-                <th>Buque</th><th>Nodos</th><th>% Avance</th><th>⚠️ Cuellos de botella</th>
-                <th>Tiempo medio de revisión</th><th>% Rechazo</th>
-                <th>Ghenova abiertos</th><th>Navantia abiertos</th><th></th>
-              </tr>
-            </thead>
-            <tbody>
-              ${filas.map(f => `
-                <tr>
-                  <td><strong>${f.buque.codigo}</strong></td>
-                  <td class="num">${f.total}</td>
-                  <td class="num">${f.avance}%</td>
-                  <td class="num" style="${f.cuellosBotella > 0 ? 'color:#dc3545; font-weight:bold;' : ''}">${f.cuellosBotella}</td>
-                  <td class="num">${formatearMinutos(f.tiempoMedioRevisionMin)}</td>
-                  <td class="num">${f.pctRechazo}%</td>
-                  <td class="num">${f.abiertosGhe}${f.antiguedadGheMax !== null ? ` (máx ${f.antiguedadGheMax}d)` : ''}</td>
-                  <td class="num">${f.abiertosNav}${f.antiguedadNavMax !== null ? ` (máx ${f.antiguedadNavMax}d)` : ''}</td>
-                  <td class="num"><a href="informe.html?buque=${f.buque.id}" title="Informe ejecutivo de ${f.buque.codigo}" style="text-decoration:none;">🖨️</a></td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
-      `;
-    }
-
-    const NUM_SEMANAS_PREVISION = 6;
-
-    function calcularPrevisionCargaFutura(nodos) {
-      const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-      const diaSemanaISO = hoy.getDay() || 7; // lunes=1 ... domingo=7
-      const lunes = new Date(hoy); lunes.setDate(hoy.getDate() - (diaSemanaISO - 1));
-      const semanas = [];
-      for (let i = 0; i < NUM_SEMANAS_PREVISION; i++) {
-        const inicio = new Date(lunes); inicio.setDate(inicio.getDate() + i * 7);
-        const fin = new Date(inicio); fin.setDate(fin.getDate() + 6);
-        semanas.push({ inicio, fin });
-      }
-
-      const porUsuario = {};
-      nodos.forEach(n => {
-        if (!n.trabajador_id || !idsUsuariosGestor.has(n.trabajador_id)) return;
-        if (calcularEstadoPropio(n) === 'aprobado') return;
-        if (!n.fecha_inicio_prevista && !n.fecha_fin_prevista) return;
-        const ini = n.fecha_inicio_prevista ? new Date(n.fecha_inicio_prevista + 'T00:00:00') : new Date(n.fecha_fin_prevista + 'T00:00:00');
-        const fin = n.fecha_fin_prevista ? new Date(n.fecha_fin_prevista + 'T00:00:00') : ini;
-        if (!porUsuario[n.trabajador_id]) porUsuario[n.trabajador_id] = { nombre: n.trabajador_nombre, semanas: new Array(NUM_SEMANAS_PREVISION).fill(0) };
-        semanas.forEach((s, i) => { if (ini <= s.fin && fin >= s.inicio) porUsuario[n.trabajador_id].semanas[i]++; });
-      });
-
-      return { semanas, filas: Object.values(porUsuario).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')) };
-    }
-
-    function colorCeldaCarga(n) {
-      if (n === 0) return '';
-      if (n <= 1) return 'background:#fff3cd;';
-      if (n <= 3) return 'background:#ffc107;';
-      return 'background:#dc3545; color:#fff;';
-    }
-
-    function renderPrevisionCargaFutura() {
-      const { semanas, filas } = calcularPrevisionCargaFutura(nodosGestorActual);
-      return `
-        <div class="card solo-escritorio">
-          <h2>📅 Previsión de carga futura</h2>
-          <p style="font-size:11px; color:#888; margin:-4px 0 8px;">
-            Tareas pendientes (sin aprobar) por usuario que caen en cada semana según su fecha prevista. Sirve para ver quién se va a saturar antes de que pase, no solo quién está ocupado hoy.
-            ${filas.length === 0 ? ' Todavía no hay tareas con fechas previstas para calcularla.' : ''}
-          </p>
-          ${filas.length === 0 ? '' : `
-            <table>
-              <thead>
-                <tr>
-                  <th>Usuario</th>
-                  ${semanas.map(s => `<th>${String(s.inicio.getDate()).padStart(2, '0')}/${String(s.inicio.getMonth() + 1).padStart(2, '0')}</th>`).join('')}
-                </tr>
-              </thead>
-              <tbody>
-                ${filas.map(f => `
-                  <tr>
-                    <td>${f.nombre}</td>
-                    ${f.semanas.map(n => `<td class="num" style="${colorCeldaCarga(n)}">${n || ''}</td>`).join('')}
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          `}
-        </div>
-      `;
-    }
-
     async function renderVistaGestor(nodos) {
       nodosGestorActual = nodos;
 
@@ -1303,7 +936,6 @@
         idsUsuariosGestor = new Set((perfiles || []).filter(p => p.rol === 'TRABAJADOR').map(p => p.id));
       }
 
-      await cargarComentariosModeloParaKPIs();
       pintarVistaGestor();
     }
 
@@ -1315,73 +947,6 @@
         const e = calcularEstadoPropio(n);
         conteoGeneral[e] = (conteoGeneral[e] || 0) + 1;
       });
-
-      const usuariosParaFiltroCarga = usuariosConTareasAsignadas(nodos);
-      const nodosParaCarga = nodos.filter(n =>
-        (!filtroCargaUsuarioId || n.trabajador_id === filtroCargaUsuarioId) &&
-        (!filtroCargaEstado || calcularEstadoPropio(n) === filtroCargaEstado)
-      );
-
-      const conteoPorUsuario = {};
-      nodosParaCarga.forEach(n => {
-        if (n.trabajador_id && idsUsuariosGestor.has(n.trabajador_id)) {
-          if (!conteoPorUsuario[n.trabajador_id]) {
-            conteoPorUsuario[n.trabajador_id] = { id: n.trabajador_id, nombre: n.trabajador_nombre, tiempoEnProcesoMs: 0 };
-            ESTADOS_ORDEN.forEach(e => conteoPorUsuario[n.trabajador_id][e] = 0);
-          }
-          conteoPorUsuario[n.trabajador_id][calcularEstadoPropio(n)]++;
-          if (n.trabajo_estado === 'EN_TRABAJO' && n.trabajo_iniciado_en) {
-            conteoPorUsuario[n.trabajador_id].tiempoEnProcesoMs += (new Date() - new Date(n.trabajo_iniciado_en));
-          }
-        }
-      });
-
-      const columnasUsuario = ESTADOS_ORDEN.filter(e => e !== 'sin_asignar');
-
-      const filasUsuario = Object.values(conteoPorUsuario)
-        .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
-        .map(u => {
-          const abiertas = columnasUsuario.reduce((acc, e) => acc + (e === 'aprobado' ? 0 : u[e]), 0);
-          return `
-          <tr>
-            <td>${u.nombre}</td>
-            <td class="num" style="font-weight:bold;">${abiertas}</td>
-            <td class="num">${formatearMinutos(u.tiempoEnProcesoMs / 60000)}</td>
-            ${columnasUsuario.map(e => `<td class="num">${u[e]}</td>`).join('')}
-            <td class="num">${abiertas > 0 ? `<button class="secundario" style="padding:3px 8px; font-size:11px;" onclick="abrirModalReasignarMasivo('${u.id}')">↔ Reasignar</button>` : ''}</td>
-          </tr>
-        `;
-        }).join('');
-
-      const rechazados = nodos.filter(n => n.revision_estado === 'RECHAZADO');
-      const dudas = nodos.filter(n => n.trabajo_estado === 'PENDIENTE_DUDAS');
-      const cambiosModelo = nodos.filter(n => n.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO');
-      const sinAsignar = nodos.filter(n => calcularEstadoPropio(n) === 'sin_asignar');
-
-      const colaRevision = nodos
-        .filter(n => n.revision_estado === 'PENDIENTE' || n.revision_estado === 'EN_REVISION')
-        .filter(n => n.trabajo_terminado_en)
-        .sort((a, b) => new Date(a.trabajo_terminado_en) - new Date(b.trabajo_terminado_en));
-
-      function formatearEspera(iso) {
-        const minutos = Math.floor((new Date() - new Date(iso)) / 60000);
-        const horas = Math.floor(minutos / 60);
-        const dias = Math.floor(horas / 24);
-        if (dias > 0) return `${dias}d ${horas % 24}h esperando`;
-        return `${horas}h ${String(minutos % 60).padStart(2, '0')}min esperando`;
-      }
-
-      const filasColaRevision = colaRevision.length === 0
-        ? '<li>Nada pendiente de revisión ahora mismo.</li>'
-        : colaRevision.map(n => `
-            <li ${'oncontextmenu="mostrarMenuAsignarResumen(event, \'' + n.id + '\'); return false;" style="cursor:context-menu;"'}>
-              <span class="flecha f-pendiente_revision">▶</span>
-              <div>
-                <div><strong>${n.codigo}</strong> ${n.nombre} ${n.trabajador_nombre ? `— 👷 ${n.trabajador_nombre}` : ''}</div>
-                <div class="ruta-nodo">${rutaCompleta(n)} · <strong style="color:#b36b00;">${formatearEspera(n.trabajo_terminado_en)}</strong></div>
-              </div>
-            </li>
-          `).join('');
 
       const nodosDetalle = filtroDetalleEstado ? nodos.filter(n => calcularEstadoPropio(n) === filtroDetalleEstado) : [];
       const tituloDetalle = filtroDetalleEstado
@@ -1395,17 +960,7 @@
           ${renderContadores(conteoGeneral, true, nodos.length)}
         </div>
 
-        ${renderToolbarVisibilidad()}
-
         ${renderPanelRiesgos()}
-
-        ${visibilidadSecciones.kpisBuque ? renderKPIsPorBuque() : ''}
-
-        ${visibilidadSecciones.curvaBuque ? renderCurvaAvanceCard() : ''}
-
-        ${visibilidadSecciones.kpisBloque ? renderKPIsBloqueCard() : ''}
-
-        ${visibilidadSecciones.curvaBloque ? renderCurvaAvanceBloqueCard() : ''}
 
         ${renderMotivosRetrasoCard()}
 
@@ -1418,250 +973,25 @@
           </div>
         ` : ''}
 
-        ${visibilidadSecciones.colaRevision ? `
-          <div class="card">
-            <h2>⏳ Cola de revisión, por antigüedad (${colaRevision.length})</h2>
-            <p style="font-size:11px; color:#888; margin:-4px 0 8px;">La que más tiempo lleva esperando, arriba del todo.</p>
-            <ul class="lista-nodos" style="max-height:300px; overflow-y:auto;">
-              ${filasColaRevision}
-            </ul>
-          </div>
-        ` : ''}
+        ${renderTareasPorTipoCard()}
 
-        ${visibilidadSecciones.previsionCarga ? renderPrevisionCargaFutura() : ''}
-
-        ${visibilidadSecciones.tareasPorTipo ? renderTareasPorTipoCard() : ''}
-
-        ${visibilidadSecciones.cargaTrabajo ? `
-          <div class="card solo-escritorio">
-            <h2>👷 Carga de trabajo por usuario</h2>
-            <p style="font-size:11px; color:#888; margin:-4px 0 8px;">"Abiertas" = tareas sin aprobar todavía. "En proceso" = tiempo acumulado de las tareas que tiene empezadas ahora mismo (para repartir carga).</p>
-            <div style="display:flex; gap:14px; flex-wrap:wrap; align-items:center; margin-bottom:8px;">
-              <label style="font-size:12px; font-weight:bold;">Usuario:
-                <select onchange="filtroCargaUsuarioId = this.value || null; pintarVistaGestor();" style="padding:4px; border-radius:4px; border:1px solid #ccc; margin-left:6px;">
-                  <option value="" ${!filtroCargaUsuarioId ? 'selected' : ''}>Todos</option>
-                  ${usuariosParaFiltroCarga.map(u => `<option value="${u.id}" ${u.id === filtroCargaUsuarioId ? 'selected' : ''}>${u.nombre}</option>`).join('')}
-                </select>
-              </label>
-              <label style="font-size:12px; font-weight:bold;">Estado:
-                <select onchange="filtroCargaEstado = this.value || null; pintarVistaGestor();" style="padding:4px; border-radius:4px; border:1px solid #ccc; margin-left:6px;">
-                  <option value="" ${!filtroCargaEstado ? 'selected' : ''}>Todos</option>
-                  ${columnasUsuario.map(e => `<option value="${e}" ${e === filtroCargaEstado ? 'selected' : ''}>${ETIQUETAS_ESTADO[e]}</option>`).join('')}
-                </select>
-              </label>
-              ${(filtroCargaUsuarioId || filtroCargaEstado) ? `<button class="secundario" style="padding:3px 10px; font-size:11px;" onclick="filtroCargaUsuarioId=null; filtroCargaEstado=null; pintarVistaGestor();">✕ Quitar filtros</button>` : ''}
-            </div>
-            <table>
-              <thead>
-                <tr>
-                  <th>Usuario</th>
-                  <th>Abiertas</th>
-                  <th>⏱️ En proceso</th>
-                  ${columnasUsuario.map(e => `<th>${ETIQUETAS_ESTADO[e]}</th>`).join('')}
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>${filasUsuario || `<tr><td colspan="${columnasUsuario.length + 4}">${(filtroCargaUsuarioId || filtroCargaEstado) ? 'Nadie cumple ese filtro.' : 'Nadie tiene tareas asignadas todavía.'}</td></tr>`}</tbody>
-            </table>
-          </div>
-        ` : ''}
-
-        ${visibilidadSecciones.dudas ? `
-          <div class="card">
-            <h2>❓ Pendientes de dudas (${dudas.length})</h2>
-            ${envolverListaConScroll(dudas, 'Ninguna ahora mismo.', true)}
-          </div>
-        ` : ''}
-
-        ${visibilidadSecciones.cambiosModelo ? `
-          <div class="card">
-            <h2>🔧 Pendientes de cambios de modelo (${cambiosModelo.length})</h2>
-            ${envolverListaConScroll(cambiosModelo, 'Ninguna ahora mismo.', true)}
-          </div>
-        ` : ''}
-
-        ${visibilidadSecciones.rechazados ? `
-          <div class="card">
-            <h2>✘ Rechazados pendientes de corrección (${rechazados.length})</h2>
-            ${envolverListaConScroll(rechazados, 'Ninguno ahora mismo.', true)}
-          </div>
-        ` : ''}
-
-        ${visibilidadSecciones.sinAsignar ? `
-          <div class="card">
-            <h2>Sin asignar (${sinAsignar.length})</h2>
-            ${envolverListaConScroll(sinAsignar, 'Todo tiene usuario asignado.', true)}
-          </div>
-        ` : ''}
+        <div class="card" style="text-align:center; padding:14px;">
+          <p style="font-size:12px; color:#888; margin:0;">Más paneles de gestión, cada uno en su propia página:</p>
+          <p style="font-size:12px; margin:8px 0 0; line-height:2;">
+            <a href="kpi.html">📈 KPIs</a> &nbsp;·&nbsp;
+            <a href="avances.html">📉 Avances</a> &nbsp;·&nbsp;
+            <a href="revision.html">⏳ Cola de revisión</a> &nbsp;·&nbsp;
+            <a href="previsioncarga.html">📅 Previsión de carga</a> &nbsp;·&nbsp;
+            <a href="cargatrabajo.html">👷 Carga de trabajo</a> &nbsp;·&nbsp;
+            <a href="pendientedudas.html">❓ Pendiente de dudas</a> &nbsp;·&nbsp;
+            <a href="cambiosmodelo.html">🔧 Cambios de modelo</a> &nbsp;·&nbsp;
+            <a href="rechazados.html">✘ Rechazados</a> &nbsp;·&nbsp;
+            <a href="sinasignar.html">🚫 Sin asignar</a>
+          </p>
+        </div>
       `;
 
-      pintarCurvaAvance();
-      pintarCurvaAvanceBloque();
       pintarMotivosRetraso();
-    }
-
-    // -------------------- Curva de avance (plan vs. real) --------------------
-
-    let chartCurvaAvance = null;
-    let buqueCurvaSeleccionado = null;
-
-    function renderCurvaAvanceCard() {
-      const buques = Object.values(mapaNodoPorId).filter(n => n.tipo === 'BUQUE');
-      if (buques.length === 0) return '';
-      if (!buqueCurvaSeleccionado || !buques.some(b => b.id === buqueCurvaSeleccionado)) {
-        buqueCurvaSeleccionado = buques[0].id;
-      }
-      return `
-        <div class="card">
-          <h2>📈 Curva de avance — plan vs. real</h2>
-          <p style="font-size:11px; color:#888; margin:-4px 0 8px;">
-            La línea de plan solo cuenta las tareas que ya tienen fecha fin prevista fijada (menú del árbol → Fechas previstas).
-          </p>
-          <label style="display:inline-block; font-size:12px; font-weight:bold; margin-bottom:6px;">Buque:
-            <select id="sel-curva-buque" onchange="buqueCurvaSeleccionado = this.value; pintarCurvaAvance();" style="padding:4px; border-radius:4px; border:1px solid #ccc; margin-left:6px;">
-              ${buques.map(b => `<option value="${b.id}" ${b.id === buqueCurvaSeleccionado ? 'selected' : ''}>${b.codigo}</option>`).join('')}
-            </select>
-          </label>
-          <div id="curva-avance-vacio" style="display:none; font-size:12px; color:#888;">Todavía no hay fechas previstas ni tareas aprobadas en este buque para dibujar la curva.</div>
-          <div style="height:280px;"><canvas id="chart-curva-avance"></canvas></div>
-        </div>
-      `;
-    }
-
-    function construirCurvaAvanceParaPropios(propios) {
-      const total = propios.length;
-      if (total === 0) return null;
-
-      const eventosPlan = propios.filter(n => n.fecha_fin_prevista).map(n => n.fecha_fin_prevista);
-      const eventosReal = propios.filter(n => n.revision_estado === 'APROBADO' && n.revisado_en).map(n => n.revisado_en.slice(0, 10));
-      if (eventosPlan.length === 0 && eventosReal.length === 0) return null;
-
-      const hoyIso = new Date().toISOString().slice(0, 10);
-      const fechas = [...new Set([...eventosPlan, ...eventosReal, hoyIso])].sort();
-
-      const contarPlan = {}, contarReal = {};
-      eventosPlan.forEach(f => contarPlan[f] = (contarPlan[f] || 0) + 1);
-      eventosReal.forEach(f => contarReal[f] = (contarReal[f] || 0) + 1);
-
-      let acumPlan = 0, acumReal = 0;
-      const puntosPlan = [], puntosReal = [];
-      fechas.forEach(f => {
-        acumPlan += (contarPlan[f] || 0);
-        acumReal += (contarReal[f] || 0);
-        puntosPlan.push(Math.round((acumPlan / total) * 100));
-        puntosReal.push(f <= hoyIso ? Math.round((acumReal / total) * 100) : null);
-      });
-
-      return { labels: fechas.map(f => formatearFechaEjeCurva(f)), plan: puntosPlan, real: puntosReal };
-    }
-
-    function construirCurvaAvance(buqueId) {
-      const propios = nodosGestorActual.filter(n => { const b = buqueDeNodo(n); return b && b.id === buqueId; });
-      return construirCurvaAvanceParaPropios(propios);
-    }
-
-    function construirCurvaAvanceBloque(bloqueId) {
-      const propios = nodosGestorActual.filter(n => { const b = bloqueDeNodo(n); return b && b.id === bloqueId; });
-      return construirCurvaAvanceParaPropios(propios);
-    }
-
-    function formatearFechaEjeCurva(iso) {
-      const [a, m, d] = iso.split('-');
-      return `${d}/${m}`;
-    }
-
-    function pintarCurvaAvance() {
-      const canvas = document.getElementById('chart-curva-avance');
-      if (!canvas || typeof Chart === 'undefined') return;
-      const datos = construirCurvaAvance(buqueCurvaSeleccionado);
-      const vacioEl = document.getElementById('curva-avance-vacio');
-
-      if (chartCurvaAvance) { chartCurvaAvance.destroy(); chartCurvaAvance = null; }
-
-      if (!datos) {
-        canvas.style.display = 'none';
-        if (vacioEl) vacioEl.style.display = 'block';
-        return;
-      }
-      canvas.style.display = 'block';
-      if (vacioEl) vacioEl.style.display = 'none';
-
-      chartCurvaAvance = new Chart(canvas.getContext('2d'), {
-        type: 'line',
-        data: {
-          labels: datos.labels,
-          datasets: [
-            { label: 'Plan (% previsto acumulado)', data: datos.plan, borderColor: '#6c757d', borderDash: [5, 4], pointRadius: 0, tension: 0.1 },
-            { label: 'Real (% aprobado acumulado)', data: datos.real, borderColor: '#007bff', pointRadius: 0, tension: 0.1, spanGaps: false }
-          ]
-        },
-        options: {
-          responsive: true, maintainAspectRatio: false,
-          scales: { y: { min: 0, max: 100, ticks: { callback: v => v + '%' } } },
-          plugins: { legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 11 } } } }
-        }
-      });
-    }
-
-    // -------------------- Curva de avance por bloque --------------------
-
-    let chartCurvaAvanceBloque = null;
-    let bloqueCurvaSeleccionado = null;
-
-    function renderCurvaAvanceBloqueCard() {
-      const bloques = listaBloques();
-      if (bloques.length === 0) return '';
-      if (!bloqueCurvaSeleccionado || !bloques.some(b => b.id === bloqueCurvaSeleccionado)) {
-        bloqueCurvaSeleccionado = bloques[0].id;
-      }
-      return `
-        <div class="card">
-          <h2>📈 Curva de avance por bloque — plan vs. real</h2>
-          <p style="font-size:11px; color:#888; margin:-4px 0 8px;">
-            La línea de plan solo cuenta las tareas que ya tienen fecha fin prevista fijada (menú del árbol → Fechas previstas).
-          </p>
-          <label style="display:inline-block; font-size:12px; font-weight:bold; margin-bottom:6px;">Bloque:
-            <select id="sel-curva-bloque" onchange="bloqueCurvaSeleccionado = this.value; pintarCurvaAvanceBloque();" style="padding:4px; border-radius:4px; border:1px solid #ccc; margin-left:6px;">
-              ${bloques.map(b => `<option value="${b.id}" ${b.id === bloqueCurvaSeleccionado ? 'selected' : ''}>${b.codigo}</option>`).join('')}
-            </select>
-          </label>
-          <div id="curva-avance-bloque-vacio" style="display:none; font-size:12px; color:#888;">Todavía no hay fechas previstas ni tareas aprobadas en este bloque para dibujar la curva.</div>
-          <div style="height:280px;"><canvas id="chart-curva-avance-bloque"></canvas></div>
-        </div>
-      `;
-    }
-
-    function pintarCurvaAvanceBloque() {
-      const canvas = document.getElementById('chart-curva-avance-bloque');
-      if (!canvas || typeof Chart === 'undefined') return;
-      const datos = construirCurvaAvanceBloque(bloqueCurvaSeleccionado);
-      const vacioEl = document.getElementById('curva-avance-bloque-vacio');
-
-      if (chartCurvaAvanceBloque) { chartCurvaAvanceBloque.destroy(); chartCurvaAvanceBloque = null; }
-
-      if (!datos) {
-        canvas.style.display = 'none';
-        if (vacioEl) vacioEl.style.display = 'block';
-        return;
-      }
-      canvas.style.display = 'block';
-      if (vacioEl) vacioEl.style.display = 'none';
-
-      chartCurvaAvanceBloque = new Chart(canvas.getContext('2d'), {
-        type: 'line',
-        data: {
-          labels: datos.labels,
-          datasets: [
-            { label: 'Plan (% previsto acumulado)', data: datos.plan, borderColor: '#6c757d', borderDash: [5, 4], pointRadius: 0, tension: 0.1 },
-            { label: 'Real (% aprobado acumulado)', data: datos.real, borderColor: '#007bff', pointRadius: 0, tension: 0.1, spanGaps: false }
-          ]
-        },
-        options: {
-          responsive: true, maintainAspectRatio: false,
-          scales: { y: { min: 0, max: 100, ticks: { callback: v => v + '%' } } },
-          plugins: { legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 11 } } } }
-        }
-      });
     }
 
     document.addEventListener('keydown', (e) => {

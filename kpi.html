@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESTRUCTURA - KPIs</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#007bff">
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 1050px; margin: 30px auto; padding: 0 20px; color: #333; }
+    h1 { font-size: 22px; }
+    h2 { font-size: 15px; margin-top: 0; }
+    .card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    body.vista-movil .solo-escritorio { display: none !important; }
+    body.tema-oscuro { background: #1a1d21; color: #e0e0e0; }
+    body.tema-oscuro .card { background: #24282e; border-color: #3a3f47; }
+    body.tema-oscuro h1, body.tema-oscuro h2 { color: #f0f0f0; }
+    body.tema-oscuro table { color: #e0e0e0; }
+    body.tema-oscuro th { background: #14395c; }
+    body.tema-oscuro td { border-color: #3a3f47; }
+    body.tema-oscuro select, body.tema-oscuro input { background: #1a1d21; color: #e0e0e0; border-color: #4a4f57; }
+    .header-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+    button { padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; }
+    button.secundario { background: #6c757d; }
+    button.secundario:hover { background: #5a6268; }
+    .estado-msg { font-size: 13px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; background: white; font-size: 12px; }
+    th, td { padding: 6px; text-align: left; border-bottom: 1px solid #ddd; }
+    th { background: #1c6e8c; color: white; font-size: 11px; }
+    td.num { text-align: center; }
+  </style>
+</head>
+<body>
+
+  <div class="header-bar">
+    <h1>📈 KPIs</h1>
+    <div>
+      <span id="texto-usuario" class="estado-msg"></span>
+      <button class="secundario" onclick="alternarTema()">🌙/☀️</button>
+      <button class="secundario" onclick="location.href='index.html'">🏠 Inicio</button>
+      <button class="secundario" onclick="location.href='arbol.html'">🌳 Árbol</button>
+      <button class="secundario" onclick="location.href='kanban.html'">🗂️ Kanban</button>
+      <button class="secundario" id="btn-informe" onclick="location.href='informe.html'" style="display:none;">🖨️ Informe</button>
+      <button class="secundario" onclick="cerrarSesion()">Cerrar sesión</button>
+      <button style="background:#dc3545; color:white; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:13px;" onclick="cerrarPagina()">❌ Cerrar</button>
+    </div>
+  </div>
+
+  <div id="contenido">
+    <p>Cargando...</p>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const SUPABASE_URL = 'https://wuarkraddnndmgvfnkmm.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const esMovil = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || window.innerWidth < 768;
+    document.body.classList.toggle('vista-movil', esMovil);
+
+    const TIPOS_SIN_ASIGNACION = new Set(['BUQUE']);
+
+    let miPerfil = null;
+    let mapaNodoPorId = {};
+    let nodosGestorActual = [];
+    let comentariosModeloCache = { GHE: [], NAV: [] };
+
+    function esGestor() { return miPerfil.rol === 'ADMIN' || miPerfil.rol === 'REVISOR'; }
+    function esInvitado() { return miPerfil.rol === 'INVITADO'; }
+    function pareceGestor() { return esGestor() || esInvitado(); }
+
+    function calcularEstadoPropio(nodo) {
+      if (nodo.revision_estado === 'APROBADO') return 'aprobado';
+      if (nodo.revision_estado === 'RECHAZADO') return 'rechazado';
+      if (nodo.revision_estado === 'PENDIENTE' || nodo.revision_estado === 'EN_REVISION') return 'pendiente_revision';
+      if (nodo.trabajo_estado === 'EN_TRABAJO') return 'en_proceso';
+      if (nodo.trabajo_estado === 'PENDIENTE_DUDAS') return 'pendiente_dudas';
+      if (nodo.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO') return 'pendiente_cambios_modelo';
+      if (nodo.trabajador_id) return 'asignada_sin_empezar';
+      return 'sin_asignar';
+    }
+
+    function buqueDeNodo(nodo) {
+      let actual = nodo;
+      while (actual) {
+        if (actual.tipo === 'BUQUE') return actual;
+        actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
+      }
+      return null;
+    }
+
+    function bloqueDeNodo(nodo) {
+      let actual = nodo;
+      while (actual) {
+        if (actual.tipo === 'BLOQUE') return actual;
+        actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
+      }
+      return null;
+    }
+
+    function listaBloques() {
+      return Object.values(mapaNodoPorId)
+        .filter(n => n.tipo === 'BLOQUE')
+        .sort((a, b) => (a.codigo || '').localeCompare(b.codigo || '', 'es', { numeric: true }));
+    }
+
+    async function registrarLog(accion, descripcion) {
+      try {
+        await supabaseClient.from('audit_log').insert({ accion, descripcion, user_agent: navigator.userAgent });
+      } catch (e) {
+        console.warn('No se pudo registrar el log:', e);
+      }
+    }
+
+    async function cerrarSesion() {
+      await registrarLog('LOGOUT', `Cerró sesión (${miPerfil?.username || ''})`);
+      await supabaseClient.auth.signOut();
+      window.location.href = 'login.html';
+    }
+
+    function cerrarPagina() {
+      window.close();
+      setTimeout(() => { history.back(); }, 150);
+    }
+
+    function aplicarTema(tema) {
+      document.body.classList.toggle('tema-oscuro', tema === 'oscuro');
+      localStorage.setItem('estructura_tema', tema);
+    }
+    function alternarTema() {
+      aplicarTema(document.body.classList.contains('tema-oscuro') ? 'claro' : 'oscuro');
+    }
+    aplicarTema(localStorage.getItem('estructura_tema') || 'claro');
+
+    function formatearMinutos(mins) {
+      if (mins === null || mins === undefined) return '—';
+      const totalMin = Math.round(mins);
+      if (totalMin <= 0) return '—';
+      const dias = Math.floor(totalMin / 1440);
+      const horas = Math.floor((totalMin % 1440) / 60);
+      const m = totalMin % 60;
+      if (dias > 0) return `${dias}d ${horas}h`;
+      if (horas > 0) return `${horas}h ${m}min`;
+      return `${m}min`;
+    }
+
+    const UMBRAL_CUELLO_BOTELLA_DIAS = 3;
+
+    // KPIs comunes de un conjunto de nodos (un buque, un bloque, etc.).
+    function calcularKPIsConjunto(propios) {
+      const ahora = new Date();
+      const total = propios.length;
+      const aprobados = propios.filter(n => calcularEstadoPropio(n) === 'aprobado').length;
+      const rechazados = propios.filter(n => calcularEstadoPropio(n) === 'rechazado').length;
+      const avance = total > 0 ? Math.round((aprobados / total) * 100) : 0;
+      const revisados = aprobados + rechazados;
+      const pctRechazo = revisados > 0 ? Math.round((rechazados / revisados) * 100) : 0;
+
+      const enColaRevision = propios.filter(n =>
+        (n.revision_estado === 'PENDIENTE' || n.revision_estado === 'EN_REVISION') && n.trabajo_terminado_en
+      );
+      const cuellosBotella = enColaRevision.filter(n => {
+        const dias = (ahora - new Date(n.trabajo_terminado_en)) / 86400000;
+        return dias > UMBRAL_CUELLO_BOTELLA_DIAS;
+      }).length;
+
+      const revisionesConTiempo = propios.filter(n =>
+        n.trabajo_terminado_en && n.revisado_en && (n.revision_estado === 'APROBADO' || n.revision_estado === 'RECHAZADO')
+      );
+      let tiempoMedioRevisionMin = null;
+      if (revisionesConTiempo.length > 0) {
+        const totalMin = revisionesConTiempo.reduce((acc, n) =>
+          acc + (new Date(n.revisado_en) - new Date(n.trabajo_terminado_en)) / 60000, 0);
+        tiempoMedioRevisionMin = totalMin / revisionesConTiempo.length;
+      }
+
+      return { total, avance, cuellosBotella, tiempoMedioRevisionMin, pctRechazo };
+    }
+
+    function calcularKPIsPorBuque(nodos) {
+      const buques = Object.values(mapaNodoPorId).filter(n => n.tipo === 'BUQUE');
+      const ahora = new Date();
+
+      return buques.map(buque => {
+        const propios = nodos.filter(n => { const b = buqueDeNodo(n); return b && b.id === buque.id; });
+        const base = calcularKPIsConjunto(propios);
+
+        const comentariosBuque = (origen) => (comentariosModeloCache[origen] || []).filter(c => c.buque_id === buque.id);
+        const abiertosGhe = comentariosBuque('GHE').filter(c => !c.implementado);
+        const abiertosNav = comentariosBuque('NAV').filter(c => !c.implementado);
+        const masAntiguo = (lista) => lista.length === 0 ? null :
+          lista.reduce((min, c) => new Date(c.creado_en) < new Date(min.creado_en) ? c : min);
+        const diasAntiguedad = (c) => c ? Math.floor((ahora - new Date(c.creado_en)) / 86400000) : null;
+
+        return {
+          buque, ...base,
+          abiertosGhe: abiertosGhe.length, abiertosNav: abiertosNav.length,
+          antiguedadGheMax: diasAntiguedad(masAntiguo(abiertosGhe)),
+          antiguedadNavMax: diasAntiguedad(masAntiguo(abiertosNav))
+        };
+      }).sort((a, b) => b.cuellosBotella - a.cuellosBotella);
+    }
+
+    function renderKPIsPorBuque() {
+      const filas = calcularKPIsPorBuque(nodosGestorActual);
+      if (filas.length === 0) return '<div class="card"><p style="font-size:12px; color:#888;">Todavía no hay ningún buque.</p></div>';
+      return `
+        <div class="card">
+          <h2>📈 KPIs por buque</h2>
+          <p style="font-size:11px; color:#888; margin:-4px 0 8px;">
+            Ordenado por cuellos de botella (más críticos arriba). Cuello de botella = tarea esperando revisión desde hace más de ${UMBRAL_CUELLO_BOTELLA_DIAS} días.
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>Buque</th><th>Nodos</th><th>% Avance</th><th>⚠️ Cuellos de botella</th>
+                <th>Tiempo medio de revisión</th><th>% Rechazo</th>
+                <th>Ghenova abiertos</th><th>Navantia abiertos</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filas.map(f => `
+                <tr>
+                  <td><strong>${f.buque.codigo}</strong></td>
+                  <td class="num">${f.total}</td>
+                  <td class="num">${f.avance}%</td>
+                  <td class="num" style="${f.cuellosBotella > 0 ? 'color:#dc3545; font-weight:bold;' : ''}">${f.cuellosBotella}</td>
+                  <td class="num">${formatearMinutos(f.tiempoMedioRevisionMin)}</td>
+                  <td class="num">${f.pctRechazo}%</td>
+                  <td class="num">${f.abiertosGhe}${f.antiguedadGheMax !== null ? ` (máx ${f.antiguedadGheMax}d)` : ''}</td>
+                  <td class="num">${f.abiertosNav}${f.antiguedadNavMax !== null ? ` (máx ${f.antiguedadNavMax}d)` : ''}</td>
+                  <td class="num"><a href="informe.html?buque=${f.buque.id}" title="Informe ejecutivo de ${f.buque.codigo}" style="text-decoration:none;">🖨️</a></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    let filtroKPIBloqueId = null;
+
+    function renderKPIsBloqueCard() {
+      const bloques = listaBloques();
+      if (bloques.length === 0) return '';
+      if (!filtroKPIBloqueId || !bloques.some(b => b.id === filtroKPIBloqueId)) {
+        filtroKPIBloqueId = bloques[0].id;
+      }
+      const propios = nodosGestorActual.filter(n => { const b = bloqueDeNodo(n); return b && b.id === filtroKPIBloqueId; });
+      const kpi = propios.length === 0 ? null : calcularKPIsConjunto(propios);
+      return `
+        <div class="card">
+          <h2>📈 KPIs por bloque</h2>
+          <label style="display:inline-block; font-size:12px; font-weight:bold; margin-bottom:8px;">Bloque:
+            <select onchange="filtroKPIBloqueId = this.value; pintar();" style="padding:4px; border-radius:4px; border:1px solid #ccc; margin-left:6px;">
+              ${bloques.map(b => `<option value="${b.id}" ${b.id === filtroKPIBloqueId ? 'selected' : ''}>${b.codigo}</option>`).join('')}
+            </select>
+          </label>
+          ${!kpi ? '<p style="font-size:12px; color:#888;">Este bloque no tiene tareas todavía.</p>' : `
+            <table>
+              <thead><tr><th>Nodos</th><th>% Avance</th><th>⚠️ Cuellos de botella</th><th>Tiempo medio de revisión</th><th>% Rechazo</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td class="num">${kpi.total}</td>
+                  <td class="num">${kpi.avance}%</td>
+                  <td class="num" style="${kpi.cuellosBotella > 0 ? 'color:#dc3545; font-weight:bold;' : ''}">${kpi.cuellosBotella}</td>
+                  <td class="num">${formatearMinutos(kpi.tiempoMedioRevisionMin)}</td>
+                  <td class="num">${kpi.pctRechazo}%</td>
+                </tr>
+              </tbody>
+            </table>
+          `}
+        </div>
+      `;
+    }
+
+    async function cargarComentariosModeloParaKPIs() {
+      if (!esGestor()) { comentariosModeloCache = { GHE: [], NAV: [] }; return; }
+      const [rGhe, rNav] = await Promise.all([
+        supabaseClient.rpc('listar_todos_comentarios_modelo', { p_origen: 'GHE' }),
+        supabaseClient.rpc('listar_todos_comentarios_modelo', { p_origen: 'NAV' })
+      ]);
+      comentariosModeloCache = {
+        GHE: rGhe.error ? [] : (rGhe.data || []),
+        NAV: rNav.error ? [] : (rNav.data || [])
+      };
+    }
+
+    function pintar() {
+      document.getElementById('contenido').innerHTML = `
+        ${renderKPIsPorBuque()}
+        ${renderKPIsBloqueCard()}
+      `;
+    }
+
+    async function cargarYPintar() {
+      const { data: nodos, error } = await supabaseClient.from('v_nodes_with_workflow').select('*').eq('activo', true);
+      if (error) { document.getElementById('contenido').innerHTML = `<p style="color:red;">Error: ${error.message}</p>`; return; }
+      mapaNodoPorId = {};
+      nodos.forEach(n => { mapaNodoPorId[n.id] = n; });
+      nodosGestorActual = nodos.filter(n => !TIPOS_SIN_ASIGNACION.has(n.tipo));
+      await cargarComentariosModeloParaKPIs();
+      pintar();
+    }
+
+    let debounceRecarga = null;
+    function recargarConDebounce() { clearTimeout(debounceRecarga); debounceRecarga = setTimeout(() => cargarYPintar(), 400); }
+    function suscribirseARealtime() {
+      supabaseClient.channel('kpi_node_workflow').on('postgres_changes', { event: '*', schema: 'public', table: 'node_workflow' }, () => recargarConDebounce()).subscribe();
+      supabaseClient.channel('kpi_nodes').on('postgres_changes', { event: '*', schema: 'public', table: 'nodes' }, () => recargarConDebounce()).subscribe();
+    }
+
+    async function iniciar() {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (!session) { window.location.href = 'login.html?next=kpi.html'; return; }
+
+      const { data: perfil, error } = await supabaseClient
+        .from('profiles').select('*').eq('id', session.user.id).single();
+
+      if (error || !perfil || !perfil.activo) {
+        document.body.innerHTML = '<p style="color:red; font-weight:bold; margin-top:60px; text-align:center;">No tienes acceso.</p>';
+        return;
+      }
+
+      miPerfil = perfil;
+      document.getElementById('texto-usuario').textContent =
+        `${perfil.nombre_completo} (${perfil.username}) — ${perfil.rol === 'TRABAJADOR' ? 'USUARIO' : (perfil.rol === 'REVISOR' ? 'SUPERVISOR' : perfil.rol)}`;
+      if (perfil.rol === 'ADMIN' || perfil.rol === 'REVISOR') document.getElementById('btn-informe').style.display = 'inline-block';
+
+      if (!pareceGestor()) {
+        document.getElementById('contenido').innerHTML = '<div class="card"><p>Esta página es para gestores. Ve a <a href="resumen.html">Resumen</a> para ver tus tareas.</p></div>';
+        return;
+      }
+
+      await cargarYPintar();
+      suscribirseARealtime();
+    }
+
+    iniciar();
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    }
+  </script>
+</body>
+</html>
