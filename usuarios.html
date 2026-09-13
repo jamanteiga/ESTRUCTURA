@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ESTRUCTURA - Gestión de Usuarios</title>
   <style>
-    body { font-family: Arial, sans-serif; max-width: 980px; margin: 40px auto; padding: 0 20px; color: #333; }
+    body { font-family: Arial, sans-serif; max-width: 1300px; margin: 40px auto; padding: 0 20px; color: #333; }
     h1 { font-size: 22px; }
     h2 { font-size: 16px; margin-top: 30px; }
     .card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 20px; }
@@ -81,17 +81,15 @@
   </div>
 
   <div id="panel-admin">
-    <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
-      <span id="texto-sesion-activa" class="estado ok"></span>
-      <div>
+    <div class="card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:nowrap; gap:10px;">
+      <span id="texto-sesion-activa" class="estado ok" style="white-space:nowrap;"></span>
+      <div style="white-space:nowrap; overflow-x:auto; max-width:100%;">
         <button class="secundario" onclick="location.href='index.html'">🏠 Inicio</button>
         <button class="secundario" onclick="location.href='resumen.html'">📊 Resumen</button>
         <button class="secundario" onclick="location.href='arbol.html'">🌳 Árbol</button>
         <button class="secundario" onclick="location.href='log.html'">🗒️ Registro</button>
-        <span style="white-space:nowrap;">
-          <button class="secundario" onclick="cerrarSesion()">Cerrar sesión</button>
-          <button style="background:#dc3545;" onclick="cerrarPagina()">❌ Cerrar</button>
-        </span>
+        <button class="secundario" onclick="cerrarSesion()">Cerrar sesión</button>
+        <button style="background:#dc3545;" onclick="cerrarPagina()">❌ Cerrar</button>
       </div>
     </div>
 
