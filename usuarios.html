@@ -334,6 +334,22 @@
       return mensaje;
     }
 
+    // Cuando supabaseClient.functions.invoke(...) falla, error.message SIEMPRE
+    // es el texto genérico "Edge Function returned a non-2xx status code" —
+    // el motivo real que devuelve la función (p.ej. "Rol inválido...") va
+    // dentro de error.context, que es la respuesta HTTP y hay que parsear
+    // como JSON aparte. Sin esto, cualquier fallo de estas funciones se ve
+    // siempre igual y no hay forma de saber qué ha pasado de verdad.
+    async function extraerMensajeErrorFuncion(error) {
+      try {
+        if (error?.context?.json) {
+          const cuerpo = await error.context.json();
+          if (cuerpo?.error) return cuerpo.error;
+        }
+      } catch (e) { /* el cuerpo no era JSON legible — seguimos con el fallback */ }
+      return error?.message || 'Error desconocido';
+    }
+
     let miPerfil = null;
     let idEditando = null;
 
@@ -409,9 +425,10 @@
       btn.disabled = false; btn.textContent = 'Crear usuario';
 
       if (error || (data && data.error)) {
-        estadoEl.textContent = 'Error: ' + traducirError(data?.error || error.message);
+        const mensajeReal = data?.error || (error ? await extraerMensajeErrorFuncion(error) : 'Error desconocido');
+        estadoEl.textContent = 'Error: ' + traducirError(mensajeReal);
         estadoEl.className = 'estado error';
-        registrarLog('INTENTO_FALLIDO', `Intento de crear usuario "${username}" denegado: ${data?.error || error.message}`);
+        registrarLog('INTENTO_FALLIDO', `Intento de crear usuario "${username}" denegado: ${mensajeReal}`);
         return;
       }
 
@@ -771,8 +788,9 @@
       const { data, error } = await supabaseClient.functions.invoke('admin-reset-password', { body: { user_id: idEditando } });
 
       if (error || (data && data.error)) {
-        mostrarAvisoModal('Error: ' + traducirError(data?.error || error.message));
-        registrarLog('INTENTO_FALLIDO', `Intento de resetear contraseña de "${p.username}" denegado: ${data?.error || error.message}`);
+        const mensajeReal = data?.error || (error ? await extraerMensajeErrorFuncion(error) : 'Error desconocido');
+        mostrarAvisoModal('Error: ' + traducirError(mensajeReal));
+        registrarLog('INTENTO_FALLIDO', `Intento de resetear contraseña de "${p.username}" denegado: ${mensajeReal}`);
         return;
       }
 
