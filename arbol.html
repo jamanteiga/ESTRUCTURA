@@ -581,6 +581,27 @@
     </div>
   </div>
 
+  <div class="overlay" id="modal-documentacion-pieza">
+    <div class="overlay-caja" style="max-width:460px;">
+      <h3>📄 Documentación de la pieza</h3>
+      <p id="doc-nodo-info" style="font-size:12px; color:#666; margin-top:-8px;"></p>
+      <table style="width:100%; border-collapse:collapse; margin-top:8px; font-size:12.5px;">
+        <thead>
+          <tr>
+            <th style="text-align:left; padding:4px 2px; border-bottom:1px solid #ddd;">Documento</th>
+            <th style="text-align:center; padding:4px 2px; border-bottom:1px solid #ddd;">Publicado</th>
+            <th style="text-align:left; padding:4px 2px; border-bottom:1px solid #ddd;">Fecha subida</th>
+          </tr>
+        </thead>
+        <tbody id="doc-filas"></tbody>
+      </table>
+      <div class="estado-msg" id="doc-estado"></div>
+      <div class="overlay-botones">
+        <button class="secundario" onclick="cerrarModalDocumentacion()">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
   <div class="overlay" id="modal-dependencias">
     <div class="overlay-caja" style="max-width:480px;">
       <h3>🔗 Dependencias</h3>
@@ -818,6 +839,13 @@
 
     const TIPOS_SIN_ASIGNACION = new Set(['BUQUE']);
 
+    // Piezas finales de fabricación — las únicas que llevan seguimiento de
+    // documentación (Modelo/Plano de corte/Windchill). Ojo: el mismo tipo lo
+    // llevan tanto el nodo "familia" (p.ej. PLANCHA_1000 con código "PL1000")
+    // como las piezas numeradas de verdad que cuelgan de él (código "1001"...),
+    // así que además de mirar el tipo hay que exigir que no tenga hijos.
+    const TIPOS_DOCUMENTABLES = new Set(['PLANCHA_1000', 'PLANCHA_2000', 'PLANCHA_3000', 'PERFIL_4000', 'PERFIL_6000']);
+
     const ETIQUETAS_TIPO = {
       BUQUE: 'Buque',
       BLOQUE: 'Bloque',
@@ -1039,6 +1067,9 @@
 
     function esGestor() { return miPerfil.rol === 'ADMIN' || miPerfil.rol === 'REVISOR'; }
     function esInvitado() { return miPerfil.rol === 'INVITADO'; }
+    // Rol dedicado exclusivamente a subir documentación (Modelo/Plano de
+    // corte/Windchill) de piezas finales — no ve ni toca nada más del árbol.
+    function esWindchill() { return miPerfil.rol === 'WINDCHILL'; }
     function pareceGestor() { return esGestor() || esInvitado(); }
     // Un usuario cualquiera NO puede tomar la tarea de otro — reasignar tareas
     // (incluido "Tomar tarea") sigue siendo cosa exclusiva de ADMIN/REVISOR.
@@ -1829,6 +1860,8 @@
       const esMio = nodo.trabajador_id === miPerfil.id;
       const puedeOperar = esGestor() || esMio;
       const items = [];
+      const tieneHijos = (mapaHijosPorPadre[nodeId] || []).length > 0;
+      const esPiezaDocumentable = TIPOS_DOCUMENTABLES.has(nodo.tipo) && !tieneHijos;
 
       // Si el nodo tiene comentarios de "Pendiente cambios en modelo", se
       // ofrece como primera opción un acceso directo al mismo panel que
@@ -1841,7 +1874,17 @@
         });
       }
 
-      if (pareceGestor()) {
+      if (esWindchill()) {
+        // Rol de subida a Windchill: solo puede expandir/contraer y marcar
+        // la documentación de piezas finales — nada más del árbol.
+        if (tieneHijos) {
+          items.push({ label: '⏬ Expandir', tip: 'Despliega todos los nodos dentro de este.', fn: () => expandirRama(nodeId) });
+          items.push({ label: '⏫ Contraer', tip: 'Pliega todos los nodos dentro de este.', fn: () => encogerRama(nodeId) });
+        }
+        if (esPiezaDocumentable) {
+          items.push({ label: '📄 Documentación (Modelo/Plano/Windchill)', tip: 'Marca el modelo, el plano de corte y la subida a Windchill de esta pieza.', fn: () => abrirModalDocumentacion(nodeId, true) });
+        }
+      } else if (pareceGestor()) {
         if (!esMovil) {
           if (nodo.tipo in ESTRUCTURA_MINIMA_POR_TIPO || nodo.tipo === 'BUQUE') {
             const tipGenerarMinima = nodo.tipo === 'BUQUE'
@@ -1851,6 +1894,9 @@
           }
           items.push({ label: '+ Generar nodo hijo', tip: 'Crea un nuevo nodo dentro de este.', fn: () => abrirModalCrear(nodeId, nodo.tipo) });
           items.push({ label: '+N Crear varios nodos', tip: 'Creación de varios nodos iguales al indicado.', fn: () => abrirModalLote(nodeId, nodo.tipo) });
+          if (miPerfil.rol === 'ADMIN') {
+            items.push({ label: '📥 Importar desde Excel', tip: 'Importa un subárbol completo (varios niveles) colgando de este nodo, desde un fichero Excel.', fn: () => window.location.href = 'importar.html?destino=' + encodeURIComponent(nodeId) });
+          }
           items.push({ label: '↔️ Cambiar de nodo', tip: 'Cambia de nodo padre.', fn: () => abrirModalMover(nodeId) });
           items.push({ label: '✎ Editar', tip: 'Edita código, nombre y descripción del nodo.', fn: () => abrirModalEditar(nodeId) });
         }
@@ -1878,6 +1924,10 @@
 
           items.push({ label: '📅 Fechas previstas', tip: 'Fija cuándo debería empezar y terminar esta tarea, para comparar plan vs. real.', fn: () => abrirModalFechasPrevistas(nodeId) });
           items.push({ label: '🔗 Dependencias', tip: 'Marca qué tareas tienen que estar Aprobadas antes de poder empezar esta.', fn: () => abrirModalDependencias(nodeId) });
+
+          if (esPiezaDocumentable) {
+            items.push({ label: '📄 Documentación (Modelo/Plano/Windchill)', tip: 'Marca el modelo, el plano de corte y la subida a Windchill de esta pieza.', fn: () => abrirModalDocumentacion(nodeId, true) });
+          }
 
           items.push({
             submenu: true,
@@ -1914,6 +1964,9 @@
         }
         items.push({ label: '▲ Mover arriba', tip: 'Se mueve nodo hacia arriba.', fn: () => reordenar(nodeId, -1) });
         items.push({ label: '▼ Mover abajo', tip: 'Se mueve nodo hacia abajo.', fn: () => reordenar(nodeId, 1) });
+        if (esPiezaDocumentable) {
+          items.push({ label: '📄 Documentación (Modelo/Plano/Windchill)', tip: 'Consulta el estado del modelo, el plano de corte y la subida a Windchill de esta pieza.', fn: () => abrirModalDocumentacion(nodeId, false) });
+        }
 
         if (!nodo.trabajador_id) {
           items.push({ separador: true });
@@ -2318,6 +2371,80 @@
     function cerrarModalFechasPrevistas() {
       document.getElementById('modal-fechas-previstas').style.display = 'none';
       nodoFechasPrevistasActual = null;
+    }
+
+    // -------------------- Documentación de pieza (Modelo/Plano de corte/Windchill) --------------------
+
+    const ETIQUETAS_DOC = { MOD: 'Modelo', PDC: 'Plano de corte', WIN: 'Windchill' };
+    const ORDEN_DOC = ['MOD', 'PDC', 'WIN'];
+    let nodoDocumentacionActual = null;
+    let docPiezaEditable = false;
+    let docPiezaCache = [];
+
+    async function abrirModalDocumentacion(nodeId, editable) {
+      nodoDocumentacionActual = nodeId;
+      docPiezaEditable = editable;
+      const nodo = mapaNodoPorId[nodeId];
+      document.getElementById('doc-nodo-info').textContent = `${nodo.codigo} — ${nodo.nombre}`;
+      document.getElementById('doc-estado').textContent = '';
+      document.getElementById('doc-filas').innerHTML = '<tr><td colspan="3" style="padding:8px;">Cargando...</td></tr>';
+      document.getElementById('modal-documentacion-pieza').style.display = 'flex';
+
+      const { data, error } = await supabaseClient.rpc('listar_documentacion_nodo', { p_node_id: nodeId });
+      if (error) {
+        document.getElementById('doc-filas').innerHTML = `<tr><td colspan="3" style="padding:8px; color:#dc3545;">Error: ${error.message}</td></tr>`;
+        return;
+      }
+      docPiezaCache = data || [];
+      pintarFilasDocumentacion();
+    }
+
+    function pintarFilasDocumentacion() {
+      const filas = ORDEN_DOC.map(tipo => {
+        const fila = docPiezaCache.find(d => d.tipo_documento === tipo) || { tipo_documento: tipo, publicado: false, fecha_subida: null };
+        return `
+          <tr>
+            <td style="padding:5px 2px;">${ETIQUETAS_DOC[tipo]}</td>
+            <td style="text-align:center; padding:5px 2px;">
+              <input type="checkbox" ${fila.publicado ? 'checked' : ''} ${docPiezaEditable ? '' : 'disabled'}
+                     onchange="guardarDocumentacionPieza('${tipo}', this.checked, undefined)">
+            </td>
+            <td style="padding:5px 2px;">
+              <input type="date" value="${fila.fecha_subida || ''}" ${docPiezaEditable ? '' : 'disabled'}
+                     style="padding:4px; font-size:12px;"
+                     onchange="guardarDocumentacionPieza('${tipo}', undefined, this.value || null)">
+            </td>
+          </tr>
+        `;
+      }).join('');
+      document.getElementById('doc-filas').innerHTML = filas;
+    }
+
+    async function guardarDocumentacionPieza(tipo, publicadoNuevo, fechaNueva) {
+      const estadoEl = document.getElementById('doc-estado');
+      const filaActual = docPiezaCache.find(d => d.tipo_documento === tipo) || { tipo_documento: tipo, publicado: false, fecha_subida: null };
+      const publicado = publicadoNuevo !== undefined ? publicadoNuevo : filaActual.publicado;
+      const fecha = fechaNueva !== undefined ? fechaNueva : filaActual.fecha_subida;
+
+      estadoEl.textContent = 'Guardando...'; estadoEl.className = 'estado-msg';
+      const { error } = await supabaseClient.rpc('marcar_documentacion_pieza', {
+        p_node_id: nodoDocumentacionActual, p_tipo_documento: tipo, p_publicado: publicado, p_fecha_subida: fecha
+      });
+      if (error) {
+        estadoEl.textContent = 'Error: ' + traducirError(error.message);
+        estadoEl.className = 'estado-msg error';
+        pintarFilasDocumentacion();
+        return;
+      }
+      docPiezaCache = docPiezaCache.filter(d => d.tipo_documento !== tipo);
+      docPiezaCache.push({ tipo_documento: tipo, publicado, fecha_subida: fecha });
+      estadoEl.textContent = '';
+      registrarLog('DOCUMENTACION_PIEZA', `${ETIQUETAS_DOC[tipo]}: ${publicado ? 'publicado' : 'no publicado'}${fecha ? `, subido ${fecha}` : ''} (${mapaNodoPorId[nodoDocumentacionActual]?.codigo || ''})`, nodoDocumentacionActual);
+    }
+
+    function cerrarModalDocumentacion() {
+      document.getElementById('modal-documentacion-pieza').style.display = 'none';
+      nodoDocumentacionActual = null;
     }
 
     // Se llama cada vez que se toca "Fin previsto": si el nuevo fin es

@@ -107,6 +107,7 @@
         <option value="REVISOR">SUPERVISOR</option>
         <option value="ADMIN">ADMIN</option>
         <option value="INVITADO">INVITADO (solo consulta)</option>
+        <option value="WINDCHILL">WINDCHILL (subida de documentación)</option>
       </select>
 
       <label for="ubicacion-nuevo">Ubicación (también decide qué festivos locales le aplican)</label>
@@ -254,6 +255,7 @@
         <option value="REVISOR">SUPERVISOR</option>
         <option value="ADMIN">ADMIN</option>
         <option value="INVITADO">INVITADO (solo consulta)</option>
+        <option value="WINDCHILL">WINDCHILL (subida de documentación)</option>
       </select>
       <label>Ubicación (también decide qué festivos locales le aplican)</label>
       <select id="editar-ubicacion">
@@ -436,7 +438,7 @@
     // cada ubicación. CAN se trata como Las Palmas de Gran Canaria porque es
     // el que se ha cargado; si hace falta distinguir Tenerife, se añade aquí.
     const MAPA_UBICACION_SEDE_FESTIVOS = { FER: 'Ferrol', BIL: 'Bilbao', CAN: 'Las Palmas de Gran Canaria', MAD: 'Madrid', SEV: 'Sevilla' };
-    const ETIQUETAS_ROL = { TRABAJADOR: 'USUARIO', REVISOR: 'SUPERVISOR', ADMIN: 'ADMIN', INVITADO: 'INVITADO' };
+    const ETIQUETAS_ROL = { TRABAJADOR: 'USUARIO', REVISOR: 'SUPERVISOR', ADMIN: 'ADMIN', INVITADO: 'INVITADO', WINDCHILL: 'WINDCHILL' };
 
     let perfilesCache = [];
 

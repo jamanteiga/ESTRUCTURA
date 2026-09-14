@@ -136,6 +136,18 @@
 
       await cargarNodosDestino();
 
+      // Si se llega desde "📥 Importar desde Excel" del menú contextual del
+      // árbol, el nodo sobre el que se hizo clic derecho llega en ?destino=
+      // y se preselecciona aquí, para no tener que volver a buscarlo.
+      const destinoParam = new URLSearchParams(window.location.search).get('destino');
+      if (destinoParam) {
+        const sel = document.getElementById('sel-destino');
+        if ([...sel.options].some(o => o.value === destinoParam)) {
+          sel.value = destinoParam;
+          nodoDestinoTipo = sel.selectedOptions[0]?.dataset.tipo || null;
+        }
+      }
+
       document.getElementById('input-excel').addEventListener('change', manejarArchivoSubido);
       document.getElementById('sel-destino').addEventListener('change', () => {
         nodoDestinoTipo = document.getElementById('sel-destino').selectedOptions[0]?.dataset.tipo || null;
