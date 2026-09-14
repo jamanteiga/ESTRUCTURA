@@ -581,24 +581,6 @@
     </div>
   </div>
 
-
-  <div class="overlay" id="modal-publicacion-windchill">
-    <div class="overlay-caja" style="max-width:420px;">
-      <h3>✅ Publicación Windchill</h3>
-      <p id="win-nodo-info" style="font-size:12px; color:#666; margin-top:-8px;"></p>
-      <label style="display:flex; align-items:center; gap:8px; margin-top:12px;">
-        <input type="checkbox" id="win-publicado-check" style="width:auto;">
-        Publicado
-      </label>
-      <p id="win-subido-info" style="font-size:12.5px; color:#666; margin-top:8px;"></p>
-      <div class="estado-msg" id="win-estado"></div>
-      <div class="overlay-botones">
-        <button class="secundario" onclick="cerrarModalPublicacionWindchill()">Cerrar</button>
-        <button id="win-btn-guardar" onclick="guardarPublicacionWindchill()">Guardar</button>
-      </div>
-    </div>
-  </div>
-
   <div class="overlay" id="modal-dependencias">
     <div class="overlay-caja" style="max-width:480px;">
       <h3>🔗 Dependencias</h3>
@@ -834,10 +816,13 @@
     const esMovil = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || window.innerWidth < 768;
     document.body.classList.toggle('vista-movil', esMovil);
 
-    // DOC_MODELO/DOC_PLANO_CORTE/DOC_WINDCHILL son nodos marcadores de
-    // documentación (ver TIPOS_DOCUMENTABLES) — no son tareas de fabricación,
-    // así que no llevan asignación de usuario ni flujo de Estado tarea.
-    const TIPOS_SIN_ASIGNACION = new Set(['BUQUE', 'DOC_MODELO', 'DOC_PLANO_CORTE', 'DOC_WINDCHILL']);
+    // DOC_MODELO/DOC_PLANO_CORTE/DOC_WINDCHILL (y sus hijos DOC_PUBLICAR/
+    // DOC_FICHERO_SUBIDO) son nodos marcadores de documentación (ver
+    // TIPOS_DOCUMENTABLES) — no son tareas de fabricación, así que no llevan
+    // asignación de usuario ni flujo de Estado tarea.
+    const TIPOS_SIN_ASIGNACION = new Set([
+      'BUQUE', 'DOC_MODELO', 'DOC_PLANO_CORTE', 'DOC_WINDCHILL', 'DOC_PUBLICAR', 'DOC_FICHERO_SUBIDO'
+    ]);
 
     // Piezas finales de fabricación — las únicas dentro de las que se puede
     // generar la documentación (Modelo/Plano de corte/Windchill). Ojo: el
@@ -878,7 +863,9 @@
       PERFIL_6000: 'Perfil 6000',
       DOC_MODELO: 'Modelo',
       DOC_PLANO_CORTE: 'Plano de corte',
-      DOC_WINDCHILL: 'Windchill'
+      DOC_WINDCHILL: 'Windchill',
+      DOC_PUBLICAR: 'Publicar',
+      DOC_FICHERO_SUBIDO: 'Fichero subido'
     };
 
     // Para la etiqueta corta que se ve junto al nodo: los tipos "internos" de
@@ -1867,20 +1854,25 @@
       const items = [];
       const tieneHijos = (mapaHijosPorPadre[nodeId] || []).length > 0;
       const esPiezaDocumentable = TIPOS_DOCUMENTABLES.has(nodo.tipo) && esPiezaNumerada(nodo.codigo);
-      const esNodoWindchill = nodo.tipo === 'DOC_WINDCHILL';
 
-      // El estado de publicación en Windchill se ofrece siempre que se esté
-      // sobre un nodo WIN, independientemente del rol (más abajo, el bloque
-      // de INVITADO ya lo neutraliza igual que al resto de opciones).
-      if (esNodoWindchill) {
-        const puedeEditarWin = esGestor() || esWindchill();
-        items.push({
-          label: '✅ Publicación Windchill',
-          tip: puedeEditarWin
-            ? 'Marca si el fichero está publicado en Windchill y guarda automáticamente cuándo y quién lo subió.'
-            : 'Consulta si el fichero está publicado en Windchill y cuándo/quién lo subió.',
-          fn: () => abrirModalPublicacionWindchill(nodeId, puedeEditarWin)
-        });
+      // El nodo "Publicar" (hijo de Windchill) es donde se marca Sí/No; el
+      // propio nombre del nodo ya muestra el estado en el árbol, y al
+      // cambiarlo se actualiza también, solo, el nodo "Fichero subido"
+      // hermano. Se ofrece siempre que se esté sobre un nodo Publicar,
+      // independientemente del rol (más abajo, el bloque de INVITADO ya lo
+      // neutraliza igual que al resto de opciones).
+      if (nodo.tipo === 'DOC_PUBLICAR') {
+        const publicadoActual = nodo.nombre === 'Sí';
+        const puedeEditarPub = esGestor() || esWindchill();
+        if (puedeEditarPub) {
+          items.push({
+            label: publicadoActual ? '☑️ Marcar como NO publicado' : '☐ Marcar como Publicado',
+            tip: 'Cambia el estado de publicación en Windchill y actualiza automáticamente "Fichero subido" (fecha, hora y usuario).',
+            fn: () => accionMarcarPublicadoWindchill(nodeId, !publicadoActual)
+          });
+        } else {
+          items.push({ label: `📌 Publicado: ${nodo.nombre}`, tip: 'Solo lo puede cambiar ADMIN, Supervisor o Windchill.', soloLectura: true });
+        }
       }
 
       // Si el nodo tiene comentarios de "Pendiente cambios en modelo", se
@@ -2386,58 +2378,23 @@
       nodoFechasPrevistasActual = null;
     }
 
-    // -------------------- Publicación Windchill (nodo DOC_WINDCHILL) --------------------
+    // -------------------- Publicar / Fichero subido (hijos de DOC_WINDCHILL) --------------------
 
-    let nodoWindchillActual = null;
-    let winEditable = false;
-
-    async function abrirModalPublicacionWindchill(nodeId, editable) {
-      const nodo = mapaNodoPorId[nodeId];
-      nodoWindchillActual = nodeId;
-      winEditable = editable;
-
-      document.getElementById('win-nodo-info').textContent = `${nodo.codigo} — ${nodo.nombre}`;
-      document.getElementById('win-estado').textContent = '';
-      document.getElementById('win-estado').className = 'estado-msg';
-      document.getElementById('win-subido-info').textContent = 'Cargando...';
-      document.getElementById('win-publicado-check').checked = false;
-      document.getElementById('win-publicado-check').disabled = !editable;
-      document.getElementById('win-btn-guardar').style.display = editable ? 'inline-block' : 'none';
-      document.getElementById('modal-publicacion-windchill').style.display = 'flex';
-
-      const { data, error } = await supabaseClient.rpc('obtener_publicacion_windchill', { p_node_id: nodeId });
-      if (error) {
-        document.getElementById('win-subido-info').textContent = 'Error al cargar: ' + traducirError(error.message);
-        return;
-      }
-      const fila = (data && data[0]) || { publicado: false, subido_en: null, subido_por_nombre: null };
-      document.getElementById('win-publicado-check').checked = !!fila.publicado;
-      document.getElementById('win-subido-info').textContent = (fila.publicado && fila.subido_en)
-        ? `Subido por ${fila.subido_por_nombre || '—'} el ${formatearFechaHora(fila.subido_en)}`
-        : 'Todavía no se ha marcado como publicado.';
-    }
-
-    function cerrarModalPublicacionWindchill() {
-      document.getElementById('modal-publicacion-windchill').style.display = 'none';
-      nodoWindchillActual = null;
-    }
-
-    async function guardarPublicacionWindchill() {
-      if (!nodoWindchillActual || !winEditable) return;
-      const publicado = document.getElementById('win-publicado-check').checked;
-      const estadoEl = document.getElementById('win-estado');
-      estadoEl.textContent = 'Guardando...'; estadoEl.className = 'estado-msg';
-
-      const { error } = await supabaseClient.rpc('marcar_publicacion_windchill', {
-        p_node_id: nodoWindchillActual, p_publicado: publicado
+    // nodeId es el nodo "Publicar" tocado desde el árbol. El RPC, en el
+    // servidor, ya actualiza también el nodo "Fichero subido" hermano
+    // (fecha+hora+usuario, o lo deja en blanco si se desmarca) — aquí solo
+    // hay que recargar el árbol para verlo.
+    async function accionMarcarPublicadoWindchill(nodeId, publicado) {
+      const { error } = await supabaseClient.rpc('marcar_publicacion_windchill_nodo', {
+        p_node_id_publicar: nodeId, p_publicado: publicado
       });
       if (error) {
-        estadoEl.textContent = 'Error: ' + traducirError(error.message);
-        estadoEl.className = 'estado-msg error';
+        mostrarAvisoModal('Error: ' + traducirError(error.message));
+        registrarLog('INTENTO_FALLIDO', `Intento de marcar Publicado=${publicado ? 'Sí' : 'No'} denegado: ${error.message}`, nodeId);
         return;
       }
-      registrarLog('MARCAR_WINDCHILL', `Marcó Publicado=${publicado ? 'Sí' : 'No'} (${mapaNodoPorId[nodoWindchillActual]?.codigo || ''})`, nodoWindchillActual);
-      await abrirModalPublicacionWindchill(nodoWindchillActual, winEditable);
+      registrarLog('MARCAR_WINDCHILL', `Marcó Publicado=${publicado ? 'Sí' : 'No'}`, nodeId);
+      await cargarArbol();
     }
 
     // Se llama cada vez que se toca "Fin previsto": si el nuevo fin es
@@ -2787,7 +2744,10 @@
     const RAMA_DOC_PIEZA = [
       { tipo: 'DOC_MODELO', codigo: 'MOD', nombre: 'Modelo' },
       { tipo: 'DOC_PLANO_CORTE', codigo: 'PDC', nombre: 'Plano de corte' },
-      { tipo: 'DOC_WINDCHILL', codigo: 'WIN', nombre: 'Windchill' }
+      { tipo: 'DOC_WINDCHILL', codigo: 'WIN', nombre: 'Windchill', hijos: [
+          { tipo: 'DOC_PUBLICAR', codigo: 'PUB', nombre: 'No' },
+          { tipo: 'DOC_FICHERO_SUBIDO', codigo: 'SUB', nombre: '—' }
+      ] }
     ];
 
     async function generarDocumentacionPieza(nodeId) {
