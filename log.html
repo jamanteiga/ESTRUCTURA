@@ -201,9 +201,8 @@
     }
 
     function etiquetaRol(rol) {
-      if (rol === 'TRABAJADOR') return 'USUARIO';
-      if (rol === 'REVISOR') return 'SUPERVISOR';
-      return rol;
+      const ETIQUETAS = { TRABAJADOR: 'Usuario', REVISOR: 'Supervisor', ADMIN: 'Admin', INVITADO: 'Invitado', WINDCHILL: 'Windchill' };
+      return ETIQUETAS[rol] || rol;
     }
 
     function resumirUserAgent(ua) {

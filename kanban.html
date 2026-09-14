@@ -306,7 +306,7 @@
       miPerfil = perfil;
       document.body.classList.toggle('vista-movil', esMovil);
       document.getElementById('texto-usuario').textContent =
-        `${perfil.nombre_completo} (${perfil.username}) — ${perfil.rol === 'TRABAJADOR' ? 'USUARIO' : (perfil.rol === 'REVISOR' ? 'SUPERVISOR' : perfil.rol)}`;
+        `${perfil.nombre_completo} (${perfil.username}) — ${{TRABAJADOR:'Usuario',REVISOR:'Supervisor',ADMIN:'Admin',INVITADO:'Invitado',WINDCHILL:'Windchill'}[perfil.rol] || perfil.rol}`;
 
       if (miPerfil.rol === 'TRABAJADOR') {
         document.getElementById('kb-wrap-mis-tareas').style.display = 'flex';

@@ -103,11 +103,11 @@
 
       <label for="rol-nuevo">Rol</label>
       <select id="rol-nuevo">
-        <option value="TRABAJADOR">USUARIO</option>
-        <option value="REVISOR">SUPERVISOR</option>
-        <option value="ADMIN">ADMIN</option>
-        <option value="INVITADO">INVITADO (solo consulta)</option>
-        <option value="WINDCHILL">WINDCHILL (subida de documentación)</option>
+        <option value="TRABAJADOR">Usuario</option>
+        <option value="REVISOR">Supervisor</option>
+        <option value="ADMIN">Admin</option>
+        <option value="INVITADO">Invitado (solo consulta)</option>
+        <option value="WINDCHILL">Windchill (subida de documentación)</option>
       </select>
 
       <label for="ubicacion-nuevo">Ubicación (también decide qué festivos locales le aplican)</label>
@@ -251,11 +251,11 @@
       <input type="text" id="editar-nombre">
       <label>Rol</label>
       <select id="editar-rol">
-        <option value="TRABAJADOR">USUARIO</option>
-        <option value="REVISOR">SUPERVISOR</option>
-        <option value="ADMIN">ADMIN</option>
-        <option value="INVITADO">INVITADO (solo consulta)</option>
-        <option value="WINDCHILL">WINDCHILL (subida de documentación)</option>
+        <option value="TRABAJADOR">Usuario</option>
+        <option value="REVISOR">Supervisor</option>
+        <option value="ADMIN">Admin</option>
+        <option value="INVITADO">Invitado (solo consulta)</option>
+        <option value="WINDCHILL">Windchill (subida de documentación)</option>
       </select>
       <label>Ubicación (también decide qué festivos locales le aplican)</label>
       <select id="editar-ubicacion">
@@ -370,7 +370,7 @@
       document.getElementById('sin-permiso').style.display = 'none';
       document.getElementById('panel-admin').style.display = 'block';
       document.getElementById('texto-sesion-activa').textContent =
-        `Conectado como ${perfil.nombre_completo} (${perfil.username}) — ADMIN`;
+        `Conectado como ${perfil.nombre_completo} (${perfil.username}) — Admin`;
 
       await cargarUsuarios();
       cargarAusencias();
@@ -436,7 +436,7 @@
         await supabaseClient.from('profiles').update({ ubicacion }).eq('id', data.perfil.id);
       }
 
-      registrarLog('CREAR_USUARIO', `Creó el usuario "${username}" (${nombre_completo}), rol ${rol}`);
+      registrarLog('CREAR_USUARIO', `Creó el usuario "${username}" (${nombre_completo}), rol ${ETIQUETAS_ROL[rol] || rol}`);
 
       estadoEl.textContent = `Usuario "${username}" creado correctamente.`;
       estadoEl.className = 'estado ok';
@@ -455,7 +455,7 @@
     // cada ubicación. CAN se trata como Las Palmas de Gran Canaria porque es
     // el que se ha cargado; si hace falta distinguir Tenerife, se añade aquí.
     const MAPA_UBICACION_SEDE_FESTIVOS = { FER: 'Ferrol', BIL: 'Bilbao', CAN: 'Las Palmas de Gran Canaria', MAD: 'Madrid', SEV: 'Sevilla' };
-    const ETIQUETAS_ROL = { TRABAJADOR: 'USUARIO', REVISOR: 'SUPERVISOR', ADMIN: 'ADMIN', INVITADO: 'INVITADO', WINDCHILL: 'WINDCHILL' };
+    const ETIQUETAS_ROL = { TRABAJADOR: 'Usuario', REVISOR: 'Supervisor', ADMIN: 'Admin', INVITADO: 'Invitado', WINDCHILL: 'Windchill' };
 
     let perfilesCache = [];
 
@@ -768,7 +768,7 @@
       }
 
       const cambios = [];
-      if (anterior && anterior.rol !== rol) cambios.push(`rol ${anterior.rol}→${rol}`);
+      if (anterior && anterior.rol !== rol) cambios.push(`rol ${ETIQUETAS_ROL[anterior.rol] || anterior.rol}→${ETIQUETAS_ROL[rol] || rol}`);
       if (anterior && anterior.activo !== activo) cambios.push(activo ? 'reactivado' : 'desactivado');
       if (anterior && anterior.ubicacion !== ubicacion) cambios.push('ubicación');
       if (anterior && anterior.email_contacto !== email_contacto) cambios.push('email de contacto');
