@@ -581,23 +581,20 @@
     </div>
   </div>
 
-  <div class="overlay" id="modal-documentacion-pieza">
-    <div class="overlay-caja" style="max-width:460px;">
-      <h3>📄 Documentación de la pieza</h3>
-      <p id="doc-nodo-info" style="font-size:12px; color:#666; margin-top:-8px;"></p>
-      <table style="width:100%; border-collapse:collapse; margin-top:8px; font-size:12.5px;">
-        <thead>
-          <tr>
-            <th style="text-align:left; padding:4px 2px; border-bottom:1px solid #ddd;">Documento</th>
-            <th style="text-align:center; padding:4px 2px; border-bottom:1px solid #ddd;">Publicado</th>
-            <th style="text-align:left; padding:4px 2px; border-bottom:1px solid #ddd;">Fecha subida</th>
-          </tr>
-        </thead>
-        <tbody id="doc-filas"></tbody>
-      </table>
-      <div class="estado-msg" id="doc-estado"></div>
+
+  <div class="overlay" id="modal-publicacion-windchill">
+    <div class="overlay-caja" style="max-width:420px;">
+      <h3>✅ Publicación Windchill</h3>
+      <p id="win-nodo-info" style="font-size:12px; color:#666; margin-top:-8px;"></p>
+      <label style="display:flex; align-items:center; gap:8px; margin-top:12px;">
+        <input type="checkbox" id="win-publicado-check" style="width:auto;">
+        Publicado
+      </label>
+      <p id="win-subido-info" style="font-size:12.5px; color:#666; margin-top:8px;"></p>
+      <div class="estado-msg" id="win-estado"></div>
       <div class="overlay-botones">
-        <button class="secundario" onclick="cerrarModalDocumentacion()">Cerrar</button>
+        <button class="secundario" onclick="cerrarModalPublicacionWindchill()">Cerrar</button>
+        <button id="win-btn-guardar" onclick="guardarPublicacionWindchill()">Guardar</button>
       </div>
     </div>
   </div>
@@ -837,14 +834,19 @@
     const esMovil = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || window.innerWidth < 768;
     document.body.classList.toggle('vista-movil', esMovil);
 
-    const TIPOS_SIN_ASIGNACION = new Set(['BUQUE']);
+    // DOC_MODELO/DOC_PLANO_CORTE/DOC_WINDCHILL son nodos marcadores de
+    // documentación (ver TIPOS_DOCUMENTABLES) — no son tareas de fabricación,
+    // así que no llevan asignación de usuario ni flujo de Estado tarea.
+    const TIPOS_SIN_ASIGNACION = new Set(['BUQUE', 'DOC_MODELO', 'DOC_PLANO_CORTE', 'DOC_WINDCHILL']);
 
-    // Piezas finales de fabricación — las únicas que llevan seguimiento de
-    // documentación (Modelo/Plano de corte/Windchill). Ojo: el mismo tipo lo
-    // llevan tanto el nodo "familia" (p.ej. PLANCHA_1000 con código "PL1000")
-    // como las piezas numeradas de verdad que cuelgan de él (código "1001"...),
-    // así que además de mirar el tipo hay que exigir que no tenga hijos.
+    // Piezas finales de fabricación — las únicas dentro de las que se puede
+    // generar la documentación (Modelo/Plano de corte/Windchill). Ojo: el
+    // mismo tipo lo lleva tanto el nodo "familia" (p.ej. PLANCHA_1000 con
+    // código "PL1000") como las piezas numeradas de verdad que cuelgan de él
+    // (código "1001"...) — se distinguen por el código: la familia siempre
+    // lleva letras delante, la pieza de verdad es solo números.
     const TIPOS_DOCUMENTABLES = new Set(['PLANCHA_1000', 'PLANCHA_2000', 'PLANCHA_3000', 'PERFIL_4000', 'PERFIL_6000']);
+    function esPiezaNumerada(codigo) { return /^\d+$/.test(String(codigo || '').trim()); }
 
     const ETIQUETAS_TIPO = {
       BUQUE: 'Buque',
@@ -873,7 +875,10 @@
       PLANCHA_2000: 'Plancha 2000',
       PLANCHA_3000: 'Plancha 3000',
       PERFIL_4000: 'Perfil 4000',
-      PERFIL_6000: 'Perfil 6000'
+      PERFIL_6000: 'Perfil 6000',
+      DOC_MODELO: 'Modelo',
+      DOC_PLANO_CORTE: 'Plano de corte',
+      DOC_WINDCHILL: 'Windchill'
     };
 
     // Para la etiqueta corta que se ve junto al nodo: los tipos "internos" de
@@ -1861,7 +1866,22 @@
       const puedeOperar = esGestor() || esMio;
       const items = [];
       const tieneHijos = (mapaHijosPorPadre[nodeId] || []).length > 0;
-      const esPiezaDocumentable = TIPOS_DOCUMENTABLES.has(nodo.tipo) && !tieneHijos;
+      const esPiezaDocumentable = TIPOS_DOCUMENTABLES.has(nodo.tipo) && esPiezaNumerada(nodo.codigo);
+      const esNodoWindchill = nodo.tipo === 'DOC_WINDCHILL';
+
+      // El estado de publicación en Windchill se ofrece siempre que se esté
+      // sobre un nodo WIN, independientemente del rol (más abajo, el bloque
+      // de INVITADO ya lo neutraliza igual que al resto de opciones).
+      if (esNodoWindchill) {
+        const puedeEditarWin = esGestor() || esWindchill();
+        items.push({
+          label: '✅ Publicación Windchill',
+          tip: puedeEditarWin
+            ? 'Marca si el fichero está publicado en Windchill y guarda automáticamente cuándo y quién lo subió.'
+            : 'Consulta si el fichero está publicado en Windchill y cuándo/quién lo subió.',
+          fn: () => abrirModalPublicacionWindchill(nodeId, puedeEditarWin)
+        });
+      }
 
       // Si el nodo tiene comentarios de "Pendiente cambios en modelo", se
       // ofrece como primera opción un acceso directo al mismo panel que
@@ -1881,9 +1901,6 @@
           items.push({ label: '⏬ Expandir', tip: 'Despliega todos los nodos dentro de este.', fn: () => expandirRama(nodeId) });
           items.push({ label: '⏫ Contraer', tip: 'Pliega todos los nodos dentro de este.', fn: () => encogerRama(nodeId) });
         }
-        if (esPiezaDocumentable) {
-          items.push({ label: '📄 Documentación (Modelo/Plano/Windchill)', tip: 'Marca el modelo, el plano de corte y la subida a Windchill de esta pieza.', fn: () => abrirModalDocumentacion(nodeId, true) });
-        }
       } else if (pareceGestor()) {
         if (!esMovil) {
           if (nodo.tipo in ESTRUCTURA_MINIMA_POR_TIPO || nodo.tipo === 'BUQUE') {
@@ -1894,6 +1911,9 @@
           }
           items.push({ label: '+ Generar nodo hijo', tip: 'Crea un nuevo nodo dentro de este.', fn: () => abrirModalCrear(nodeId, nodo.tipo) });
           items.push({ label: '+N Crear varios nodos', tip: 'Creación de varios nodos iguales al indicado.', fn: () => abrirModalLote(nodeId, nodo.tipo) });
+          if (esPiezaDocumentable) {
+            items.push({ label: '🗂️ Generar documentación (Modelo/Plano/Windchill)', tip: 'Crea de golpe los 3 nodos de seguimiento documental dentro de esta pieza.', fn: () => generarDocumentacionPieza(nodeId) });
+          }
           if (miPerfil.rol === 'ADMIN') {
             items.push({ label: '📥 Importar desde Excel', tip: 'Importa un subárbol completo (varios niveles) colgando de este nodo, desde un fichero Excel.', fn: () => window.location.href = 'importar.html?destino=' + encodeURIComponent(nodeId) });
           }
@@ -1924,10 +1944,6 @@
 
           items.push({ label: '📅 Fechas previstas', tip: 'Fija cuándo debería empezar y terminar esta tarea, para comparar plan vs. real.', fn: () => abrirModalFechasPrevistas(nodeId) });
           items.push({ label: '🔗 Dependencias', tip: 'Marca qué tareas tienen que estar Aprobadas antes de poder empezar esta.', fn: () => abrirModalDependencias(nodeId) });
-
-          if (esPiezaDocumentable) {
-            items.push({ label: '📄 Documentación (Modelo/Plano/Windchill)', tip: 'Marca el modelo, el plano de corte y la subida a Windchill de esta pieza.', fn: () => abrirModalDocumentacion(nodeId, true) });
-          }
 
           items.push({
             submenu: true,
@@ -1964,9 +1980,6 @@
         }
         items.push({ label: '▲ Mover arriba', tip: 'Se mueve nodo hacia arriba.', fn: () => reordenar(nodeId, -1) });
         items.push({ label: '▼ Mover abajo', tip: 'Se mueve nodo hacia abajo.', fn: () => reordenar(nodeId, 1) });
-        if (esPiezaDocumentable) {
-          items.push({ label: '📄 Documentación (Modelo/Plano/Windchill)', tip: 'Consulta el estado del modelo, el plano de corte y la subida a Windchill de esta pieza.', fn: () => abrirModalDocumentacion(nodeId, false) });
-        }
 
         if (!nodo.trabajador_id) {
           items.push({ separador: true });
@@ -2373,78 +2386,58 @@
       nodoFechasPrevistasActual = null;
     }
 
-    // -------------------- Documentación de pieza (Modelo/Plano de corte/Windchill) --------------------
+    // -------------------- Publicación Windchill (nodo DOC_WINDCHILL) --------------------
 
-    const ETIQUETAS_DOC = { MOD: 'Modelo', PDC: 'Plano de corte', WIN: 'Windchill' };
-    const ORDEN_DOC = ['MOD', 'PDC', 'WIN'];
-    let nodoDocumentacionActual = null;
-    let docPiezaEditable = false;
-    let docPiezaCache = [];
+    let nodoWindchillActual = null;
+    let winEditable = false;
 
-    async function abrirModalDocumentacion(nodeId, editable) {
-      nodoDocumentacionActual = nodeId;
-      docPiezaEditable = editable;
+    async function abrirModalPublicacionWindchill(nodeId, editable) {
       const nodo = mapaNodoPorId[nodeId];
-      document.getElementById('doc-nodo-info').textContent = `${nodo.codigo} — ${nodo.nombre}`;
-      document.getElementById('doc-estado').textContent = '';
-      document.getElementById('doc-filas').innerHTML = '<tr><td colspan="3" style="padding:8px;">Cargando...</td></tr>';
-      document.getElementById('modal-documentacion-pieza').style.display = 'flex';
+      nodoWindchillActual = nodeId;
+      winEditable = editable;
 
-      const { data, error } = await supabaseClient.rpc('listar_documentacion_nodo', { p_node_id: nodeId });
+      document.getElementById('win-nodo-info').textContent = `${nodo.codigo} — ${nodo.nombre}`;
+      document.getElementById('win-estado').textContent = '';
+      document.getElementById('win-estado').className = 'estado-msg';
+      document.getElementById('win-subido-info').textContent = 'Cargando...';
+      document.getElementById('win-publicado-check').checked = false;
+      document.getElementById('win-publicado-check').disabled = !editable;
+      document.getElementById('win-btn-guardar').style.display = editable ? 'inline-block' : 'none';
+      document.getElementById('modal-publicacion-windchill').style.display = 'flex';
+
+      const { data, error } = await supabaseClient.rpc('obtener_publicacion_windchill', { p_node_id: nodeId });
       if (error) {
-        document.getElementById('doc-filas').innerHTML = `<tr><td colspan="3" style="padding:8px; color:#dc3545;">Error: ${error.message}</td></tr>`;
+        document.getElementById('win-subido-info').textContent = 'Error al cargar: ' + traducirError(error.message);
         return;
       }
-      docPiezaCache = data || [];
-      pintarFilasDocumentacion();
+      const fila = (data && data[0]) || { publicado: false, subido_en: null, subido_por_nombre: null };
+      document.getElementById('win-publicado-check').checked = !!fila.publicado;
+      document.getElementById('win-subido-info').textContent = (fila.publicado && fila.subido_en)
+        ? `Subido por ${fila.subido_por_nombre || '—'} el ${formatearFechaHora(fila.subido_en)}`
+        : 'Todavía no se ha marcado como publicado.';
     }
 
-    function pintarFilasDocumentacion() {
-      const filas = ORDEN_DOC.map(tipo => {
-        const fila = docPiezaCache.find(d => d.tipo_documento === tipo) || { tipo_documento: tipo, publicado: false, fecha_subida: null };
-        return `
-          <tr>
-            <td style="padding:5px 2px;">${ETIQUETAS_DOC[tipo]}</td>
-            <td style="text-align:center; padding:5px 2px;">
-              <input type="checkbox" ${fila.publicado ? 'checked' : ''} ${docPiezaEditable ? '' : 'disabled'}
-                     onchange="guardarDocumentacionPieza('${tipo}', this.checked, undefined)">
-            </td>
-            <td style="padding:5px 2px;">
-              <input type="date" value="${fila.fecha_subida || ''}" ${docPiezaEditable ? '' : 'disabled'}
-                     style="padding:4px; font-size:12px;"
-                     onchange="guardarDocumentacionPieza('${tipo}', undefined, this.value || null)">
-            </td>
-          </tr>
-        `;
-      }).join('');
-      document.getElementById('doc-filas').innerHTML = filas;
+    function cerrarModalPublicacionWindchill() {
+      document.getElementById('modal-publicacion-windchill').style.display = 'none';
+      nodoWindchillActual = null;
     }
 
-    async function guardarDocumentacionPieza(tipo, publicadoNuevo, fechaNueva) {
-      const estadoEl = document.getElementById('doc-estado');
-      const filaActual = docPiezaCache.find(d => d.tipo_documento === tipo) || { tipo_documento: tipo, publicado: false, fecha_subida: null };
-      const publicado = publicadoNuevo !== undefined ? publicadoNuevo : filaActual.publicado;
-      const fecha = fechaNueva !== undefined ? fechaNueva : filaActual.fecha_subida;
-
+    async function guardarPublicacionWindchill() {
+      if (!nodoWindchillActual || !winEditable) return;
+      const publicado = document.getElementById('win-publicado-check').checked;
+      const estadoEl = document.getElementById('win-estado');
       estadoEl.textContent = 'Guardando...'; estadoEl.className = 'estado-msg';
-      const { error } = await supabaseClient.rpc('marcar_documentacion_pieza', {
-        p_node_id: nodoDocumentacionActual, p_tipo_documento: tipo, p_publicado: publicado, p_fecha_subida: fecha
+
+      const { error } = await supabaseClient.rpc('marcar_publicacion_windchill', {
+        p_node_id: nodoWindchillActual, p_publicado: publicado
       });
       if (error) {
         estadoEl.textContent = 'Error: ' + traducirError(error.message);
         estadoEl.className = 'estado-msg error';
-        pintarFilasDocumentacion();
         return;
       }
-      docPiezaCache = docPiezaCache.filter(d => d.tipo_documento !== tipo);
-      docPiezaCache.push({ tipo_documento: tipo, publicado, fecha_subida: fecha });
-      estadoEl.textContent = '';
-      registrarLog('DOCUMENTACION_PIEZA', `${ETIQUETAS_DOC[tipo]}: ${publicado ? 'publicado' : 'no publicado'}${fecha ? `, subido ${fecha}` : ''} (${mapaNodoPorId[nodoDocumentacionActual]?.codigo || ''})`, nodoDocumentacionActual);
-    }
-
-    function cerrarModalDocumentacion() {
-      document.getElementById('modal-documentacion-pieza').style.display = 'none';
-      nodoDocumentacionActual = null;
+      registrarLog('MARCAR_WINDCHILL', `Marcó Publicado=${publicado ? 'Sí' : 'No'} (${mapaNodoPorId[nodoWindchillActual]?.codigo || ''})`, nodoWindchillActual);
+      await abrirModalPublicacionWindchill(nodoWindchillActual, winEditable);
     }
 
     // Se llama cada vez que se toca "Fin previsto": si el nuevo fin es
@@ -2784,6 +2777,41 @@
       } catch (e) {
         mostrarAvisoModal('Error generando la estructura mínima: ' + traducirError(e.message));
         registrarLog('INTENTO_FALLIDO', `Intento de generar estructura mínima en "${nodo.codigo}" denegado: ${e.message}`, nodeId);
+        await cargarArbol();
+      }
+    }
+
+    // Dentro de una pieza numerada (1001, 4001...) genera de golpe los 3
+    // nodos de seguimiento documental. Solo crea los que falten, así que se
+    // puede volver a usar sin duplicar si ya se había generado alguno.
+    const RAMA_DOC_PIEZA = [
+      { tipo: 'DOC_MODELO', codigo: 'MOD', nombre: 'Modelo' },
+      { tipo: 'DOC_PLANO_CORTE', codigo: 'PDC', nombre: 'Plano de corte' },
+      { tipo: 'DOC_WINDCHILL', codigo: 'WIN', nombre: 'Windchill' }
+    ];
+
+    async function generarDocumentacionPieza(nodeId) {
+      const nodo = mapaNodoPorId[nodeId];
+      const existentes = new Set((mapaHijosPorPadre[nodeId] || []).map(h => h.codigo));
+      const faltantes = RAMA_DOC_PIEZA.filter(spec => !existentes.has(spec.codigo));
+
+      if (faltantes.length === 0) {
+        mostrarAvisoModal('Esta pieza ya tiene generados Modelo, Plano de corte y Windchill.');
+        return;
+      }
+      if (!await mostrarConfirmacion(`¿Generar ${faltantes.map(f => f.nombre).join(', ')} dentro de "${nodo.codigo}"?`)) return;
+
+      const ordenBase = (mapaHijosPorPadre[nodeId] || []).length;
+      try {
+        for (let i = 0; i < faltantes.length; i++) {
+          await crearRamaMinima(faltantes[i], nodeId, ordenBase + i);
+        }
+        registrarLog('CREAR_LOTE', `Generó la documentación (${faltantes.map(f => f.nombre).join(', ')}) dentro de "${nodo.codigo}"`, nodeId);
+        nodosAbiertos.add(nodeId);
+        await cargarArbol();
+      } catch (e) {
+        mostrarAvisoModal('Error generando la documentación: ' + traducirError(e.message));
+        registrarLog('INTENTO_FALLIDO', `Intento de generar documentación en "${nodo.codigo}" denegado: ${e.message}`, nodeId);
         await cargarArbol();
       }
     }
