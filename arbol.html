@@ -544,6 +544,9 @@
     <div class="overlay-caja" style="max-width:min(1500px, 96vw); width:96vw;">
       <h3>📋 Comentarios pendientes de cambios en modelo</h3>
       <p style="font-size:12px; color:#666; margin-top:-6px;">De todos los buques. Marca la casilla para dar un comentario por revisado (cualquiera puede revisar comentarios de otro usuario).</p>
+      <label style="display:flex; align-items:center; gap:6px; font-weight:normal; font-size:13px;">
+        <input type="checkbox" id="chk-ver-comentarios-aprobados" style="width:auto;" onchange="cargarResumenComentariosModelo()"> Ver también los ya aprobados
+      </label>
       <div style="display:flex; gap:18px; flex-wrap:wrap;">
         <div style="flex:1; min-width:320px;">
           <h4 style="margin:6px 0; color:#333;">Ghenova</h4>
@@ -2361,7 +2364,7 @@
     // Se cargan bajo demanda (son tablas pequeñas) la primera vez que hacen
     // falta, para no añadir peso a la carga inicial del árbol.
 
-    const MAPA_UBICACION_SEDE = { FER: 'Ferrol', BIL: 'Bilbao', CAN: 'Las Palmas de Gran Canaria', MAD: 'Madrid', SEV: 'Sevilla' };
+    const MAPA_UBICACION_SEDE = { OF1: 'Ferrol', OF2: 'Bilbao', OF3: 'Madrid', OF4: 'Las Palmas de Gran Canaria', OF5: 'Sevilla' };
     const ETIQUETAS_MOTIVO_RETRASO = {
       FALTA_MATERIAL: 'Falta de material',
       CAMBIO_DISENO: 'Cambio de diseño / cambios en modelo',
@@ -4425,13 +4428,22 @@
         supabaseClient.rpc('listar_todos_comentarios_modelo', { p_origen: 'NAV' })
       ]);
 
+      const verAprobados = document.getElementById('chk-ver-comentarios-aprobados').checked;
+
       const pintar = (cont, resultado) => {
         if (resultado.error) {
           cont.innerHTML = `<p style="color:#dc3545;">Error: ${traducirError(resultado.error.message)}</p>`;
           return;
         }
-        const filas = resultado.data || [];
-        if (filas.length === 0) { cont.innerHTML = '<p style="color:#666;">Sin comentarios.</p>'; return; }
+        const todas = resultado.data || [];
+        // Por defecto solo se ven los pendientes (ni implementados ni
+        // aprobados); la casilla de arriba permite ver también los que ya
+        // están aprobados.
+        const filas = verAprobados ? todas : todas.filter(c => !c.aprobado);
+        if (filas.length === 0) {
+          cont.innerHTML = `<p style="color:#666;">${verAprobados ? 'Sin comentarios.' : 'No hay comentarios pendientes.'}</p>`;
+          return;
+        }
         // Se agrupan visualmente por ruta (buque > ... ) ordenando por ella.
         const conRuta = filas.map(c => ({ c, ruta: mapaNodoPorId[c.node_id] ? rutaCompleta(mapaNodoPorId[c.node_id]) : '' }));
         conRuta.sort((a, b) => a.ruta.localeCompare(b.ruta));

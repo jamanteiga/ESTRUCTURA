@@ -142,6 +142,7 @@
     let mapaNodoPorId = {};
     let nodosGestorActual = [];
     let filtroUsuarioId = null;
+    let filtroRevisorId = null;
 
     function esGestor() { return miPerfil.rol === 'ADMIN' || miPerfil.rol === 'REVISOR'; }
     function esInvitado() { return miPerfil.rol === 'INVITADO'; }
@@ -383,6 +384,13 @@
         .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
     }
 
+    function revisoresConTareasAsignadas(nodos) {
+      const ids = [...new Set(nodos.filter(n => n.revisor_id).map(n => n.revisor_id))];
+      return ids
+        .map(id => ({ id, nombre: nodos.find(n => n.revisor_id === id)?.revisor_nombre || '—' }))
+        .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+    }
+
     function formatearEspera(iso) {
       const minutos = Math.floor((new Date() - new Date(iso)) / 60000);
       const horas = Math.floor(minutos / 60);
@@ -393,7 +401,10 @@
 
     function renderColaRevision() {
       const usuarios = usuariosConTareasAsignadas(nodosGestorActual);
-      const base = filtroUsuarioId ? nodosGestorActual.filter(n => n.trabajador_id === filtroUsuarioId) : nodosGestorActual;
+      const revisores = revisoresConTareasAsignadas(nodosGestorActual);
+      const base = nodosGestorActual
+        .filter(n => !filtroUsuarioId || n.trabajador_id === filtroUsuarioId)
+        .filter(n => !filtroRevisorId || n.revisor_id === filtroRevisorId);
 
       const colaRevision = base
         .filter(n => n.revision_estado === 'PENDIENTE' || n.revision_estado === 'EN_REVISION')
@@ -420,6 +431,12 @@
             <select onchange="filtroUsuarioId = this.value || null; pintar();" style="padding:4px; border-radius:4px; border:1px solid #ccc; margin-left:6px;">
               <option value="" ${!filtroUsuarioId ? 'selected' : ''}>Todos</option>
               ${usuarios.map(u => `<option value="${u.id}" ${u.id === filtroUsuarioId ? 'selected' : ''}>${u.nombre}</option>`).join('')}
+            </select>
+          </label>
+          <label style="display:inline-block; font-size:12px; font-weight:bold; margin-bottom:8px; margin-left:14px;">Supervisor:
+            <select onchange="filtroRevisorId = this.value || null; pintar();" style="padding:4px; border-radius:4px; border:1px solid #ccc; margin-left:6px;">
+              <option value="" ${!filtroRevisorId ? 'selected' : ''}>Todos</option>
+              ${revisores.map(r => `<option value="${r.id}" ${r.id === filtroRevisorId ? 'selected' : ''}>${r.nombre}</option>`).join('')}
             </select>
           </label>
           <ul class="lista-nodos" style="max-height:600px; overflow-y:auto;">

@@ -113,11 +113,11 @@
       <label for="ubicacion-nuevo">Ubicación (también decide qué festivos locales le aplican)</label>
       <select id="ubicacion-nuevo">
         <option value="">— Sin especificar —</option>
-        <option value="FER">Ferrol (FER)</option>
-        <option value="BIL">Bilbao (BIL)</option>
-        <option value="CAN">Canarias (CAN)</option>
-        <option value="MAD">Madrid (MAD)</option>
-        <option value="SEV">Sevilla (SEV)</option>
+        <option value="OF1">Oficina 1 (OF1)</option>
+        <option value="OF2">Oficina 2 (OF2)</option>
+        <option value="OF4">Oficina 4 (OF4)</option>
+        <option value="OF3">Oficina 3 (OF3)</option>
+        <option value="OF5">Oficina 5 (OF5)</option>
       </select>
 
       <label for="password-nuevo">Contraseña inicial (déjalo en blanco para que se genere una)</label>
@@ -176,11 +176,11 @@
       <label>Ubicación (también decide qué festivos locales le aplican)</label>
       <select id="editar-ubicacion">
         <option value="">— Sin especificar —</option>
-        <option value="FER">Ferrol (FER)</option>
-        <option value="BIL">Bilbao (BIL)</option>
-        <option value="CAN">Canarias (CAN)</option>
-        <option value="MAD">Madrid (MAD)</option>
-        <option value="SEV">Sevilla (SEV)</option>
+        <option value="OF1">Oficina 1 (OF1)</option>
+        <option value="OF2">Oficina 2 (OF2)</option>
+        <option value="OF4">Oficina 4 (OF4)</option>
+        <option value="OF3">Oficina 3 (OF3)</option>
+        <option value="OF5">Oficina 5 (OF5)</option>
       </select>
       <label>Email de contacto</label>
       <input type="text" id="editar-email">
@@ -363,11 +363,11 @@
       cargarUsuarios();
     }
 
-    const ETIQUETAS_UBICACION = { FER: 'Ferrol', BIL: 'Bilbao', CAN: 'Canarias', MAD: 'Madrid', SEV: 'Sevilla' };
+    const ETIQUETAS_UBICACION = { OF1: 'Oficina 1', OF2: 'Oficina 2', OF3: 'Oficina 3', OF4: 'Oficina 4', OF5: 'Oficina 5' };
     // Qué calendario de festivos (tabla "festivos", columna sede) le aplica a
     // cada ubicación. CAN se trata como Las Palmas de Gran Canaria porque es
     // el que se ha cargado; si hace falta distinguir Tenerife, se añade aquí.
-    const MAPA_UBICACION_SEDE_FESTIVOS = { FER: 'Ferrol', BIL: 'Bilbao', CAN: 'Las Palmas de Gran Canaria', MAD: 'Madrid', SEV: 'Sevilla' };
+    const MAPA_UBICACION_SEDE_FESTIVOS = { OF1: 'Ferrol', OF2: 'Bilbao', OF3: 'Madrid', OF4: 'Las Palmas de Gran Canaria', OF5: 'Sevilla' };
     const ETIQUETAS_ROL = { TRABAJADOR: 'Usuario', REVISOR: 'Supervisor', ADMIN: 'Admin', INVITADO: 'Invitado', WINDCHILL: 'Windchill' };
 
     let perfilesCache = [];
