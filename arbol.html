@@ -652,6 +652,22 @@
     </div>
   </div>
 
+  <div class="overlay" id="modal-pegar-rama">
+    <div class="overlay-caja">
+      <h3>Pegar rama copiada</h3>
+      <p style="font-size:12px; color:#666;" id="pegar-rama-info"></p>
+      <label>Código</label>
+      <input type="text" id="pegar-rama-codigo">
+      <label>Nombre</label>
+      <input type="text" id="pegar-rama-nombre">
+      <div class="estado-msg" id="pegar-rama-estado"></div>
+      <div class="overlay-botones">
+        <button class="secundario" onclick="cerrarModalPegarRama()">Cancelar</button>
+        <button id="pegar-rama-guardar" onclick="confirmarPegarRama()">Pegar aquí</button>
+      </div>
+    </div>
+  </div>
+
   <div id="contenedor-avisos"></div>
   <div id="barra-seleccion" style="display:none; position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#222; color:white; padding:12px 20px; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.35); z-index:3000; gap:12px; align-items:center; flex-wrap:wrap; max-width:95vw;">
     <span id="texto-seleccion" style="font-size:13px;"></span>
@@ -936,6 +952,8 @@
     let parentIdSeleccionadoParaMover = null;
     let nodoLotePadre = null;
     let nodoDuplicarActual = null;
+    let ramaCopiada = null; // { id, tipo, codigo, nombre, tiposPadreValidos: Set }
+    let nodoPegarDestino = null;
     let filtroTexto = '';
     let filtroUsuarioId = '';
     let filtroEstado = '';
@@ -2017,6 +2035,10 @@
           }
           items.push({ label: '↔️ Cambiar de nodo', tip: 'Cambia de nodo padre.', fn: () => abrirModalMover(nodeId) });
           items.push({ label: '✎ Editar', tip: 'Edita código, nombre y descripción del nodo.', fn: () => abrirModalEditar(nodeId) });
+          items.push({ label: `📋 Copiar rama ("${nodo.codigo}")`, tip: 'Copia este nodo y todo lo que cuelga de él (estructura, asignaciones, fechas y estados) para pegarlo luego en cualquier otro nodo.', fn: () => accionCopiarRama(nodeId) });
+          if (puedePegarRamaEn(nodo)) {
+            items.push({ label: `📌 Pegar "${ramaCopiada.codigo}" aquí`, tip: 'Crea una copia exacta de la rama copiada dentro de este nodo.', fn: () => abrirModalPegarRama(nodeId) });
+          }
         }
         if ((mapaHijosPorPadre[nodeId] || []).length > 0) {
           items.push({ label: '⏬ Expandir', tip: 'Despliega todos los nodos dentro de este.', fn: () => expandirRama(nodeId) });
@@ -3428,6 +3450,81 @@
         registrarLog('INTENTO_FALLIDO', `Intento de duplicar "${nodoDuplicarActual.codigo}" denegado: ${err.message}`, nodoDuplicarActual.id);
       }
       btn.disabled = false;
+    }
+
+    // -------------------- Copiar / pegar una rama completa en cualquier sitio --------------------
+    // A diferencia de "Duplicar" (que solo copia la estructura, en el mismo
+    // padre y sin asignaciones), "Copiar rama" + "Pegar aquí" hace una
+    // copia exacta -- con usuario asignado, fechas y estados de revisión/
+    // documentación incluidos -- y se puede pegar en cualquier nodo del
+    // árbol que admita ese tipo como hijo. Todo el trabajo pesado (clonar
+    // el nodo y cada uno de sus descendientes, con su fila de workflow) lo
+    // hace una única función en el servidor (clonar_rama_completa), para
+    // que ramas grandes no tarden una eternidad en crearse nodo a nodo.
+
+    async function accionCopiarRama(nodeId) {
+      const nodo = mapaNodoPorId[nodeId];
+      const { data, error } = await supabaseClient.from('node_type_rules').select('parent_type').eq('child_type', nodo.tipo);
+      if (error) { mostrarAvisoModal('Error: ' + traducirError(error.message)); return; }
+      ramaCopiada = {
+        id: nodeId, tipo: nodo.tipo, codigo: nodo.codigo, nombre: nodo.nombre,
+        tiposPadreValidos: new Set((data || []).map(r => r.parent_type))
+      };
+      registrarLog('COPIAR_RAMA', `Copió la rama "${nodo.codigo}" (lista para pegar)`, nodeId);
+      mostrarAvisoModal(`Rama "${nodo.codigo} - ${nodo.nombre}" copiada. Ahora haz clic derecho sobre el nodo donde quieras pegarla y elige "Pegar aquí".`);
+    }
+
+    function puedePegarRamaEn(nodo) {
+      if (!ramaCopiada) return false;
+      if (!ramaCopiada.tiposPadreValidos.has(nodo.tipo)) return false;
+      if (nodo.id === ramaCopiada.id) return false;
+      if (esDescendiente(nodo.id, ramaCopiada.id)) return false; // no pegar dentro de su propia rama
+      return true;
+    }
+
+    function abrirModalPegarRama(nodeId) {
+      nodoPegarDestino = nodeId;
+      const destino = mapaNodoPorId[nodeId];
+      document.getElementById('pegar-rama-info').textContent =
+        `Se creará una copia exacta de "${ramaCopiada.codigo} - ${ramaCopiada.nombre}" (con todo lo que lleva dentro: estructura, asignaciones, fechas y estados) dentro de "${destino.codigo}".`;
+      document.getElementById('pegar-rama-codigo').value = ramaCopiada.codigo;
+      document.getElementById('pegar-rama-nombre').value = ramaCopiada.nombre;
+      document.getElementById('pegar-rama-estado').textContent = '';
+      document.getElementById('modal-pegar-rama').style.display = 'flex';
+    }
+
+    function cerrarModalPegarRama() { document.getElementById('modal-pegar-rama').style.display = 'none'; }
+
+    async function confirmarPegarRama() {
+      const estadoEl = document.getElementById('pegar-rama-estado');
+      const btn = document.getElementById('pegar-rama-guardar');
+      const codigo = document.getElementById('pegar-rama-codigo').value.trim();
+      const nombre = document.getElementById('pegar-rama-nombre').value.trim();
+
+      if (!codigo || !nombre) { estadoEl.textContent = 'Rellena código y nombre.'; estadoEl.className = 'estado-msg error'; return; }
+
+      btn.disabled = true;
+      estadoEl.textContent = 'Pegando la rama, un momento...';
+      estadoEl.className = 'estado-msg';
+
+      const destino = mapaNodoPorId[nodoPegarDestino];
+      const { error } = await supabaseClient.rpc('clonar_rama_completa', {
+        p_origen_id: ramaCopiada.id, p_nuevo_parent_id: nodoPegarDestino, p_nuevo_codigo: codigo, p_nuevo_nombre: nombre
+      });
+
+      if (error) {
+        estadoEl.textContent = 'Error: ' + traducirError(error.message);
+        estadoEl.className = 'estado-msg error';
+        registrarLog('INTENTO_FALLIDO', `Intento de pegar "${ramaCopiada.codigo}" denegado: ${error.message}`, nodoPegarDestino);
+        btn.disabled = false;
+        return;
+      }
+
+      registrarLog('PEGAR_RAMA', `Pegó una copia de "${ramaCopiada.codigo}" como "${codigo}" dentro de "${destino.codigo}"`, nodoPegarDestino);
+      cerrarModalPegarRama();
+      nodosAbiertos.add(nodoPegarDestino);
+      btn.disabled = false;
+      await cargarArbol();
     }
 
     async function abrirModalMover(nodeId) {
