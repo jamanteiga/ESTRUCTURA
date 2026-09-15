@@ -1298,6 +1298,14 @@
       guardarEstadoAbiertos();
     }
 
+    function etiquetaCodigoVisible(nodo) {
+      // El "Realizado" de Modelo/Plano de corte se guarda con codigo
+      // 'REA' (para detectar si ya existe al generar documentación),
+      // pero se muestra como "Realizado" en vez de la sigla.
+      if (nodo.tipo === 'DOC_REALIZADO') return 'Realizado';
+      return nodo.codigo;
+    }
+
     function calcularEstadoPropio(nodo) {
       if (nodo.revision_estado === 'APROBADO') return 'aprobado';
       if (nodo.revision_estado === 'RECHAZADO') return 'rechazado';
@@ -1462,7 +1470,7 @@
             <div class="fila-nodo inactivo">
               <span class="toggle ${tieneHijos ? '' : 'vacio'}" onclick="toggleNodo('${nodo.id}')">${abierto ? '▼' : '▶'}</span>
               <span class="flecha f-sin_asignar">▶</span>
-              <span class="codigo">${resaltarCoincidencia(nodo.codigo)}</span>
+              <span class="codigo">${resaltarCoincidencia(etiquetaCodigoVisible(nodo))}</span>
               ${nombreEsRedundante(nodo.codigo, nodo.nombre) ? '' : `<span>${resaltarCoincidencia(nodo.nombre)}</span>`}
               <span class="tipo-tag">${etiquetaCortaTipo(nodo.tipo)}</span>
               <span style="font-size:11px; color:#dc3545;">(desactivado)</span>
@@ -1553,7 +1561,7 @@
             ${(!sinAsignacion && nodo.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO') ? '<span class="cuadro-cambios-modelo" title="Pendiente de cambios en modelo"></span>' : ''}
             ${(!sinAsignacion && nodoRetrasado(nodo)) ? `<span class="icono-retraso" title="Retrasada — prevista para ${formatearFechaCorta(new Date(nodo.fecha_fin_prevista))}">⏰</span>` : ''}
             <span class="flecha ${claseColor}" title="${estado}">${simboloFlecha}</span>
-            <span class="codigo">${resaltarCoincidencia(nodo.codigo)}</span>
+            <span class="codigo">${resaltarCoincidencia(etiquetaCodigoVisible(nodo))}</span>
             ${nombreEsRedundante(nodo.codigo, nodo.nombre) ? '' : `<span>${resaltarCoincidencia(nodo.nombre)}</span>`}
             <span class="tipo-tag">${etiquetaCortaTipo(nodo.tipo)}</span>
             ${badgeAvance}
@@ -3049,7 +3057,7 @@
             <li class="nodo">
               <div class="fila-nodo">
                 <span class="tipo-tag">${etiquetaCortaTipo(n.tipo)}</span>
-                <span class="codigo">${n.codigo}</span>
+                <span class="codigo">${etiquetaCodigoVisible(n)}</span>
                 ${nombreEsRedundante(n.codigo, n.nombre) ? '' : `<span>${n.nombre}</span>`}
                 <span style="font-size:11px; color:#888;">${rutaCompletaPapelera(n)}</span>
                 <span class="acciones">
