@@ -8,10 +8,6 @@
   <meta name="theme-color" content="#007bff">
   <style>
     body { font-family: Arial, sans-serif; max-width: min(1850px, 97vw); margin: 30px auto; padding: 0 20px; color: #333; }
-    @media (max-width: 480px) {
-      body { margin: 10px auto; padding: 0 8px; box-sizing: border-box; }
-      h1 { font-size: 18px; }
-    }
     h1 { font-size: 22px; }
     .card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 14px; margin-bottom: 16px; }
     #card-arbol { overflow-y: auto; overflow-x: auto; box-sizing: border-box; }
@@ -284,7 +280,11 @@
       padding: 6px 10px; border-radius: 4px; font-size: 12px; max-width: 220px; pointer-events: none;
       box-shadow: 0 2px 8px rgba(0,0,0,0.3);
     }
-  </style>
+      @media (max-width: 480px) {
+      body { margin: 10px auto; padding: 0 8px; box-sizing: border-box; }
+      h1 { font-size: 18px; }
+    }
+</style>
 </head>
 <body>
 

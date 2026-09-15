@@ -66,7 +66,11 @@
     .panel-ahora .tiempo-transcurrido { color: #888; font-size: 11px; }
     .panel-ahora h3 { font-size: 14px; margin: 18px 0 8px; color: #14395c; }
     .panel-ahora h3:first-child { margin-top: 0; }
-  </style>
+      @media (max-width: 480px) {
+      body { margin: 10px auto; padding: 0 8px; box-sizing: border-box; }
+      h1 { font-size: 18px; }
+    }
+</style>
 </head>
 <body>
 
@@ -159,7 +163,11 @@
     const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    const esMovil = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || window.innerWidth < 768;
+    // Detección de móvil/tablet: iPadOS manda user-agent de escritorio
+    // ("Macintosh") desde iOS 13, así que se completa con pantalla táctil
+    // real (navigator.maxTouchPoints, 0 en un Mac/PC sin pantalla táctil).
+    const esTactil = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+    const esMovil = esTactil || window.innerWidth < 768;
     document.body.classList.toggle('vista-movil', esMovil);
 
     const POR_PAGINA = 50;

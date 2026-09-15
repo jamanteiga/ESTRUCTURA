@@ -83,7 +83,7 @@
     }
     .overlay-caja { background: white; border-radius: 8px; padding: 22px; max-width: 460px; width: 90%; max-height: 85vh; overflow-y: auto; }
     .overlay-caja h3 { margin-top: 0; font-size: 16px; }
-    .overlay-caja input { width: 100%; padding: 7px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 13px; margin-bottom: 8px; }
+    .overlay-caja input { width: 100%; padding: 7px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 16px; margin-bottom: 8px; }
     .overlay-botones { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
     .lista-ramas { max-height: 320px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; }
     .opcion-rama { padding: 8px 10px; cursor: pointer; font-size: 13px; border-bottom: 1px solid #eee; }
@@ -116,7 +116,11 @@
       .gantt-scroll { overflow: visible; border: none; max-height: none; width: 100%; }
       .card.filtros, .card.leyenda { break-inside: avoid; }
     }
-  </style>
+      @media (max-width: 480px) {
+      body { margin: 10px auto; padding: 0 8px; box-sizing: border-box; }
+      h1 { font-size: 18px; }
+    }
+</style>
 </head>
 <body>
 
@@ -251,7 +255,11 @@
 
     // Vista móvil: filtros/vistas se pliegan tras el botón ☰ en vez de
     // mostrar todo el panel de escritorio apretado.
-    const esMovil = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || window.innerWidth < 768;
+    // Detección de móvil/tablet: iPadOS manda user-agent de escritorio
+    // ("Macintosh") desde iOS 13, así que se completa con pantalla táctil
+    // real (navigator.maxTouchPoints, 0 en un Mac/PC sin pantalla táctil).
+    const esTactil = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+    const esMovil = esTactil || window.innerWidth < 768;
     document.body.classList.toggle('vista-movil', esMovil);
 
     function alternarFiltrosMovil() {
