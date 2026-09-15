@@ -1095,6 +1095,7 @@
     }
 
     function esGestor() { return miPerfil.rol === 'ADMIN' || miPerfil.rol === 'REVISOR'; }
+    function esAdmin() { return miPerfil.rol === 'ADMIN'; }
     function esInvitado() { return miPerfil.rol === 'INVITADO'; }
     // Rol dedicado exclusivamente a subir documentación (Modelo/Plano de
     // corte/Windchill) de piezas finales — no ve ni toca nada más del árbol.
@@ -1948,7 +1949,7 @@
           items.push({ label: '🔒 Publicar (bloqueado)', tip: 'Modelo y Plano de corte de esta pieza deben estar Aprobados antes de poder publicar en Windchill.', soloLectura: true });
         } else {
           const publicadoActual = nodo.nombre === 'Sí';
-          const puedeEditarPub = esGestor() || esWindchill();
+          const puedeEditarPub = esAdmin() || esWindchill();
           if (puedeEditarPub) {
             items.push({
               label: publicadoActual ? '☑️ Marcar como NO publicado' : '☐ Marcar como Publicado',
@@ -1956,7 +1957,7 @@
               fn: () => accionMarcarPublicadoWindchill(nodeId, !publicadoActual)
             });
           } else {
-            items.push({ label: `📌 Publicado: ${nodo.nombre}`, tip: 'Solo lo puede cambiar ADMIN, Supervisor o Windchill.', soloLectura: true });
+            items.push({ label: `📌 Publicado: ${nodo.nombre}`, tip: 'Solo lo puede cambiar ADMIN o el usuario de Windchill.', soloLectura: true });
           }
         }
       }
@@ -1969,7 +1970,7 @@
           items.push({ label: '🔒 Fichero subido (bloqueado)', tip: 'Modelo y Plano de corte de esta pieza deben estar Aprobados antes de poder subir el fichero a Windchill.', soloLectura: true });
         } else {
           const subidoActual = nodo.nombre !== '—';
-          const puedeEditarSub = esGestor() || esWindchill();
+          const puedeEditarSub = esAdmin() || esWindchill();
           if (puedeEditarSub) {
             items.push({
               label: subidoActual ? '☑️ Quitar Fichero subido' : '☐ Marcar Fichero subido',
@@ -1977,7 +1978,7 @@
               fn: () => accionMarcarFicheroSubido(nodeId, !subidoActual)
             });
           } else {
-            items.push({ label: `📌 ${nodo.nombre}`, tip: 'Solo lo puede cambiar ADMIN, Supervisor o Windchill.', soloLectura: true });
+            items.push({ label: `📌 ${nodo.nombre}`, tip: 'Solo lo puede cambiar ADMIN o el usuario de Windchill.', soloLectura: true });
           }
         }
       }
@@ -3120,15 +3121,41 @@
       await cargarArbol();
     }
 
+    // Busca los descendientes de un nodo aunque estén desactivados y el
+    // árbol principal no los tenga cargados -- usa el índice completo de
+    // la papelera (mapaTodoParaPapelera, que trae TODOS los nodos, activos
+    // e inactivos) cuando está disponible, y si no, el índice normal del
+    // árbol (obtenerDescendientesIds).
+    function obtenerDescendientesIdsCompleto(nodeId) {
+      if (Object.keys(mapaTodoParaPapelera).length > 0) {
+        const resultado = [];
+        Object.values(mapaTodoParaPapelera).filter(n => n.parent_id === nodeId).forEach(h => {
+          resultado.push(h.id);
+          resultado.push(...obtenerDescendientesIdsCompleto(h.id));
+        });
+        return resultado;
+      }
+      return obtenerDescendientesIds(nodeId);
+    }
+
+    // Reactiva el nodo Y toda la rama que cuelga de él (igual que
+    // desactivarNodo desactiva la rama entera al desactivar) -- así una
+    // pieza reactivada no deja a sus MOD/PDC/WIN, ni al resto de hijos,
+    // huérfanos en la papelera. No toca el estado de aprobación ni de
+    // Realizado/Publicado/Fichero subido: se quedan exactamente como
+    // estaban antes de desactivar la rama.
     async function reactivarNodo(nodeId) {
       const nodo = mapaNodoPorId[nodeId] || mapaTodoParaPapelera[nodeId];
-      const { error } = await supabaseClient.from('nodes').update({ activo: true }).eq('id', nodeId);
+      const descendientes = obtenerDescendientesIdsCompleto(nodeId);
+      const ids = [nodeId, ...descendientes];
+
+      const { error } = await supabaseClient.from('nodes').update({ activo: true }).in('id', ids);
       if (error) {
         mostrarAvisoModal('Error: ' + traducirError(error.message));
         registrarLog('INTENTO_FALLIDO', `Intento de reactivar "${nodo?.codigo || nodeId}" denegado: ${error.message}`, nodeId);
         return;
       }
-      registrarLog('REACTIVAR_NODO', `Reactivó "${nodo?.codigo || nodeId}"`, nodeId);
+      registrarLog('REACTIVAR_NODO', `Reactivó "${nodo?.codigo || nodeId}"${descendientes.length ? ` junto con ${descendientes.length} nodo(s) dentro` : ''}`, nodeId);
       if (modoPapelera) await cargarPapelera(); else await cargarArbol();
     }
 
@@ -3782,9 +3809,15 @@
       event.stopPropagation();
       const descendientes = obtenerDescendientesIds(nodeId);
       if (nodosSeleccionados.has(nodeId)) {
-        // Al desmarcar, se desmarca también toda la rama (selección/deselección simétricas).
         nodosSeleccionados.delete(nodeId);
-        descendientes.forEach(id => nodosSeleccionados.delete(id));
+        // Ctrl/Cmd+clic: se desmarca SOLO este nodo, sin arrastrar lo que
+        // cuelga de él -- así se puede, p.ej., quitar de la selección el
+        // nodo "PL1000" (la familia) sin perder la selección de las piezas,
+        // MOD y PDC que hay dentro. Un clic normal sigue siendo simétrico:
+        // desmarca también toda la rama.
+        if (!(event.ctrlKey || event.metaKey)) {
+          descendientes.forEach(id => nodosSeleccionados.delete(id));
+        }
       } else {
         // Al marcar un nodo, se marca automáticamente todo lo que cuelga de él.
         nodosSeleccionados.add(nodeId);
@@ -3806,7 +3839,7 @@
       document.getElementById('btn-desbloquear-masivo').style.display = esGestor() ? 'inline-block' : 'none';
       document.getElementById('btn-tomar-tarea').style.display = puedeSeleccionar() ? 'inline-block' : 'none';
       document.getElementById('btn-aprobar-doc-masivo').style.display = esGestor() ? 'inline-block' : 'none';
-      document.getElementById('btn-publicar-win-masivo').style.display = (esGestor() || esWindchill()) ? 'inline-block' : 'none';
+      document.getElementById('btn-publicar-win-masivo').style.display = (esAdmin() || esWindchill()) ? 'inline-block' : 'none';
       barra.classList.add('visible');
     }
 
