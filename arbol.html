@@ -338,8 +338,8 @@
         <a class="menu-item" href="index.html">🏠 Inicio</a>
         <a class="menu-item solo-escritorio" id="menu-link-log" href="log.html" style="display:none;">🗒️ Logs</a>
         <span class="menu-item solo-escritorio" id="menu-item-buque" onclick="esInvitado() ? mostrarAvisoModal('Eres un usuario Invitado: solo puedes consultar, no puedes realizar cambios.') : abrirModalCrear(null, 'BUQUE')" style="display:none;">+ Añadir Buque</span>
-        <div class="menu-item-expandible" onclick="toggleSubmenuFlotante(event, this)">📊 Resumen <span class="flecha-menu">›</span></div>
-        <div class="menu-submenu-contenido">
+        <div class="menu-item-expandible" onclick="toggleSubmenuFlotante(event, this, 'submenu-resumen')">📊 Resumen <span class="flecha-menu">›</span></div>
+        <div class="menu-submenu-contenido" id="submenu-resumen">
           <a class="menu-item" href="avances.html">📉 Avances</a>
           <a class="menu-item" href="cambiosmodelo.html">🔧 Cambios de modelo</a>
           <a class="menu-item" href="cargatrabajo.html">👷 Carga de trabajo</a>
@@ -1175,12 +1175,19 @@
       document.querySelectorAll('.menu-item-expandible.abierta').forEach(el => el.classList.remove('abierta'));
     }
 
-    function toggleSubmenuFlotante(event, titulo) {
+    function toggleSubmenuFlotante(event, titulo, submenuId) {
       event.stopPropagation();
-      const submenu = titulo.nextElementSibling;
+      const submenu = document.getElementById(submenuId);
       const yaAbierto = submenu.classList.contains('abierta');
       cerrarSubmenusFlotantes();
       if (yaAbierto) return;
+
+      // El panel del menú tiene "transform" en su CSS (para la animación de
+      // deslizarlo), y eso convierte cualquier "position: fixed" de dentro
+      // en relativo al propio panel (y se recorta con su scroll), en vez de
+      // relativo a toda la pantalla. Por eso se saca al <body> antes de
+      // mostrarlo: así queda flotando de verdad, no "pegado" al panel.
+      if (submenu.parentElement !== document.body) document.body.appendChild(submenu);
 
       // Medir el alto real antes de posicionarlo, para no salirse de la pantalla por abajo
       submenu.style.visibility = 'hidden';
