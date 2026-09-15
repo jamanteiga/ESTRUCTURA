@@ -3106,14 +3106,28 @@
 
     async function guardarBloqueMinimo(buqueId) {
       const estadoEl = document.getElementById('modal-nodo-estado');
+      const btn = document.getElementById('modal-nodo-guardar');
       const codigo = document.getElementById('modal-nodo-codigo').value.trim();
-      const nombre = document.getElementById('modal-nodo-nombre').value.trim();
+      // El nombre es opcional aquí (a diferencia de lo que decía antes el
+      // mensaje de validación): si se deja en blanco, se usa el código,
+      // igual que hace el resto de la app con los nodos generados en
+      // cascada (ver ETIQUETAS_TIPO/spec.nombre en crearRamaMinima).
+      let nombre = document.getElementById('modal-nodo-nombre').value.trim();
       const descripcion = document.getElementById('modal-nodo-descripcion').value.trim();
       const orden = parseInt(document.getElementById('modal-nodo-orden').value, 10) || 0;
 
-      if (!codigo || !nombre) {
-        estadoEl.textContent = 'Rellena código y nombre del Bloque.'; estadoEl.className = 'estado-msg error'; return;
+      if (!codigo) {
+        estadoEl.textContent = 'Rellena el código del Bloque.'; estadoEl.className = 'estado-msg error'; return;
       }
+      if (!nombre) nombre = codigo;
+
+      // Crea ~25 nodos en cascada, uno por uno -- tarda unos segundos.
+      // Se avisa explícitamente para que no parezca que no ha pasado nada.
+      btn.disabled = true;
+      const textoOriginalBtn = btn.textContent;
+      btn.textContent = 'Creando...';
+      estadoEl.textContent = 'Creando el Bloque y su estructura mínima (Anidados, Producto intermedio...) — puede tardar unos segundos.';
+      estadoEl.className = 'estado-msg';
 
       try {
         const nuevoBloque = await crearRamaMinima(
@@ -3124,12 +3138,21 @@
           await supabaseClient.from('nodes').update({ descripcion }).eq('id', nuevoBloque.id);
         }
         registrarLog('CREAR_LOTE', `Generó el Bloque "${codigo}" con su estructura mínima dentro de "${mapaNodoPorId[buqueId]?.codigo || ''}"`, nuevoBloque.id);
+        btn.disabled = false;
+        btn.textContent = textoOriginalBtn;
         cerrarModalNodo();
         nodosAbiertos.add(buqueId);
         nodosAbiertos.add(nuevoBloque.id);
         await cargarArbol();
+        mostrarAvisoModal(`Bloque "${codigo}" creado con su estructura mínima dentro de "${mapaNodoPorId[buqueId]?.codigo || ''}".`);
       } catch (e) {
-        estadoEl.textContent = 'Error: ' + traducirError(e.message); estadoEl.className = 'estado-msg error';
+        btn.disabled = false;
+        btn.textContent = textoOriginalBtn;
+        const mensaje = 'Error generando el Bloque: ' + traducirError(e.message);
+        estadoEl.textContent = mensaje; estadoEl.className = 'estado-msg error';
+        // Aviso adicional (toast), por si el texto bajo el botón pasa
+        // desapercibido -- así no puede parecer que "no ha pasado nada".
+        mostrarAvisoModal(mensaje);
         registrarLog('INTENTO_FALLIDO', `Intento de generar Bloque "${codigo}" con estructura mínima denegado: ${e.message}`, buqueId);
       }
     }
