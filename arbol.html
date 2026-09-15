@@ -440,6 +440,11 @@
       <textarea id="modal-nodo-descripcion" rows="2"></textarea>
       <label>Orden</label>
       <input type="number" id="modal-nodo-orden" value="0">
+      <div id="modal-nodo-doc-wrap" style="display:none; margin-top:6px;">
+        <label class="menu-item" style="display:flex; align-items:center; gap:6px;">
+          <input type="checkbox" id="modal-nodo-doc" checked> 🗂️ Generar también Modelo, Plano de corte y Windchill (con lo que llevan dentro)
+        </label>
+      </div>
       <div class="estado-msg" id="modal-nodo-estado"></div>
       <div class="overlay-botones">
         <button class="secundario" onclick="cerrarModalNodo()">Cancelar</button>
@@ -454,7 +459,12 @@
       <p style="font-size:12px; color:#666;">Ej: prefijo "PS", desde 232 hasta 237 crea PS232, PS233... PS237.</p>
       <div id="modal-lote-tipo-wrap">
         <label>Tipo</label>
-        <select id="modal-lote-tipo"></select>
+        <select id="modal-lote-tipo" onchange="actualizarDocWrapLote()"></select>
+      </div>
+      <div id="modal-lote-doc-wrap" style="display:none; margin-bottom:6px;">
+        <label class="menu-item" style="display:flex; align-items:center; gap:6px;">
+          <input type="checkbox" id="modal-lote-doc" checked> 🗂️ Generar también Modelo, Plano de corte y Windchill en cada uno
+        </label>
       </div>
       <label>Prefijo del código</label>
       <input type="text" id="modal-lote-prefijo" placeholder="Ej: PS">
@@ -2749,6 +2759,8 @@
     function actualizarCodigoSegunTipo() {
       const tipo = document.getElementById('modal-nodo-tipo').value;
       const codigoInput = document.getElementById('modal-nodo-codigo');
+      const docWrap = document.getElementById('modal-nodo-doc-wrap');
+      if (docWrap) docWrap.style.display = (tipo in BASE_NUMERO_TIPO) ? 'block' : 'none';
       if (tipo in BASE_NUMERO_TIPO) {
         codigoInput.value = BASE_NUMERO_TIPO[tipo];
         return;
@@ -2763,6 +2775,7 @@
       const nodo = mapaNodoPorId[nodeId];
       document.getElementById('modal-nodo-titulo').textContent = 'Editar nodo';
       document.getElementById('modal-nodo-tipo-wrap').style.display = 'none';
+      document.getElementById('modal-nodo-doc-wrap').style.display = 'none';
       document.getElementById('modal-nodo-codigo').value = nodo.codigo;
       document.getElementById('modal-nodo-nombre').value = nodo.nombre;
       document.getElementById('modal-nodo-descripcion').value = nodo.descripcion || '';
@@ -2877,6 +2890,18 @@
           { tipo: 'DOC_FICHERO_SUBIDO', codigo: 'SUB', nombre: '—' }
       ] }
     ];
+
+    // Crea de golpe toda la rama Modelo/Plano de corte/Windchill (con lo
+    // que llevan dentro) bajo una pieza recién creada. Se usa al crear un
+    // único hijo de PL/PERF y al crear varios de golpe ("Crear varios
+    // nodos"); a diferencia de generarDocumentacionPieza, aquí la pieza es
+    // nueva y no puede tener ya nada, así que no hace falta comprobar qué
+    // falta.
+    async function generarRamaDocumentacionCompleta(piezaId) {
+      for (let i = 0; i < RAMA_DOC_PIEZA.length; i++) {
+        await crearRamaMinima(RAMA_DOC_PIEZA[i], piezaId, i);
+      }
+    }
 
     async function generarDocumentacionPieza(nodeId) {
       const nodo = mapaNodoPorId[nodeId];
@@ -3006,6 +3031,16 @@
       }
 
       registrarLog('CREAR_NODO', `Creó ${tipo} "${codigo}"${nodoCrearPadre ? ` dentro de ${mapaNodoPorId[nodoCrearPadre.id]?.codigo || ''}` : ''}`, nuevoNodo?.id);
+
+      const docWrapVisible = document.getElementById('modal-nodo-doc-wrap').style.display !== 'none';
+      if (docWrapVisible && document.getElementById('modal-nodo-doc').checked && TIPOS_DOCUMENTABLES.has(tipo) && esPiezaNumerada(codigo)) {
+        try {
+          await generarRamaDocumentacionCompleta(nuevoNodo.id);
+          registrarLog('CREAR_LOTE', `Generó automáticamente la documentación (Modelo/Plano de corte/Windchill) dentro de "${codigo}"`, nuevoNodo.id);
+        } catch (e) {
+          mostrarAvisoModal('El nodo se creó pero hubo un error generando su documentación: ' + traducirError(e.message));
+        }
+      }
 
       cerrarModalNodo();
       if (nodoCrearPadre) nodosAbiertos.add(nodoCrearPadre.id);
@@ -3231,6 +3266,7 @@
       selectTipo.innerHTML = tipos.length === 0
         ? '<option value="">(este tipo no admite hijos)</option>'
         : tipos.map(t => `<option value="${t}">${t}</option>`).join('');
+      actualizarDocWrapLote();
 
       const selTrab = document.getElementById('modal-lote-trabajador');
       selTrab.innerHTML = '<option value="">— Sin asignar —</option>' + opcionesUsuarioConCarga(null);
@@ -3244,6 +3280,15 @@
     }
 
     function cerrarModalLote() { document.getElementById('modal-lote').style.display = 'none'; }
+
+    // Igual que en el modal de un solo nodo: la opción de generar
+    // Modelo/Plano de corte/Windchill de golpe solo tiene sentido para
+    // piezas de PL 1000/2000/3000 o PERF 4000/6000 (BASE_NUMERO_TIPO).
+    function actualizarDocWrapLote() {
+      const tipo = document.getElementById('modal-lote-tipo').value;
+      const wrap = document.getElementById('modal-lote-doc-wrap');
+      if (wrap) wrap.style.display = (tipo in BASE_NUMERO_TIPO) ? 'block' : 'none';
+    }
 
     async function guardarLote() {
       const estadoEl = document.getElementById('modal-lote-estado');
@@ -3273,8 +3318,13 @@
         return;
       }
 
+      const generarDoc = document.getElementById('modal-lote-doc-wrap').style.display !== 'none'
+        && document.getElementById('modal-lote-doc').checked
+        && TIPOS_DOCUMENTABLES.has(tipo);
+
       btn.disabled = true;
       let creados = 0;
+      const erroresDoc = [];
 
       for (let n = desde; n <= hasta; n++) {
         const numeroTexto = String(n).padStart(anchoPadding, '0');
@@ -3303,13 +3353,25 @@
           });
         }
 
+        if (generarDoc && esPiezaNumerada(codigo)) {
+          try {
+            await generarRamaDocumentacionCompleta(nuevoNodo.id);
+          } catch (e) {
+            erroresDoc.push(`${codigo}: ${e.message}`);
+          }
+        }
+
         creados++;
       }
 
       btn.disabled = false;
       cerrarModalLote();
       nodosAbiertos.add(nodoLotePadre.id);
-      registrarLog('CREAR_LOTE', `Creó ${creados} nodos de tipo ${tipo} (${prefijo}${String(desde).padStart(anchoPadding,'0')} a ${prefijo}${String(hasta).padStart(anchoPadding,'0')}) dentro de "${nodoLotePadre.tipo}"`, nodoLotePadre.id);
+      registrarLog('CREAR_LOTE', `Creó ${creados} nodos de tipo ${tipo} (${prefijo}${String(desde).padStart(anchoPadding,'0')} a ${prefijo}${String(hasta).padStart(anchoPadding,'0')}) dentro de "${nodoLotePadre.tipo}"`
+        + (generarDoc ? ` con Modelo/Plano de corte/Windchill generados en cada uno${erroresDoc.length ? ` (${erroresDoc.length} fallaron)` : ''}` : ''), nodoLotePadre.id);
+      if (erroresDoc.length > 0) {
+        mostrarAvisoModal(`Se crearon los ${creados} nodos, pero la documentación falló en ${erroresDoc.length}:\n` + erroresDoc.map(e => `• ${e}`).join('\n'));
+      }
       await cargarArbol();
     }
 
