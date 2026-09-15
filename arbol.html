@@ -7,6 +7,7 @@
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#007bff">
   <style>
+    :root { --menu-ancho: 320px; }
     body { font-family: Arial, sans-serif; max-width: min(1850px, 97vw); margin: 30px auto; padding: 0 20px; color: #333; }
     h1 { font-size: 22px; }
     .card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 14px; margin-bottom: 16px; }
@@ -134,12 +135,18 @@
       background: rgba(0,0,0,0.4); z-index: 3000;
     }
     .menu-panel {
-      position: fixed; top: 0; left: 0; width: 320px; max-width: 90%; height: 100%;
-      background: #fff; box-shadow: 2px 0 16px rgba(0,0,0,0.25); overflow-y: auto;
+      position: fixed; top: 0; left: 0; width: var(--menu-ancho, 320px); max-width: 90%; height: 100%;
+      background: #fff; box-shadow: 2px 0 16px rgba(0,0,0,0.25); overflow-y: auto; overflow-x: hidden;
       transform: translateX(-100%); transition: transform 0.2s ease-out;
     }
     .menu-overlay-fondo.abierto { display: block; }
     .menu-overlay-fondo.abierto .menu-panel { transform: translateX(0); }
+
+    .menu-redimensionar {
+      position: absolute; top: 0; right: -3px; width: 7px; height: 100%; cursor: col-resize;
+      background: transparent; z-index: 20; touch-action: none;
+    }
+    .menu-redimensionar:hover, .menu-redimensionar.arrastrando { background: rgba(0,123,255,0.35); }
 
     .menu-buscador-wrap { padding: 16px; border-bottom: 1px solid #eee; }
     .menu-buscador-wrap input {
@@ -185,7 +192,7 @@
     }
     .menu-submenu-contenido .menu-item:hover { background: #eef0f2; }
 
-    body.modo-menu-fijo { padding-left: 320px; }
+    body.modo-menu-fijo { padding-left: var(--menu-ancho, 320px); }
     body.modo-menu-fijo .btn-hamburguesa { display: none; }
     body.modo-menu-fijo .menu-overlay-fondo {
       display: block; position: fixed; top: 0; left: 0; width: 320px; height: 100%;
@@ -328,6 +335,7 @@
   <div class="menu-overlay-fondo" id="menu-overlay" onclick="cerrarMenuSiFondo(event)">
     <div class="menu-panel" onclick="cerrarSubmenusFlotantes(event)" onscroll="cerrarSubmenusFlotantes()">
       <button class="menu-cerrar" onclick="cerrarMenu()">✕</button>
+      <div class="menu-redimensionar" id="menu-redimensionar" title="Arrastra para hacer el menú más ancho o más estrecho"></div>
 
       <div class="menu-buscador-wrap">
         <input type="text" id="buscador" placeholder="🔍 ¿Qué estás buscando?">
@@ -1237,6 +1245,49 @@
       document.getElementById('radio-desplegable').addEventListener('change', () => cambiarModoMenu('desplegable'));
 
       inicializarTema();
+      inicializarRedimensionMenu();
+    }
+
+    function inicializarRedimensionMenu() {
+      const ANCHO_MIN = 240, ANCHO_MAX = 560;
+      const guardado = parseInt(localStorage.getItem('estructura_menu_ancho'), 10);
+      if (guardado && guardado >= ANCHO_MIN && guardado <= ANCHO_MAX) {
+        document.documentElement.style.setProperty('--menu-ancho', guardado + 'px');
+      }
+
+      const handle = document.getElementById('menu-redimensionar');
+      let arrastrando = false;
+
+      function moverA(clientX) {
+        const ancho = Math.min(ANCHO_MAX, Math.max(ANCHO_MIN, clientX));
+        document.documentElement.style.setProperty('--menu-ancho', ancho + 'px');
+      }
+      function empezar(e) {
+        arrastrando = true;
+        handle.classList.add('arrastrando');
+        document.body.style.userSelect = 'none';
+        if (e.cancelable) e.preventDefault();
+      }
+      function seguir(clientX) {
+        if (!arrastrando) return;
+        moverA(clientX);
+      }
+      function soltar() {
+        if (!arrastrando) return;
+        arrastrando = false;
+        handle.classList.remove('arrastrando');
+        document.body.style.userSelect = '';
+        const anchoActual = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--menu-ancho'), 10);
+        if (anchoActual) localStorage.setItem('estructura_menu_ancho', anchoActual);
+      }
+
+      handle.addEventListener('mousedown', empezar);
+      document.addEventListener('mousemove', (e) => seguir(e.clientX));
+      document.addEventListener('mouseup', soltar);
+
+      handle.addEventListener('touchstart', empezar, { passive: false });
+      document.addEventListener('touchmove', (e) => { if (e.touches[0]) seguir(e.touches[0].clientX); }, { passive: true });
+      document.addEventListener('touchend', soltar);
     }
 
     function aplicarTema(tema) {
