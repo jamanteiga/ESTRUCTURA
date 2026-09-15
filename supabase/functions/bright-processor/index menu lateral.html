@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <script src="auth.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>REGHOR</title>
+  <style>
+    :root {
+      --bg-color: #f4f7f6;
+      --card-bg: #ffffff;
+      --text-color: #333333;
+      --border-color: #cccccc;
+      --header-bg: #007bff;
+
+      /* Anchos compartidos entre el formulario y el listado de tareas,
+         para que ambos queden alineados visualmente. Con minmax() cada
+         columna se adapta (se encoge) al ancho disponible en vez de
+         quedarse fija, tirando primero de las columnas de texto libre
+         (Tarea, Proyecto, Bloque, Comentario, Notas); el scroll horizontal
+         del contenedor (más abajo) solo entra como último recurso, cuando
+         ya no queda más margen de adaptación. */
+      --w-numero: minmax(28px, 40px);
+      --w-fecha: minmax(86px, 108px);
+      --w-hora: minmax(78px, 100px);
+      --w-duracion: minmax(70px, 90px);
+      --w-acciones: minmax(150px, 210px);
+      --fr-tarea: minmax(70px, 0.8fr);
+      --fr-proyecto: minmax(60px, 0.55fr);
+      --fr-bloque: minmax(70px, 1fr);
+      --fr-comentario: minmax(90px, 2fr);
+      --fr-notas: minmax(70px, 1.1fr);
+
+      /* Altura máxima del listado antes de mostrar scroll interno */
+      --altura-listado: 45vh;
+    }
+
+    body.dark-mode {
+      --bg-color: #121212;
+      --card-bg: #1e1e1e;
+      --text-color: #e0e0e0;
+      --border-color: #333333;
+      --header-bg: #0b5ed7;
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      transition: background 0.3s, color 0.3s;
+    }
+
+    /* ================= Layout: riel estrecho + contenido ================= */
+    .app-layout {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+    }
+
+    /* Riel siempre visible, muy estrecho: solo el botón INICIO, que es el
+       único control que abre/cierra todo el menú (no es un enlace, así que
+       pulsarlo nunca navega ni "saca" de la app). El menú en sí (el cajón
+       desplegable) no ocupa sitio en el layout: aparece flotando por
+       encima del contenido y desaparece del todo al cerrarlo, así que el
+       menú deja de ser "perpetuo". */
+    .sidebar-rail {
+      width: 58px;
+      flex: 0 0 58px;
+      position: sticky;
+      top: 20px;
+      /* Por encima del cajón (z-index 999): así el botón INICIO se puede
+         seguir pulsando (para cerrar el menú) aunque el cajón, al abrirse
+         desde el borde izquierdo de la pantalla, quede visualmente debajo. */
+      z-index: 1000;
+    }
+
+    .btn-inicio-toggle {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      width: 100%;
+      padding: 12px 4px;
+      background: var(--card-bg);
+      border: none;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      color: var(--text-color);
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 9.5px;
+      letter-spacing: 0.3px;
+    }
+    .btn-inicio-toggle .menu-icon { font-size: 20px; }
+    .btn-inicio-toggle:hover { background: rgba(0, 123, 255, 0.12); }
+    .btn-inicio-toggle.activo { background: rgba(0, 123, 255, 0.22); }
+
+    /* Fondo oscuro detrás del cajón, para indicar que el resto de la app
+       queda "debajo" mientras el menú está abierto; clicar en él lo cierra. */
+    .menu-drawer-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.35);
+      z-index: 998;
+    }
+    .menu-drawer-backdrop.abierto { display: block; }
+
+    /* El cajón del menú: colgado por completo del botón INICIO del riel.
+       Desplegable de verdad (entra/sale deslizando), no un bloque fijo
+       que esté siempre ocupando espacio en la página. */
+    .menu-drawer {
+      position: fixed;
+      top: 0;
+      left: 0;
+      height: 100%;
+      width: 190px;
+      max-width: 80vw;
+      background: var(--card-bg);
+      box-shadow: 2px 0 14px rgba(0,0,0,0.28);
+      transform: translateX(-100%);
+      transition: transform 0.22s ease;
+      z-index: 999;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+    .menu-drawer.abierto { transform: translateX(0); }
+
+    .menu-drawer-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 14px 16px;
+      font-weight: bold;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border-color);
+    }
+    .close-drawer {
+      background: none;
+      border: none;
+      color: var(--text-color);
+      font-size: 20px;
+      font-weight: bold;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0 4px;
+    }
+
+    .menu-section-label {
+      padding: 12px 16px 4px;
+      font-size: 11px;
+      font-weight: bold;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      opacity: 0.6;
+    }
+    .menu-icon { margin-right: 4px; }
+
+    .menu-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 10px 16px;
+      font-size: 13px;
+      color: var(--text-color);
+      text-decoration: none;
+      background: var(--card-bg);
+      border: none;
+      text-align: left;
+      cursor: pointer;
+      border-bottom: 1px solid var(--border-color);
+      box-sizing: border-box;
+    }
+    .menu-item:hover { background: rgba(0, 123, 255, 0.1); }
+    .menu-item.activo { background: #e2e2e2; font-weight: bold; }
+    body.dark-mode .menu-item.activo { background: #333; }
+    .menu-item-ausencia { color: #d6009a; font-weight: bold; }
+
+    .flag-icon-mini { width: 20px; height: 13px; border: 1px solid var(--border-color); flex-shrink: 0; }
+
+    .sidebar-footer { border-top: 1px solid var(--border-color); margin-top: auto; }
+    .menu-item-danger { color: #dc3545; font-weight: bold; }
+
+    .main-content { flex: 1; min-width: 0; }
+
+    .main-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    /* ================================================================ */
+
+    /* Formulario: grid con los mismos anchos de columna que el listado de tareas */
+    form, .modal-content { background: var(--card-bg); padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+
+    /* Con el menú lateral hay menos ancho disponible: en vez de dejar que
+       las columnas se aplasten y se solapen, por debajo de este ancho el
+       formulario/listado hacen scroll horizontal propio, manteniendo las
+       columnas siempre legibles. */
+    form { overflow-x: auto; }
+
+    .form-grid {
+      min-width: 900px;
+      display: grid;
+      grid-template-columns:
+        var(--w-numero)
+        var(--w-fecha)
+        var(--fr-tarea)
+        var(--fr-proyecto)
+        var(--fr-bloque)
+        var(--w-hora)
+        var(--w-hora)
+        var(--fr-comentario)
+        var(--fr-notas)
+        var(--w-acciones);
+      gap: 8px;
+      align-items: end;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .form-group-btn {
+      display: flex;
+      gap: 6px;
+      align-items: flex-end;
+      min-width: 0;
+    }
+    .form-group-btn button { flex: 1; min-width: 0; }
+
+    .label-wrapper { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+    .label-wrapper label, .form-group > label { font-weight: bold; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    input, select, textarea { padding: 6px 6px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--card-bg); color: var(--text-color); font-size: 12px; width: 100%; box-sizing: border-box; transition: border-color 0.15s, box-shadow 0.15s; }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--header-bg); box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25); }
+    textarea { font-family: inherit; resize: vertical; min-height: 31px; }
+
+    .btn-mini { padding: 2px 4px; font-size: 10px; cursor: pointer; border-radius: 3px; border: 1px solid var(--border-color); background: #e9ecef; color: #000; font-weight: bold; white-space: nowrap; }
+    body.dark-mode .btn-mini { background: #333; color: #fff; }
+
+    /* Botones de acción */
+    .btn-submit {
+      background-color: #28a745;
+      color: white;
+      padding: 6px 12px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 12px;
+      white-space: nowrap;
+      height: 31px;
+    }
+    .btn-cancel {
+      background-color: #6c757d;
+      color: white;
+      padding: 6px 12px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 12px;
+      white-space: nowrap;
+      height: 31px;
+      display: none;
+    }
+
+    /* Modal Config: altura acotada a la ventana (con scroll interno en el
+       listado) pero de al menos media pantalla, para que no se quede ni
+       enorme (con muchas tareas) ni diminuta (con pocas). */
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; }
+    .modal-content {
+      width: 350px;
+      max-width: 90%;
+      min-height: 50vh;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+    .close-modal { position: absolute; top: 12px; right: 16px; cursor: pointer; font-weight: bold; font-size: 20px; }
+    #modal-titulo { margin: 0 24px 12px 0; flex: 0 0 auto; }
+    #lista-config { flex: 1 1 auto; overflow-y: auto; margin: 0; }
+
+    /* Listado de tareas: filas en grid con los mismos anchos que el formulario,
+       más las columnas Duración y Acciones que no existen en el formulario. */
+    .tabla-container {
+      background: var(--card-bg);
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      padding: 16px 20px;
+      box-sizing: border-box;
+      overflow-x: auto;
+    }
+
+    .tabla-grid-row {
+      min-width: 990px;
+      display: grid;
+      grid-template-columns:
+        var(--w-numero)
+        var(--w-fecha)
+        var(--fr-tarea)
+        var(--fr-proyecto)
+        var(--fr-bloque)
+        var(--w-hora)
+        var(--w-hora)
+        var(--fr-comentario)
+        var(--fr-notas)
+        var(--w-duracion)
+        var(--w-acciones);
+      gap: 8px;
+      align-items: center;
+    }
+
+    .celda-numero { text-align: center; color: var(--text-color); opacity: 0.6; font-size: 12px; }
+    .tabla-header-row .celda-numero { opacity: 1; }
+
+    .tabla-header-row {
+      background-color: var(--header-bg);
+      color: #fff;
+      font-weight: bold;
+      font-size: 13px;
+      border-radius: 6px;
+    }
+    .tabla-header-row > div {
+      padding: 8px 6px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .tabla-body-scroll {
+      max-height: var(--altura-listado);
+      overflow-y: auto;
+    }
+
+    .tabla-row > div, .tabla-footer-row > div {
+      padding: 8px 6px;
+      border-bottom: 1px solid var(--border-color);
+      font-size: 13px;
+      white-space: normal;
+      word-break: break-word;
+    }
+
+    .tabla-row { cursor: pointer; }
+    .tabla-row:nth-child(odd) { background-color: rgba(0, 123, 255, 0.08); }
+    .tabla-row:nth-child(even) { background-color: var(--card-bg); }
+    .tabla-row:hover { background-color: rgba(0, 123, 255, 0.25); }
+
+    .acciones-cell { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; white-space: nowrap; }
+
+    .tabla-msg { padding: 12px; color: var(--text-color); }
+
+    .tabla-footer-row { font-weight: bold; background-color: rgba(0, 123, 255, 0.08); }
+    .tabla-footer-row.row-extra { background-color: rgba(40, 167, 69, 0.12); }
+    .tabla-footer-row .footer-label { grid-column: 2 / 10; text-align: right; }
+    .tabla-footer-row .footer-value { grid-column: 10 / 11; }
+
+    .saldo-positivo { color: #28a745; font-weight: bold; }
+    .saldo-negativo { color: #dc3545; font-weight: bold; }
+    .saldo-neutro { color: #6c757d; font-weight: bold; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+  <div class="app-layout">
+
+    <!-- ============== MENÚ LATERAL: riel estrecho + cajón desplegable ============== -->
+    <aside class="sidebar-rail">
+      <button type="button" class="btn-inicio-toggle" id="btn-inicio-toggle" onclick="toggleMenu()" title="Abrir/cerrar menú">
+        <span class="menu-icon">🏠</span>
+        <span id="txt-menu-inicio">INICIO</span>
+      </button>
+    </aside>
+
+    <div class="menu-drawer-backdrop" id="menu-backdrop" onclick="cerrarMenu()"></div>
+
+    <nav class="menu-drawer" id="menu-drawer">
+      <div class="menu-drawer-header">
+        <span><span class="menu-icon">🏠</span> <span id="txt-menu-inicio-drawer">INICIO</span></span>
+        <button type="button" class="close-drawer" onclick="cerrarMenu()" title="Cerrar">&times;</button>
+      </div>
+
+      <div class="menu-section-label" id="txt-menu-navegacion">NAVEGACIÓN</div>
+      <a href="informes.html" target="_blank" class="menu-item" id="btn-informes">📊 Informes</a>
+      <a href="graficos.html" target="_blank" class="menu-item" id="btn-graficos">📈 Gráficos</a>
+      <a href="Semana.html" target="_blank" class="menu-item" id="btn-semana">📅 Registro Semana</a>
+      <button type="button" class="menu-item menu-item-ausencia" onclick="iniciarAusencia()" id="btn-ausencia" title="Guarda la tarea actual (si la hay) y abre un registro nuevo de ausencia con la hora de inicio actual">🚶 Ausencia</button>
+
+      <div class="menu-section-label" id="txt-menu-idioma">IDIOMA</div>
+      <button type="button" class="menu-item idioma-fila activo" onclick="cambiarIdioma('es'); actualizarTextosMenuLateral('es'); actualizarTituloConSemana(); marcarIdiomaActivo(this)">
+        <svg class="flag-icon-mini" viewBox="0 0 750 500"><rect width="750" height="500" fill="#c60b1e"/><rect y="125" width="750" height="250" fill="#ffc400"/></svg>
+        Español
+      </button>
+      <button type="button" class="menu-item idioma-fila" onclick="cambiarIdioma('gl'); actualizarTextosMenuLateral('gl'); actualizarTituloConSemana(); marcarIdiomaActivo(this)">
+        <svg class="flag-icon-mini" viewBox="0 0 3 2"><rect width="3" height="2" fill="#fff"/><path d="M0 0 L3 2" stroke="#009ac6" stroke-width="0.4"/></svg>
+        Galego
+      </button>
+      <button type="button" class="menu-item idioma-fila" onclick="cambiarIdioma('en'); actualizarTextosMenuLateral('en'); actualizarTituloConSemana(); marcarIdiomaActivo(this)">
+        <svg class="flag-icon-mini" viewBox="0 0 60 30"><rect width="60" height="30" fill="#00247d"/><path d="M0,0 L60,30 M60,0 L0,30" stroke="#fff" stroke-width="6"/><path d="M0,0 L60,30 M60,0 L0,30" stroke="#cf142b" stroke-width="2"/><path d="M30,0 V30 M0,15 H60" stroke="#fff" stroke-width="10"/><path d="M30,0 V30 M0,15 H60" stroke="#cf142b" stroke-width="6"/></svg>
+        English
+      </button>
+
+      <div class="sidebar-footer">
+        <button type="button" class="menu-item" onclick="toggleTheme()" id="btn-theme">🌙 Oscuro</button>
+        <button type="button" class="menu-item menu-item-danger" onclick="cerrarSesion()" id="btn-logout">🔒 Salir</button>
+      </div>
+    </nav>
+    <!-- ============================================================================ -->
+
+    <main class="main-content">
+
+      <div class="main-header">
+        <h1 id="txt-titulo"></h1>
+      </div>
+
+      <form id="tarea-form">
+        <input type="hidden" id="tarea-id">
+
+        <div class="form-grid">
+          <!-- Columna vacía: solo de relleno, para alinear el formulario con la
+               columna "Nº" del listado (ese número es autonumérico, no un campo
+               que se rellene al dar de alta una tarea). -->
+          <div class="form-group" aria-hidden="true"></div>
+
+          <div class="form-group">
+            <label for="fecha" id="lbl-fecha">Fecha</label>
+            <input type="date" id="fecha" onchange="cargarTareas()" required>
+          </div>
+
+          <div class="form-group">
+            <div class="label-wrapper">
+              <label for="tarea" id="lbl-tarea">Tarea</label>
+              <button type="button" class="btn-mini" onclick="abrirConfig('tareas')">+config</button>
+            </div>
+            <select id="tarea" onchange="sincronizarComentario()" required>
+              <option value="PREVIAS">PREVIAS</option>
+              <option value="AOYV">AOYV</option>
+              <option value="Revisión de unidades abiertas UA">Revisión de unidades abiertas UA</option>
+              <option value="Comentarios con Ghita para coordinación">Comentarios con Ghita para coordinación</option>
+              <option value="Actualización de contraseñas sistema">Actualización de contraseñas sistema</option>
+              <option value="Píldora ciberseguridad #27">Píldora ciberseguridad #27</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <div class="label-wrapper">
+              <label for="proyecto" id="lbl-proyecto">Proyecto</label>
+              <button type="button" class="btn-mini" onclick="abrirConfig('proyectos')">+config</button>
+            </div>
+            <select id="proyecto" required>
+              <option value="BAC2">BAC2</option>
+              <option value="DES">DES</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="bloque" id="lbl-bloque">Bloque</label>
+            <input type="text" id="bloque" placeholder="Ej: B242-PI-SB4">
+          </div>
+
+          <div class="form-group">
+            <div class="label-wrapper">
+              <label for="horainicio" id="lbl-horainicio">Hora inicio</label>
+              <div>
+                <button type="button" class="btn-mini" onclick="setHoraActual('horainicio')">⏱️</button>
+                <button type="button" class="btn-mini" onclick="copiarHoraFinAnterior()">📋</button>
+              </div>
+            </div>
+            <input type="time" id="horainicio" required>
+          </div>
+
+          <div class="form-group">
+            <div class="label-wrapper">
+              <label for="horafin" id="lbl-horafin">Hora fin</label>
+              <button type="button" class="btn-mini" onclick="setHoraActual('horafin')">⏱️</button>
+            </div>
+            <input type="time" id="horafin" required>
+          </div>
+
+          <div class="form-group">
+            <label for="comentario" id="lbl-comentario">Comentario</label>
+            <textarea id="comentario" rows="2"></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="notas" id="lbl-notas">Notas</label>
+            <textarea id="notas" rows="2"></textarea>
+          </div>
+
+          <div class="form-group-btn">
+            <button type="submit" id="btn-guardar" class="btn-submit">Guardar</button>
+            <button type="button" id="btn-cancelar" class="btn-cancel" onclick="resetearFormulario()">Cancelar</button>
+          </div>
+        </div>
+      </form>
+
+      <h2 id="txt-listado">Listado de tareas</h2>
+
+      <div class="tabla-container">
+        <div class="tabla-grid-row tabla-header-row">
+          <div class="celda-numero" id="th-numero">Nº</div>
+          <div id="th-fecha">Fecha</div>
+          <div id="th-tarea">Tarea</div>
+          <div id="th-proyecto">Proyecto</div>
+          <div id="th-bloque">Bloque</div>
+          <div id="th-inicio">Hora inicio</div>
+          <div id="th-fin">Hora fin</div>
+          <div id="th-comentario">Comentario</div>
+          <div id="th-notas">Notas</div>
+          <div id="th-duracion">Duración</div>
+          <div id="th-acciones">Acciones</div>
+        </div>
+
+        <div class="tabla-body-scroll">
+          <div id="tabla-body"></div>
+        </div>
+
+        <div class="tabla-grid-row tabla-footer-row">
+          <div class="footer-label" id="txt-teorica-label">Jornada Teórica del Día:</div>
+          <div class="footer-value" id="total-teorica">00:00</div>
+        </div>
+        <div class="tabla-grid-row tabla-footer-row">
+          <div class="footer-label" id="txt-total-label">Total Horas Trabajadas:</div>
+          <div class="footer-value" id="total-duracion">00:00</div>
+        </div>
+        <div class="tabla-grid-row tabla-footer-row row-extra">
+          <div class="footer-label" id="txt-balance-label">Balance / Horas Extra:</div>
+          <div class="footer-value" id="total-balance">00:00</div>
+        </div>
+      </div>
+
+      <!-- Modal Config -->
+      <div id="modal-config" class="modal">
+        <div class="modal-content">
+          <span class="close-modal" onclick="cerrarConfig()">&times;</span>
+          <h3 id="modal-titulo">Configuración</h3>
+          <div style="display:flex; gap:5px; margin-bottom:10px;">
+            <input type="text" id="nuevo-valor-config" placeholder="Nuevo valor...">
+            <button type="button" onclick="agregarOpcionConfig()">Añadir</button>
+          </div>
+          <ul id="lista-config" style="list-style:none; padding:0;"></ul>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+  <script>
+    // ===== Comportamiento propio de este prototipo de menú lateral =====
+    // (no toca app.js: solo añade el acordeón y el resaltado del idioma activo)
+
+    /**
+     * Todo el menú (Navegación + Ausencia + Idioma + pie) cuelga por
+     * completo del botón INICIO del riel: es el único control que lo
+     * abre y lo cierra. Al ser un <button> (no un enlace), pulsarlo nunca
+     * navega ni recarga la página. También se cierra clicando fuera (el
+     * fondo oscuro) o con la '×' del propio cajón.
+     */
+    function toggleMenu(forzarCerrado) {
+      const drawer = document.getElementById('menu-drawer');
+      const backdrop = document.getElementById('menu-backdrop');
+      const btnInicio = document.getElementById('btn-inicio-toggle');
+      const abrir = (forzarCerrado === true) ? false : !drawer.classList.contains('abierto');
+
+      drawer.classList.toggle('abierto', abrir);
+      backdrop.classList.toggle('abierto', abrir);
+      btnInicio.classList.toggle('activo', abrir);
+    }
+
+    function cerrarMenu() {
+      toggleMenu(true);
+    }
+
+    function marcarIdiomaActivo(el) {
+      document.querySelectorAll('.idioma-fila').forEach(f => f.classList.remove('activo'));
+      el.classList.add('activo');
+    }
+
+    const TEXTOS_MENU_LATERAL = {
+      es: { inicio: 'INICIO', navegacion: 'NAVEGACIÓN', idioma: 'IDIOMA' },
+      gl: { inicio: 'INICIO', navegacion: 'NAVEGACIÓN', idioma: 'IDIOMA' },
+      en: { inicio: 'HOME', navegacion: 'NAVIGATION', idioma: 'LANGUAGE' }
+    };
+
+    function actualizarTextosMenuLateral(lang) {
+      const t = TEXTOS_MENU_LATERAL[lang] || TEXTOS_MENU_LATERAL.es;
+      document.getElementById('txt-menu-inicio').textContent = t.inicio;
+      document.getElementById('txt-menu-inicio-drawer').textContent = t.inicio;
+      document.getElementById('txt-menu-navegacion').textContent = t.navegacion;
+      document.getElementById('txt-menu-idioma').textContent = t.idioma;
+    }
+
+    // ----- Cabecera: "Semana N — Día fecha de mes de año", a la derecha del menú -----
+
+    /** Número de semana ISO-8601 (la semana pertenece al año de su jueves). */
+    function obtenerNumeroSemanaISO(fecha) {
+      const d = new Date(Date.UTC(fecha.getFullYear(), fecha.getMonth(), fecha.getDate()));
+      const dayNum = d.getUTCDay() || 7;
+      d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+      const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+      return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+    }
+
+    const TEXTOS_SEMANA_TITULO = { es: 'Semana', gl: 'Semana', en: 'Week' };
+
+    /**
+     * app.js ya deja en #txt-titulo el día (con inicial en mayúscula) y la
+     * fecha, p.ej. "Jueves 3 de septiembre de 2026"; aquí solo se le añade
+     * delante el número de semana del año, sin tocar app.js.
+     */
+    function actualizarTituloConSemana() {
+      const elTitulo = document.getElementById('txt-titulo');
+      const diaYFecha = elTitulo.textContent.replace(/^Semana \d+ — /, '').replace(/^Week \d+ — /, '');
+      const numSemana = obtenerNumeroSemanaISO(new Date());
+      const etiqueta = TEXTOS_SEMANA_TITULO[idiomaActual] || 'Semana';
+      elTitulo.textContent = `${etiqueta} ${numSemana} — ${diaYFecha}`;
+    }
+
+    document.addEventListener('DOMContentLoaded', actualizarTituloConSemana);
+  </script>
+</body>
+</html>

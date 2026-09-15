@@ -7,7 +7,7 @@
 //   {
 //     "username": "jperez",                 (obligatorio, 3-32 car., minúsculas/números/./_/-)
 //     "nombre_completo": "Juan Pérez",       (obligatorio)
-//     "rol": "TRABAJADOR" | "REVISOR" | "ADMIN",  (obligatorio)
+//     "rol": "TRABAJADOR" | "REVISOR" | "ADMIN" | "INVITADO" | "WINDCHILL",  (obligatorio)
 //     "password": "..."                     (opcional; si se omite, se genera una aleatoria)
 //   }
 //
@@ -22,7 +22,16 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
-const ROLES_VALIDOS = ["TRABAJADOR", "REVISOR", "ADMIN"];
+const ROLES_VALIDOS = ["TRABAJADOR", "REVISOR", "ADMIN", "INVITADO", "WINDCHILL"];
+// Solo para mensajes al usuario — el valor guardado en profiles.rol sigue
+// siendo el código de ROLES_VALIDOS de arriba, esto es puramente estético.
+const ETIQUETAS_ROL: Record<string, string> = {
+  TRABAJADOR: "Usuario",
+  REVISOR: "Supervisor",
+  ADMIN: "Admin",
+  INVITADO: "Invitado",
+  WINDCHILL: "Windchill",
+};
 // .invalid es el TLD reservado (RFC 2606) para direcciones garantizado que
 // nunca serán reales ni entregables: exactamente lo que necesitamos aquí.
 const DOMINIO_SINTETICO = "estructura.app.invalid";
@@ -110,7 +119,11 @@ serve(async (req: Request) => {
     }
     if (!ROLES_VALIDOS.includes(rol)) {
       return jsonResponse(
-        { error: `Rol inválido. Debe ser uno de: ${ROLES_VALIDOS.join(", ")}` },
+        {
+          error: `Rol inválido. Debe ser uno de: ${
+            ROLES_VALIDOS.map((r) => ETIQUETAS_ROL[r] ?? r).join(", ")
+          }`,
+        },
         400
       );
     }
