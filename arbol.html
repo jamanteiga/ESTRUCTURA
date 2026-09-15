@@ -55,6 +55,8 @@
     ul.arbol.raiz { padding-left: 0; }
     li.nodo { margin: 2px 0; }
     .fila-nodo { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 4px; flex-wrap: wrap; }
+    .fila-doc-bloqueada { opacity: 0.55; }
+    .fila-doc-bloqueada .codigo, .fila-doc-bloqueada > span { filter: grayscale(40%); }
     .fila-nodo[draggable="true"] { cursor: grab; }
     .fila-nodo.arrastrando { opacity: 0.4; }
     .fila-nodo.dragover-antes { box-shadow: inset 0 3px 0 0 #007bff; }
@@ -650,6 +652,8 @@
     <button id="btn-bloquear-masivo" style="display:none;" onclick="confirmarBloqueoMasivo(true)">🔒 Bloquear</button>
     <button id="btn-desbloquear-masivo" style="display:none;" onclick="confirmarBloqueoMasivo(false)">🔓 Desbloquear</button>
     <button id="btn-tomar-tarea" style="display:none;" onclick="abrirModalTomarTarea()">🔄 Tomar tarea</button>
+    <button id="btn-aprobar-doc-masivo" style="display:none;" onclick="confirmarAprobarDocumentacionMasivo()">✅ Aprobar documentación (Modelo+Plano)</button>
+    <button id="btn-publicar-win-masivo" style="display:none;" onclick="confirmarPublicarWindchillMasivo()">📤 Publicar en Windchill</button>
     <button class="secundario" onclick="cancelarSeleccion()">✕ Cancelar</button>
   </div>
 
@@ -1298,6 +1302,34 @@
       guardarEstadoAbiertos();
     }
 
+    // Devuelve el id de la pieza numerada (1001, 4001...) a la que
+    // pertenece un nodo de la rama Windchill (el propio WIN, o Publicar/
+    // Fichero subido, hijos suyos).
+    function piezaDeRamaWindchill(nodo) {
+      if (nodo.tipo === 'DOC_WINDCHILL') return nodo.parent_id;
+      if (nodo.tipo === 'DOC_PUBLICAR' || nodo.tipo === 'DOC_FICHERO_SUBIDO') {
+        const win = mapaNodoPorId[nodo.parent_id];
+        return win ? win.parent_id : null;
+      }
+      return null;
+    }
+
+    // Modelo y Plano de corte de una pieza tienen que estar Aprobados
+    // (revision_estado) antes de poder tocar nada dentro de Windchill --
+    // no tiene sentido publicar o subir un fichero sin eso.
+    function documentacionBaseAprobada(piezaId) {
+      const hijos = mapaHijosPorPadre[piezaId] || [];
+      const mod = hijos.find(h => h.tipo === 'DOC_MODELO');
+      const pdc = hijos.find(h => h.tipo === 'DOC_PLANO_CORTE');
+      return !!mod && mod.revision_estado === 'APROBADO' && !!pdc && pdc.revision_estado === 'APROBADO';
+    }
+
+    function windchillBloqueado(nodo) {
+      const piezaId = piezaDeRamaWindchill(nodo);
+      if (!piezaId) return false;
+      return !documentacionBaseAprobada(piezaId);
+    }
+
     function etiquetaCodigoVisible(nodo) {
       // El "Realizado" de Modelo/Plano de corte se guarda con codigo
       // 'REA' (para detectar si ya existe al generar documentación),
@@ -1462,6 +1494,7 @@
       const claseColor = `f-${estado}`;
       const sinAsignacion = TIPOS_SIN_ASIGNACION.has(nodo.tipo);
       const inactivo = !nodo.activo;
+      const bloqueadoWindchill = (nodo.tipo === 'DOC_WINDCHILL' || nodo.tipo === 'DOC_PUBLICAR' || nodo.tipo === 'DOC_FICHERO_SUBIDO') && windchillBloqueado(nodo);
 
       if (inactivo && esGestor()) {
         const acciones = `<button class="pequeno exito" onclick="reactivarNodo('${nodo.id}')" title="Reactivar">♻️ Reactivar</button>`;
@@ -1545,8 +1578,8 @@
 
       return `
         <li class="nodo" id="li-${nodo.id}">
-          <div class="fila-nodo"
-               title="${tituloTipo}"
+          <div class="fila-nodo ${bloqueadoWindchill ? 'fila-doc-bloqueada' : ''}"
+               title="${bloqueadoWindchill ? 'Bloqueado: Modelo y Plano de corte deben estar Aprobados' : tituloTipo}"
                oncontextmenu="mostrarMenuContextual(event, '${nodo.id}'); return false;"
                ${esGestor() ? `draggable="true" ondragstart="iniciarArrastre(event, '${nodo.id}')" ondragend="finalizarArrastre(event)"` : ''}
                ondragover="sobreArrastre(event, '${nodo.id}')"
@@ -1561,6 +1594,7 @@
             ${(!sinAsignacion && nodo.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO') ? '<span class="cuadro-cambios-modelo" title="Pendiente de cambios en modelo"></span>' : ''}
             ${(!sinAsignacion && nodoRetrasado(nodo)) ? `<span class="icono-retraso" title="Retrasada — prevista para ${formatearFechaCorta(new Date(nodo.fecha_fin_prevista))}">⏰</span>` : ''}
             <span class="flecha ${claseColor}" title="${estado}">${simboloFlecha}</span>
+            ${bloqueadoWindchill ? '<span title="Bloqueado: Modelo y Plano de corte deben estar Aprobados">🔒</span>' : ''}
             <span class="codigo">${resaltarCoincidencia(etiquetaCodigoVisible(nodo))}</span>
             ${nombreEsRedundante(nodo.codigo, nodo.nombre) ? '' : `<span>${resaltarCoincidencia(nodo.nombre)}</span>`}
             <span class="tipo-tag">${etiquetaCortaTipo(nodo.tipo)}</span>
@@ -1865,40 +1899,75 @@
       const tieneHijos = (mapaHijosPorPadre[nodeId] || []).length > 0;
       const esPiezaDocumentable = TIPOS_DOCUMENTABLES.has(nodo.tipo) && esPiezaNumerada(nodo.codigo);
 
+      // Windchill (y sus hijos Publicar/Fichero subido) están bloqueados
+      // mientras Modelo y Plano de corte de la pieza no estén Aprobados --
+      // no tiene sentido publicar o subir nada a Windchill sin eso. El nodo
+      // sigue siendo visible, solo se desactiva la acción de cambiar
+      // estado, para cualquier rol.
+      if (nodo.tipo === 'DOC_WINDCHILL' && windchillBloqueado(nodo)) {
+        items.push({ label: '🔒 Windchill bloqueado', tip: 'Modelo y Plano de corte de esta pieza deben estar Aprobados antes de poder publicar o subir nada en Windchill.', soloLectura: true });
+      }
+
       // El nodo "Publicar" (hijo de Windchill) es donde se marca Sí/No; el
-      // propio nombre del nodo ya muestra el estado en el árbol, y al
-      // cambiarlo se actualiza también, solo, el nodo "Fichero subido"
-      // hermano. Se ofrece siempre que se esté sobre un nodo Publicar,
-      // independientemente del rol (más abajo, el bloque de INVITADO ya lo
-      // neutraliza igual que al resto de opciones).
+      // propio nombre del nodo ya muestra el estado en el árbol. Es
+      // independiente de "Fichero subido" (están en la misma rama pero no
+      // se marcan el uno al otro).
       if (nodo.tipo === 'DOC_PUBLICAR') {
-        const publicadoActual = nodo.nombre === 'Sí';
-        const puedeEditarPub = esGestor() || esWindchill();
-        if (puedeEditarPub) {
-          items.push({
-            label: publicadoActual ? '☑️ Marcar como NO publicado' : '☐ Marcar como Publicado',
-            tip: 'Cambia el estado de publicación en Windchill y actualiza automáticamente "Fichero subido" (fecha, hora y usuario).',
-            fn: () => accionMarcarPublicadoWindchill(nodeId, !publicadoActual)
-          });
+        if (windchillBloqueado(nodo)) {
+          items.push({ label: '🔒 Publicar (bloqueado)', tip: 'Modelo y Plano de corte de esta pieza deben estar Aprobados antes de poder publicar en Windchill.', soloLectura: true });
         } else {
-          items.push({ label: `📌 Publicado: ${nodo.nombre}`, tip: 'Solo lo puede cambiar ADMIN, Supervisor o Windchill.', soloLectura: true });
+          const publicadoActual = nodo.nombre === 'Sí';
+          const puedeEditarPub = esGestor() || esWindchill();
+          if (puedeEditarPub) {
+            items.push({
+              label: publicadoActual ? '☑️ Marcar como NO publicado' : '☐ Marcar como Publicado',
+              tip: 'Cambia el estado de publicación en Windchill. "Fichero subido" es independiente y se marca aparte.',
+              fn: () => accionMarcarPublicadoWindchill(nodeId, !publicadoActual)
+            });
+          } else {
+            items.push({ label: `📌 Publicado: ${nodo.nombre}`, tip: 'Solo lo puede cambiar ADMIN, Supervisor o Windchill.', soloLectura: true });
+          }
         }
       }
 
-      // El nodo "Realizado" (hijo de Modelo o Plano de corte) funciona
-      // igual que Publicar en Windchill, pero en un único campo: el propio
-      // nombre pasa de "No" a "Sí - fecha hora - usuario" al marcarlo.
+      // El nodo "Fichero subido" (hijo de Windchill) también es
+      // independiente de "Publicar": se marca aparte, con su propia
+      // fecha, hora y usuario.
+      if (nodo.tipo === 'DOC_FICHERO_SUBIDO') {
+        if (windchillBloqueado(nodo)) {
+          items.push({ label: '🔒 Fichero subido (bloqueado)', tip: 'Modelo y Plano de corte de esta pieza deben estar Aprobados antes de poder subir el fichero a Windchill.', soloLectura: true });
+        } else {
+          const subidoActual = nodo.nombre !== '—';
+          const puedeEditarSub = esGestor() || esWindchill();
+          if (puedeEditarSub) {
+            items.push({
+              label: subidoActual ? '☑️ Quitar Fichero subido' : '☐ Marcar Fichero subido',
+              tip: 'Independiente de "Publicar": guarda la fecha, hora y usuario de la subida a Windchill.',
+              fn: () => accionMarcarFicheroSubido(nodeId, !subidoActual)
+            });
+          } else {
+            items.push({ label: `📌 ${nodo.nombre}`, tip: 'Solo lo puede cambiar ADMIN, Supervisor o Windchill.', soloLectura: true });
+          }
+        }
+      }
+
+      // El nodo "Realizado" (hijo de Modelo o Plano de corte) funciona de
+      // forma parecida a Publicar/Fichero subido, pero en un único campo:
+      // el propio nombre pasa de "No" a "Sí - fecha hora - usuario" al
+      // marcarlo, y aprueba Modelo/Plano de corte. Solo ADMIN o Supervisor
+      // (a diferencia de Windchill, esto no lo puede cambiar el rol
+      // WINDCHILL: es la aprobación técnica, no la publicación).
       if (nodo.tipo === 'DOC_REALIZADO') {
         const realizadoActual = nodo.nombre !== 'No';
-        const puedeEditarRea = esGestor() || esWindchill();
+        const puedeEditarRea = esGestor();
         if (puedeEditarRea) {
           items.push({
             label: realizadoActual ? '☑️ Marcar como NO realizado' : '☐ Marcar como Realizado',
-            tip: 'Cambia si está realizado; si se marca Sí, guarda automáticamente la fecha, hora y usuario en el propio nombre.',
+            tip: 'Cambia si está realizado; si se marca Sí, guarda automáticamente la fecha, hora y usuario, y aprueba Modelo/Plano de corte (y la pieza, si no lo estaba).',
             fn: () => accionMarcarRealizado(nodeId, !realizadoActual)
           });
         } else {
-          items.push({ label: `📌 ${nodo.nombre}`, tip: 'Solo lo puede cambiar ADMIN, Supervisor o Windchill.', soloLectura: true });
+          items.push({ label: `📌 ${nodo.nombre}`, tip: 'Solo lo puede cambiar ADMIN o Supervisor.', soloLectura: true });
         }
       }
 
@@ -2425,6 +2494,19 @@
     }
 
     // -------------------- Realizado (hijo de DOC_MODELO/DOC_PLANO_CORTE) --------------------
+
+    async function accionMarcarFicheroSubido(nodeId, subido) {
+      const { error } = await supabaseClient.rpc('marcar_fichero_subido_nodo', {
+        p_node_id_ficha: nodeId, p_subido: subido
+      });
+      if (error) {
+        mostrarAvisoModal('Error: ' + traducirError(error.message));
+        registrarLog('INTENTO_FALLIDO', `Intento de marcar Fichero subido=${subido ? 'Sí' : 'No'} denegado: ${error.message}`, nodeId);
+        return;
+      }
+      registrarLog('MARCAR_FICHERO_SUBIDO', `Marcó Fichero subido=${subido ? 'Sí' : 'No'}`, nodeId);
+      await cargarArbol();
+    }
 
     async function accionMarcarRealizado(nodeId, realizado) {
       const { error } = await supabaseClient.rpc('marcar_realizado_pieza', {
@@ -3561,6 +3643,8 @@
       document.getElementById('btn-bloquear-masivo').style.display = esGestor() ? 'inline-block' : 'none';
       document.getElementById('btn-desbloquear-masivo').style.display = esGestor() ? 'inline-block' : 'none';
       document.getElementById('btn-tomar-tarea').style.display = puedeSeleccionar() ? 'inline-block' : 'none';
+      document.getElementById('btn-aprobar-doc-masivo').style.display = esGestor() ? 'inline-block' : 'none';
+      document.getElementById('btn-publicar-win-masivo').style.display = (esGestor() || esWindchill()) ? 'inline-block' : 'none';
       barra.classList.add('visible');
     }
 
@@ -3620,6 +3704,74 @@
         `${nuevoValor ? 'Bloqueó' : 'Desbloqueó'} en lote ${hechos} de ${ids.length} nodo(s)${errores.length ? ` (${errores.length} fallaron)` : ''}`);
       if (errores.length > 0) {
         mostrarAvisoModal(`Hecho ${hechos} de ${ids.length}. Fallaron ${errores.length}:\n` + errores.map(e => `• ${e}`).join('\n'));
+      }
+
+      nodosSeleccionados.clear();
+      modoSeleccion = false;
+      document.getElementById('chk-modo-seleccion').checked = false;
+      actualizarBarraSeleccion();
+      await cargarArbol();
+    }
+
+    // Aprueba en lote la documentación (Modelo + Plano de corte) de todas
+    // las piezas numeradas seleccionadas. Al marcar el nodo de la familia
+    // (p.ej. PL1000) se marcan automáticamente todas las piezas de dentro
+    // (1001, 1002...), así que basta con filtrar la selección a las que
+    // realmente son piezas documentables. Solo ADMIN o Supervisor.
+    async function confirmarAprobarDocumentacionMasivo() {
+      const idsPiezas = [...nodosSeleccionados]
+        .map(id => mapaNodoPorId[id])
+        .filter(n => n && TIPOS_DOCUMENTABLES.has(n.tipo) && esPiezaNumerada(n.codigo))
+        .map(n => n.id);
+      if (idsPiezas.length === 0) { mostrarAvisoModal('No hay piezas numeradas (con Modelo/Plano de corte) entre lo seleccionado.'); return; }
+      if (!await mostrarConfirmacion(`¿Aprobar la documentación (Modelo + Plano de corte) de ${idsPiezas.length} pieza(s)?`)) return;
+
+      let hechos = 0;
+      const errores = [];
+      for (const id of idsPiezas) {
+        const nodo = mapaNodoPorId[id];
+        const { error } = await supabaseClient.rpc('aprobar_documentacion_pieza', { p_pieza_id: id });
+        if (error) { errores.push(`${nodo.codigo}: ${traducirError(error.message)}`); continue; }
+        hechos++;
+      }
+
+      registrarLog('APROBAR_DOC_LOTE', `Aprobó en lote la documentación de ${hechos} de ${idsPiezas.length} pieza(s)${errores.length ? ` (${errores.length} fallaron)` : ''}`);
+      if (errores.length > 0) {
+        mostrarAvisoModal(`Aprobado ${hechos} de ${idsPiezas.length}. Fallaron ${errores.length}:\n` + errores.map(e => `• ${e}`).join('\n'));
+      }
+
+      nodosSeleccionados.clear();
+      modoSeleccion = false;
+      document.getElementById('chk-modo-seleccion').checked = false;
+      actualizarBarraSeleccion();
+      await cargarArbol();
+    }
+
+    // Segunda pasada, normalmente del usuario Windchill (aunque también
+    // vale para ADMIN/Supervisor): marca como Publicado el Windchill de
+    // todas las piezas seleccionadas. Solo funciona en las que ya tengan
+    // Modelo y Plano de corte Aprobados -- las demás salen listadas como
+    // fallo, sin bloquear al resto.
+    async function confirmarPublicarWindchillMasivo() {
+      const idsPiezas = [...nodosSeleccionados]
+        .map(id => mapaNodoPorId[id])
+        .filter(n => n && TIPOS_DOCUMENTABLES.has(n.tipo) && esPiezaNumerada(n.codigo))
+        .map(n => n.id);
+      if (idsPiezas.length === 0) { mostrarAvisoModal('No hay piezas numeradas entre lo seleccionado.'); return; }
+      if (!await mostrarConfirmacion(`¿Marcar como Publicado en Windchill ${idsPiezas.length} pieza(s)? (En las que Modelo/Plano de corte no estén ya Aprobados, fallará y se avisará).`)) return;
+
+      let hechos = 0;
+      const errores = [];
+      for (const id of idsPiezas) {
+        const nodo = mapaNodoPorId[id];
+        const { error } = await supabaseClient.rpc('publicar_windchill_pieza', { p_pieza_id: id });
+        if (error) { errores.push(`${nodo.codigo}: ${traducirError(error.message)}`); continue; }
+        hechos++;
+      }
+
+      registrarLog('PUBLICAR_WIN_LOTE', `Publicó en lote Windchill de ${hechos} de ${idsPiezas.length} pieza(s)${errores.length ? ` (${errores.length} fallaron)` : ''}`);
+      if (errores.length > 0) {
+        mostrarAvisoModal(`Publicado ${hechos} de ${idsPiezas.length}. Fallaron ${errores.length}:\n` + errores.map(e => `• ${e}`).join('\n'));
       }
 
       nodosSeleccionados.clear();
