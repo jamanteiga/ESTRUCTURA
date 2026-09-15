@@ -8,6 +8,10 @@
   <meta name="theme-color" content="#007bff">
   <style>
     body { font-family: Arial, sans-serif; max-width: min(1850px, 97vw); margin: 30px auto; padding: 0 20px; color: #333; }
+    @media (max-width: 480px) {
+      body { margin: 10px auto; padding: 0 8px; box-sizing: border-box; }
+      h1 { font-size: 18px; }
+    }
     h1 { font-size: 22px; }
     .card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 14px; margin-bottom: 16px; }
     #card-arbol { overflow-y: auto; overflow-x: auto; box-sizing: border-box; }
@@ -92,7 +96,9 @@
     .overlay-caja h3 { margin-top: 0; font-size: 16px; }
     .overlay-caja label { display: block; font-weight: bold; font-size: 12px; margin: 10px 0 4px; }
     .overlay-caja input, .overlay-caja select, .overlay-caja textarea {
-      width: 100%; padding: 7px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 13px;
+      /* font-size 16px (no 13px): por debajo de 16px, Safari en iPhone/iPad
+         hace zoom automático al entrar en el campo -- con 16px no lo hace. */
+      width: 100%; padding: 7px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 16px;
     }
     .overlay-botones { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
     .estado-msg { font-size: 12px; margin-top: 8px; }
@@ -671,6 +677,19 @@
     </div>
   </div>
 
+  <div class="overlay" id="modal-generar-doc">
+    <div class="overlay-caja">
+      <h3>Generar documentación</h3>
+      <p style="font-size:12px; color:#666;" id="generar-doc-info"></p>
+      <div id="generar-doc-opciones"></div>
+      <div class="estado-msg" id="generar-doc-estado"></div>
+      <div class="overlay-botones">
+        <button class="secundario" onclick="cerrarModalGenerarDoc()">Cancelar</button>
+        <button id="generar-doc-guardar" onclick="confirmarGenerarDoc()">Generar</button>
+      </div>
+    </div>
+  </div>
+
   <div id="contenedor-avisos"></div>
   <div id="barra-seleccion" style="display:none; position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#222; color:white; padding:12px 20px; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.35); z-index:3000; gap:12px; align-items:center; flex-wrap:wrap; max-width:95vw;">
     <span id="texto-seleccion" style="font-size:13px;"></span>
@@ -846,7 +865,16 @@
     const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    const esMovil = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || window.innerWidth < 768;
+    // Detección de móvil/tablet. Desde iOS 13, Safari en iPad manda un
+    // user-agent de escritorio (se identifica como "Macintosh"), así que
+    // el user-agent solo no basta para detectarlo -- por eso se comprueba
+    // también si la pantalla es táctil (navigator.maxTouchPoints, que en
+    // un Mac/PC normal sin pantalla táctil es 0 y en un iPad no lo es,
+    // aunque diga "Macintosh"). Cualquier pantalla táctil (móvil o
+    // tablet, en cualquier orientación) usa la vista compacta pensada
+    // para el dedo; una ventana de escritorio estrecha (<768px) también.
+    const esTactil = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+    const esMovil = esTactil || window.innerWidth < 768;
     document.body.classList.toggle('vista-movil', esMovil);
 
     // DOC_MODELO/DOC_PLANO_CORTE/DOC_WINDCHILL (y sus hijos DOC_REALIZADO,
@@ -2032,7 +2060,7 @@
           items.push({ label: '+ Generar nodo hijo', tip: 'Crea un nuevo nodo dentro de este.', fn: () => abrirModalCrear(nodeId, nodo.tipo) });
           items.push({ label: '+N Crear varios nodos', tip: 'Creación de varios nodos iguales al indicado.', fn: () => abrirModalLote(nodeId, nodo.tipo) });
           if (esPiezaDocumentable) {
-            items.push({ label: '🗂️ Generar documentación (Modelo/Plano/Windchill)', tip: 'Crea de golpe los 3 nodos de seguimiento documental dentro de esta pieza.', fn: () => generarDocumentacionPieza(nodeId) });
+            items.push({ label: '🗂️ Generar documentación (Modelo/Plano/Windchill)', tip: 'Elige cuáles de los 3 nodos de seguimiento documental generar dentro de esta pieza.', fn: () => abrirModalGenerarDoc(nodeId) });
           }
           if (miPerfil.rol === 'ADMIN') {
             items.push({ label: '📥 Importar desde Excel', tip: 'Importa un subárbol completo (varios niveles) colgando de este nodo, desde un fichero Excel.', fn: () => window.location.href = 'importar.html?destino=' + encodeURIComponent(nodeId) });
@@ -2743,9 +2771,18 @@
       await cargarArbol();
     }
 
-    async function obtenerTiposHijoValidos(parentTipo) {
+    // parentCodigo es opcional -- si se pasa y el padre es una pieza YA
+    // numerada de Plancha/Perfil (1001, 4001...), se quitan de la lista
+    // los propios tipos Plancha/Perfil: un hijo final documentable no
+    // puede tener dentro otra Plancha o Perfil, solo Modelo/Plano de
+    // corte/Windchill (que siguen permitidos, vienen de otras reglas).
+    async function obtenerTiposHijoValidos(parentTipo, parentCodigo) {
       const { data } = await supabaseClient.from('node_type_rules').select('child_type').eq('parent_type', parentTipo);
-      return (data || []).map(r => r.child_type);
+      let tipos = (data || []).map(r => r.child_type);
+      if (TIPOS_DOCUMENTABLES.has(parentTipo) && esPiezaNumerada(parentCodigo)) {
+        tipos = tipos.filter(t => !TIPOS_DOCUMENTABLES.has(t));
+      }
+      return tipos;
     }
 
     async function abrirModalCrear(parentId, parentTipo) {
@@ -2766,7 +2803,7 @@
         wrapTipo.style.display = 'none';
       } else {
         wrapTipo.style.display = 'block';
-        const tipos = await obtenerTiposHijoValidos(parentTipo);
+        const tipos = await obtenerTiposHijoValidos(parentTipo, mapaNodoPorId[parentId]?.codigo);
         selectTipo.innerHTML = tipos.length === 0
           ? '<option value="">(este tipo no admite hijos)</option>'
           : tipos.map(t => `<option value="${t}">${t}</option>`).join('');
@@ -2920,7 +2957,7 @@
     // Crea de golpe toda la rama Modelo/Plano de corte/Windchill (con lo
     // que llevan dentro) bajo una pieza recién creada. Se usa al crear un
     // único hijo de PL/PERF y al crear varios de golpe ("Crear varios
-    // nodos"); a diferencia de generarDocumentacionPieza, aquí la pieza es
+    // nodos"); a diferencia de abrirModalGenerarDoc, aquí la pieza es
     // nueva y no puede tener ya nada, así que no hace falta comprobar qué
     // falta.
     async function generarRamaDocumentacionCompleta(piezaId) {
@@ -2929,54 +2966,105 @@
       }
     }
 
-    async function generarDocumentacionPieza(nodeId) {
-      const nodo = mapaNodoPorId[nodeId];
+    // Calcula, para una pieza, en qué estado está cada una de las 3 ramas
+    // (Modelo/Plano de corte/Windchill): 'falta' (no existe nada todavía),
+    // 'parcial' (el nodo existe pero le falta algún hijo, p.ej. Realizado)
+    // o 'completo' (ya está todo). Sirve tanto para pintar el modal de
+    // checkboxes como para saber qué generar al confirmar.
+    function calcularEstadoDocPieza(nodeId) {
       const hijosDirectos = mapaHijosPorPadre[nodeId] || [];
-      const existentes = new Set(hijosDirectos.map(h => h.codigo));
-      const faltantes = RAMA_DOC_PIEZA.filter(spec => !existentes.has(spec.codigo));
-
-      // Además de las ramas (MOD/PDC/WIN) que falten por completo, si alguna
-      // ya existe (p.ej. se creó antes de añadir "Realizado"), completa los
-      // hijos nuevos que le falten a esa rama existente.
-      const pendientesEnExistentes = [];
-      for (const spec of RAMA_DOC_PIEZA) {
-        if (!spec.hijos || !spec.hijos.length) continue;
+      return RAMA_DOC_PIEZA.map(spec => {
         const nodoExistente = hijosDirectos.find(h => h.codigo === spec.codigo);
-        if (!nodoExistente) continue;
+        if (!nodoExistente) return { spec, estado: 'falta', nodoExistente: null, faltanHijos: [] };
         const nietos = mapaHijosPorPadre[nodoExistente.id] || [];
         const codigosNietos = new Set(nietos.map(n => n.codigo));
-        for (const hijoSpec of spec.hijos) {
-          if (!codigosNietos.has(hijoSpec.codigo)) {
-            pendientesEnExistentes.push({ nodoExistente, hijoSpec });
-          }
-        }
-      }
+        const faltanHijos = (spec.hijos || []).filter(h => !codigosNietos.has(h.codigo));
+        return { spec, estado: faltanHijos.length > 0 ? 'parcial' : 'completo', nodoExistente, faltanHijos };
+      });
+    }
 
-      if (faltantes.length === 0 && pendientesEnExistentes.length === 0) {
+    let nodoGenerarDocActual = null;
+    let estadoGenerarDocActual = [];
+
+    // Reemplaza la vieja confirmación única por un modal con una casilla
+    // independiente por rama (Modelo/Plano de corte/Windchill), para poder
+    // elegir generar solo alguna de las tres, cada una con lo que lleva
+    // dentro (Realizado en Modelo/Plano de corte; Publicar y Fichero
+    // subido en Windchill).
+    function abrirModalGenerarDoc(nodeId) {
+      const nodo = mapaNodoPorId[nodeId];
+      estadoGenerarDocActual = calcularEstadoDocPieza(nodeId);
+      nodoGenerarDocActual = nodeId;
+
+      if (estadoGenerarDocActual.every(e => e.estado === 'completo')) {
         mostrarAvisoModal('Esta pieza ya tiene generados Modelo, Plano de corte y Windchill (con todos sus campos).');
         return;
       }
 
-      const nombresNuevo = faltantes.map(f => f.nombre);
-      const nombresCompletar = pendientesEnExistentes.map(p => `${ETIQUETAS_TIPO[p.hijoSpec.tipo] || p.hijoSpec.tipo} en ${p.nodoExistente.nombre}`);
-      const resumen = [...nombresNuevo, ...nombresCompletar].join(', ');
-      if (!await mostrarConfirmacion(`¿Generar ${resumen} dentro de "${nodo.codigo}"?`)) return;
+      document.getElementById('generar-doc-info').textContent = `Dentro de "${nodo.codigo}" — marca lo que quieras generar:`;
+      document.getElementById('generar-doc-opciones').innerHTML = estadoGenerarDocActual.map(e => {
+        const marcado = e.estado !== 'completo';
+        const deshabilitado = e.estado === 'completo';
+        let detalle;
+        if (e.estado === 'falta') detalle = '(nuevo, con lo que lleva dentro)';
+        else if (e.estado === 'parcial') detalle = `(completar: ${e.faltanHijos.map(h => ETIQUETAS_TIPO[h.tipo] || h.nombre || h.tipo).join(', ')})`;
+        else detalle = '(ya existe)';
+        return `
+          <label class="menu-item" style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
+            <input type="checkbox" class="chk-generar-doc" data-codigo="${e.spec.codigo}" ${marcado ? 'checked' : ''} ${deshabilitado ? 'disabled' : ''}>
+            🗂️ ${e.spec.nombre} <span style="color:#888; font-size:12px;">${detalle}</span>
+          </label>`;
+      }).join('');
+      document.getElementById('generar-doc-estado').textContent = '';
+      document.getElementById('modal-generar-doc').style.display = 'flex';
+    }
 
+    function cerrarModalGenerarDoc() { document.getElementById('modal-generar-doc').style.display = 'none'; }
+
+    async function confirmarGenerarDoc() {
+      const nodeId = nodoGenerarDocActual;
+      const nodo = mapaNodoPorId[nodeId];
+      const estadoEl = document.getElementById('generar-doc-estado');
+      const btn = document.getElementById('generar-doc-guardar');
+
+      const codigosMarcados = new Set(
+        [...document.querySelectorAll('.chk-generar-doc')].filter(c => c.checked).map(c => c.dataset.codigo)
+      );
+      if (codigosMarcados.size === 0) {
+        estadoEl.textContent = 'Marca al menos una opción.';
+        estadoEl.className = 'estado-msg error';
+        return;
+      }
+
+      const seleccion = estadoGenerarDocActual.filter(e => codigosMarcados.has(e.spec.codigo) && e.estado !== 'completo');
+      const resumen = seleccion.map(e => e.spec.nombre).join(', ');
+
+      btn.disabled = true;
+      const hijosDirectos = mapaHijosPorPadre[nodeId] || [];
       const ordenBase = hijosDirectos.length;
       try {
-        for (let i = 0; i < faltantes.length; i++) {
-          await crearRamaMinima(faltantes[i], nodeId, ordenBase + i);
-        }
-        for (const { nodoExistente, hijoSpec } of pendientesEnExistentes) {
-          const ordenHijo = (mapaHijosPorPadre[nodoExistente.id] || []).length;
-          await crearRamaMinima(hijoSpec, nodoExistente.id, ordenHijo);
-          nodosAbiertos.add(nodoExistente.id);
+        let i = 0;
+        for (const e of seleccion) {
+          if (e.estado === 'falta') {
+            await crearRamaMinima(e.spec, nodeId, ordenBase + i);
+            i++;
+          } else if (e.estado === 'parcial') {
+            for (const hijoSpec of e.faltanHijos) {
+              const ordenHijo = (mapaHijosPorPadre[e.nodoExistente.id] || []).length;
+              await crearRamaMinima(hijoSpec, e.nodoExistente.id, ordenHijo);
+              nodosAbiertos.add(e.nodoExistente.id);
+            }
+          }
         }
         registrarLog('CREAR_LOTE', `Generó/completó la documentación (${resumen}) dentro de "${nodo.codigo}"`, nodeId);
         nodosAbiertos.add(nodeId);
+        btn.disabled = false;
+        cerrarModalGenerarDoc();
         await cargarArbol();
       } catch (e) {
-        mostrarAvisoModal('Error generando la documentación: ' + traducirError(e.message));
+        btn.disabled = false;
+        estadoEl.textContent = 'Error: ' + traducirError(e.message);
+        estadoEl.className = 'estado-msg error';
         registrarLog('INTENTO_FALLIDO', `Intento de generar documentación en "${nodo.codigo}" denegado: ${e.message}`, nodeId);
         await cargarArbol();
       }
@@ -3314,7 +3402,7 @@
       document.getElementById('modal-lote-estado').textContent = '';
 
       const selectTipo = document.getElementById('modal-lote-tipo');
-      const tipos = await obtenerTiposHijoValidos(parentTipo);
+      const tipos = await obtenerTiposHijoValidos(parentTipo, mapaNodoPorId[parentId]?.codigo);
       selectTipo.innerHTML = tipos.length === 0
         ? '<option value="">(este tipo no admite hijos)</option>'
         : tipos.map(t => `<option value="${t}">${t}</option>`).join('');
@@ -4050,7 +4138,7 @@
       const padres = ids.map(id => mapaNodoPorId[id]).filter(Boolean);
       if (padres.length === 0) return;
 
-      const listasTipos = await Promise.all(padres.map(p => obtenerTiposHijoValidos(p.tipo)));
+      const listasTipos = await Promise.all(padres.map(p => obtenerTiposHijoValidos(p.tipo, p.codigo)));
       const interseccion = listasTipos.reduce((acc, lista) => acc.filter(t => lista.includes(t)));
 
       document.getElementById('anadirmasivo-contador').textContent =
