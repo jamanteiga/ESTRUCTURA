@@ -171,10 +171,19 @@
     }
     .menu-item-expandible:hover { background: #f5f8ff; }
     .menu-item-expandible .flecha-menu { transition: transform 0.15s; color: #007bff; }
+    .menu-item-expandible.abierta { background: #eef4ff; }
     .menu-item-expandible.abierta .flecha-menu { transform: rotate(90deg); }
-    .menu-submenu-contenido { display: none; }
+    .menu-submenu-contenido {
+      display: none; position: fixed; background: #fff; border-radius: 10px; min-width: 230px;
+      max-height: 80vh; overflow-y: auto;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15), 0 8px 24px rgba(0,0,0,0.18);
+      z-index: 3100; padding: 6px;
+    }
     .menu-submenu-contenido.abierta { display: block; }
-    .menu-submenu-contenido .menu-item { padding-left: 32px; }
+    .menu-submenu-contenido .menu-item {
+      border-bottom: none; border-radius: 5px; padding: 9px 14px; margin: 1px 0; font-size: 13.5px;
+    }
+    .menu-submenu-contenido .menu-item:hover { background: #eef0f2; }
 
     body.modo-menu-fijo { padding-left: 320px; }
     body.modo-menu-fijo .btn-hamburguesa { display: none; }
@@ -252,6 +261,10 @@
     body.tema-oscuro .menu-item:hover { background: #2f343b; }
     body.tema-oscuro .menu-item-expandible { color: #e0e0e0; border-bottom-color: #33373d; }
     body.tema-oscuro .menu-item-expandible:hover { background: #2f343b; }
+    body.tema-oscuro .menu-item-expandible.abierta { background: #333a44; }
+    body.tema-oscuro .menu-submenu-contenido { background: #2a2e35; box-shadow: 0 2px 6px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.5); }
+    body.tema-oscuro .menu-submenu-contenido .menu-item { color: #e0e0e0; border-bottom: none; }
+    body.tema-oscuro .menu-submenu-contenido .menu-item:hover { background: #3a3f47; }
     body.tema-oscuro .menu-buscador-wrap { border-bottom-color: #3a3f47; }
     body.tema-oscuro .menu-buscador-wrap input,
     body.tema-oscuro select, body.tema-oscuro input[type="text"], body.tema-oscuro input[type="number"],
@@ -313,7 +326,7 @@
 
   <!-- Menú hamburguesa -->
   <div class="menu-overlay-fondo" id="menu-overlay" onclick="cerrarMenuSiFondo(event)">
-    <div class="menu-panel">
+    <div class="menu-panel" onclick="cerrarSubmenusFlotantes(event)" onscroll="cerrarSubmenusFlotantes()">
       <button class="menu-cerrar" onclick="cerrarMenu()">✕</button>
 
       <div class="menu-buscador-wrap">
@@ -325,7 +338,7 @@
         <a class="menu-item" href="index.html">🏠 Inicio</a>
         <a class="menu-item solo-escritorio" id="menu-link-log" href="log.html" style="display:none;">🗒️ Logs</a>
         <span class="menu-item solo-escritorio" id="menu-item-buque" onclick="esInvitado() ? mostrarAvisoModal('Eres un usuario Invitado: solo puedes consultar, no puedes realizar cambios.') : abrirModalCrear(null, 'BUQUE')" style="display:none;">+ Añadir Buque</span>
-        <div class="menu-item-expandible" onclick="toggleSeccionMenu(this)">📊 Resumen <span class="flecha-menu">›</span></div>
+        <div class="menu-item-expandible" onclick="toggleSubmenuFlotante(event, this)">📊 Resumen <span class="flecha-menu">›</span></div>
         <div class="menu-submenu-contenido">
           <a class="menu-item" href="avances.html">📉 Avances</a>
           <a class="menu-item" href="cambiosmodelo.html">🔧 Cambios de modelo</a>
@@ -1147,11 +1160,44 @@
     }
 
     function abrirMenu() { document.getElementById('menu-overlay').classList.add('abierto'); }
-    function cerrarMenu() { document.getElementById('menu-overlay').classList.remove('abierto'); }
+    function cerrarMenu() { document.getElementById('menu-overlay').classList.remove('abierto'); cerrarSubmenusFlotantes(); }
     function cerrarMenuSiFondo(e) { if (e.target.id === 'menu-overlay') cerrarMenu(); }
     function toggleSeccionMenu(titulo) {
       titulo.classList.toggle('abierta');
       titulo.nextElementSibling.classList.toggle('abierta');
+    }
+
+    function cerrarSubmenusFlotantes(event) {
+      // Si el clic viene de dentro de un submenú flotante ya abierto, no lo cerramos por eso
+      // (el enlace navegará y da igual); esto solo evita cerrarlo por el propio clic que lo abrió.
+      if (event && event.target.closest && event.target.closest('.menu-item-expandible')) return;
+      document.querySelectorAll('.menu-submenu-contenido.abierta').forEach(el => el.classList.remove('abierta'));
+      document.querySelectorAll('.menu-item-expandible.abierta').forEach(el => el.classList.remove('abierta'));
+    }
+
+    function toggleSubmenuFlotante(event, titulo) {
+      event.stopPropagation();
+      const submenu = titulo.nextElementSibling;
+      const yaAbierto = submenu.classList.contains('abierta');
+      cerrarSubmenusFlotantes();
+      if (yaAbierto) return;
+
+      // Medir el alto real antes de posicionarlo, para no salirse de la pantalla por abajo
+      submenu.style.visibility = 'hidden';
+      submenu.style.display = 'block';
+      const altoReal = submenu.offsetHeight;
+      submenu.style.display = '';
+      submenu.style.visibility = '';
+
+      const rectPanel = document.querySelector('.menu-panel').getBoundingClientRect();
+      const rectTitulo = titulo.getBoundingClientRect();
+      let top = rectTitulo.top;
+      if (top + altoReal > window.innerHeight - 8) top = Math.max(8, window.innerHeight - altoReal - 8);
+      submenu.style.left = rectPanel.right + 'px';
+      submenu.style.top = top + 'px';
+
+      submenu.classList.add('abierta');
+      titulo.classList.add('abierta');
     }
 
     function ajustarAlturaArbol() {
