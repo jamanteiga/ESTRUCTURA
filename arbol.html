@@ -432,12 +432,7 @@
 
       <div class="menu-seccion-titulo" data-menu-seccion="apariencia" onclick="toggleSeccionMenu(this)">Apariencia <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
-        <label class="menu-item">
-          <input type="radio" name="modo-tema" value="claro" id="radio-tema-claro" checked> ☀️ Claro
-        </label>
-        <label class="menu-item">
-          <input type="radio" name="modo-tema" value="oscuro" id="radio-tema-oscuro"> 🌙 Oscuro
-        </label>
+        <span class="menu-item" id="btn-alternar-tema" onclick="alternarTema()">🌙/☀️ Alternar tema</span>
         <label class="menu-item">
           <input type="radio" name="modo-menu" value="desplegable" id="radio-desplegable" checked> Desplegable
         </label>
@@ -1331,13 +1326,14 @@
       localStorage.setItem('estructura_tema', tema);
     }
 
+    function alternarTema() {
+      const nuevo = document.body.classList.contains('tema-oscuro') ? 'claro' : 'oscuro';
+      aplicarTema(nuevo);
+    }
+
     function inicializarTema() {
       const guardado = localStorage.getItem('estructura_tema') || 'claro';
-      document.getElementById(guardado === 'oscuro' ? 'radio-tema-oscuro' : 'radio-tema-claro').checked = true;
       aplicarTema(guardado);
-
-      document.getElementById('radio-tema-claro').addEventListener('change', () => aplicarTema('claro'));
-      document.getElementById('radio-tema-oscuro').addEventListener('change', () => aplicarTema('oscuro'));
     }
 
     async function cerrarSesion() {
