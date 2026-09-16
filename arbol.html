@@ -2994,6 +2994,15 @@
         codigoInput.value = BASE_NUMERO_TIPO[tipo];
         return;
       }
+      // Un Buque nuevo no lleva código de partida: si se dejara "BUQUE" ya
+      // puesto (como se hace con el resto de tipos, ver más abajo) es fácil
+      // guardar sin darse cuenta con ese código literal, igual para todos
+      // los buques, en vez de uno que los distinga (BUQ1, BUQ2...).
+      if (tipo === 'BUQUE') {
+        codigoInput.value = '';
+        codigoInput.placeholder = 'Código que distinga este buque (ej. BUQ1)';
+        return;
+      }
       // Quita solo el prefijo de letras que ya hubiera (de un tipo anterior) y
       // conserva el resto (números u otros caracteres) tal como estaban.
       const resto = codigoInput.value.replace(/^[A-Za-zÁÉÍÓÚÑ]+/, '');
@@ -3334,6 +3343,12 @@
       }
 
       const esBuqueNuevo = !nodoCrearPadre;
+
+      if (esBuqueNuevo && codigo.toUpperCase() === 'BUQUE') {
+        estadoEl.textContent = 'Pon un código que distinga a este buque de los demás (ej. BUQ1), no "BUQUE" solo.';
+        estadoEl.className = 'estado-msg error';
+        return;
+      }
 
       const { data: nuevoNodo, error } = await supabaseClient.from('nodes').insert({
         parent_id: nodoCrearPadre ? nodoCrearPadre.id : null, tipo, codigo, nombre, descripcion: descripcion || null, orden
