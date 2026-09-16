@@ -369,6 +369,10 @@
         <a class="menu-item" id="menu-item-alertas" href="resumen.html" style="display:none;" title="Tareas retrasadas y usuarios con demasiada carga hoy — detalle en Resumen">⚠️ Alertas<span id="badge-alertas" style="display:none; background:#dc3545; color:#fff; border-radius:10px; padding:1px 7px; font-size:11px; font-weight:bold; margin-left:6px;"></span></a>
         <span class="menu-item" id="menu-item-resumen-comentarios" onclick="abrirResumenComentariosModelo()" style="display:none;">📋 Comentarios pendientes de modelo<span id="badge-comentarios-pendientes" style="display:none; background:#dc3545; color:#fff; border-radius:10px; padding:1px 7px; font-size:11px; font-weight:bold; margin-left:6px;"></span></span>
         <a class="menu-item solo-escritorio" id="menu-link-usuarios" href="usuarios.html" style="display:none;">👤 Usuarios</a>
+        <div class="menu-item-expandible solo-escritorio" id="menu-item-backup" onclick="toggleSubmenuFlotante(event, this, 'submenu-backup')" style="display:none;">💾 Backup <span class="flecha-menu">›</span></div>
+        <div class="menu-submenu-contenido solo-escritorio" id="submenu-backup">
+          <span class="menu-item">Cargando buques...</span>
+        </div>
         <span class="menu-item" onclick="cerrarSesion()">🚪 Cerrar sesión</span>
       </div>
 
@@ -1078,6 +1082,7 @@
       restaurarEstadoMenuLateral();
       if (perfil.rol === 'ADMIN') {
         document.getElementById('menu-link-usuarios').style.display = 'flex';
+        document.getElementById('menu-item-backup').style.display = 'flex';
         document.getElementById('menu-link-log').style.display = 'flex';
         document.getElementById('wrap-papelera').style.display = 'flex';
         document.getElementById('wrap-avance').style.display = 'flex';
@@ -1421,6 +1426,7 @@
       });
 
       if (esGestor()) actualizarSelectorBuqueLeyenda();
+      if (miPerfil.rol === 'ADMIN') actualizarSubmenuBackup();
       renderizarArbolCompleto();
       if (esGestor()) actualizarBadgeAlertas();
     }
@@ -1539,6 +1545,145 @@
       sel.innerHTML = '<option value="">🚢 Todos los buques</option>' +
         buques.map(b => `<option value="${b.id}">${b.codigo}${b.nombre ? ' — ' + b.nombre : ''}</option>`).join('');
       sel.value = filtroBuqueId;
+    }
+
+    // -------------------- Backup (menú lateral) --------------------
+    // Mismo mecanismo que la copia de seguridad de usuarios.html (tablas
+    // completas, guardando donde el usuario elija cuando el navegador lo
+    // permite), repetido aquí para poder lanzarla sin salir de árbol.html.
+
+    const TABLAS_COPIA_SEGURIDAD = [
+      'nodes', 'node_workflow', 'node_comentarios_modelo', 'node_dependencias',
+      'festivos', 'ausencias', 'hitos', 'historial_fechas_previstas', 'profiles'
+    ];
+
+    function actualizarSubmenuBackup() {
+      const cont = document.getElementById('submenu-backup');
+      if (!cont) return;
+      const buques = (mapaHijosPorPadre['__raiz__'] || []).slice()
+        .sort((a, b) => a.codigo.localeCompare(b.codigo, 'es', { sensitivity: 'base' }));
+      cont.innerHTML = '<span class="menu-item" onclick="descargarCopiaSeguridad()">🚢 Todos los buques</span>' +
+        buques.map(b => `<span class="menu-item" onclick="descargarCopiaSeguridadBuque('${b.id}')">${b.nombre} (${b.codigo})</span>`).join('');
+    }
+
+    async function guardarArchivoComo(contenido, nombreSugerido, tipoMime) {
+      if (window.showSaveFilePicker) {
+        try {
+          const handle = await window.showSaveFilePicker({
+            suggestedName: nombreSugerido,
+            types: [{ description: 'Copia de seguridad', accept: { [tipoMime]: ['.json'] } }]
+          });
+          const writable = await handle.createWritable();
+          await writable.write(contenido);
+          await writable.close();
+          return true;
+        } catch (e) {
+          if (e.name === 'AbortError') return false; // el usuario cerró el diálogo sin elegir carpeta
+          throw e;
+        }
+      }
+      const blob = new Blob([contenido], { type: tipoMime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = nombreSugerido;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      return true;
+    }
+
+    function nombreArchivoSeguro(texto) {
+      return (texto || 'sin_nombre')
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/[^a-zA-Z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '') || 'sin_nombre';
+    }
+
+    function fechaHoraParaArchivo() {
+      const ahora = new Date();
+      const fecha = ahora.toISOString().slice(0, 10);
+      const hora = ahora.toTimeString().slice(0, 8).replace(/:/g, '-');
+      return `${fecha}_${hora}`;
+    }
+
+    async function descargarCopiaSeguridad() {
+      cerrarMenu();
+      const resultados = await Promise.all(
+        TABLAS_COPIA_SEGURIDAD.map(tabla => supabaseClient.from(tabla).select('*'))
+      );
+      const errorTabla = resultados.findIndex(r => r.error);
+      if (errorTabla !== -1) {
+        mostrarAvisoModal(`Error al leer "${TABLAS_COPIA_SEGURIDAD[errorTabla]}": ${traducirError(resultados[errorTabla].error.message)}`);
+        return;
+      }
+      const copia = { generado_en: new Date().toISOString(), generado_por: miPerfil?.username || null };
+      TABLAS_COPIA_SEGURIDAD.forEach((tabla, i) => { copia[tabla] = resultados[i].data || []; });
+
+      const nombreArchivo = `estructura_copia_seguridad_${fechaHoraParaArchivo()}.json`;
+      const guardado = await guardarArchivoComo(JSON.stringify(copia, null, 2), nombreArchivo, 'application/json');
+      if (guardado) {
+        registrarLog('COPIA_SEGURIDAD', 'Descargó una copia de seguridad completa');
+        mostrarAvisoModal('Copia de seguridad descargada.');
+      }
+    }
+
+    async function descargarCopiaSeguridadBuque(buqueId) {
+      cerrarMenu();
+      const buque = mapaNodoPorId[buqueId];
+      if (!buque) return;
+
+      const { data: todosNodosCrudos, error: errorNodos } = await supabaseClient.from('nodes').select('id, parent_id');
+      if (errorNodos) { mostrarAvisoModal(`Error al leer "nodes": ${traducirError(errorNodos.message)}`); return; }
+
+      const hijosPorPadre = {};
+      (todosNodosCrudos || []).forEach(n => {
+        const clave = n.parent_id || '__raiz__';
+        if (!hijosPorPadre[clave]) hijosPorPadre[clave] = [];
+        hijosPorPadre[clave].push(n.id);
+      });
+      const idsBuque = [];
+      const pendientes = [buqueId];
+      while (pendientes.length > 0) {
+        const id = pendientes.pop();
+        idsBuque.push(id);
+        (hijosPorPadre[id] || []).forEach(hijoId => pendientes.push(hijoId));
+      }
+      const idsBuqueSet = new Set(idsBuque);
+
+      const [rNodos, rWorkflow, rComentarios, rDependencias, rHitos, rHistorial, rProfiles] = await Promise.all([
+        supabaseClient.from('nodes').select('*'),
+        supabaseClient.from('node_workflow').select('*'),
+        supabaseClient.from('node_comentarios_modelo').select('*'),
+        supabaseClient.from('node_dependencias').select('*'),
+        supabaseClient.from('hitos').select('*').eq('buque_id', buqueId),
+        supabaseClient.from('historial_fechas_previstas').select('*'),
+        supabaseClient.from('profiles').select('*')
+      ]);
+      const resultados = [rNodos, rWorkflow, rComentarios, rDependencias, rHitos, rHistorial, rProfiles];
+      const errorResultado = resultados.find(r => r.error);
+      if (errorResultado) { mostrarAvisoModal(`Error: ${traducirError(errorResultado.error.message)}`); return; }
+
+      const copia = {
+        buque: { id: buque.id, codigo: buque.codigo, nombre: buque.nombre },
+        generado_en: new Date().toISOString(),
+        generado_por: miPerfil?.username || null,
+        nodes: (rNodos.data || []).filter(n => idsBuqueSet.has(n.id)),
+        node_workflow: (rWorkflow.data || []).filter(w => idsBuqueSet.has(w.node_id)),
+        node_comentarios_modelo: (rComentarios.data || []).filter(c => idsBuqueSet.has(c.node_id)),
+        node_dependencias: (rDependencias.data || []).filter(d => idsBuqueSet.has(d.predecesor_id) || idsBuqueSet.has(d.sucesor_id)),
+        hitos: rHitos.data || [],
+        historial_fechas_previstas: (rHistorial.data || []).filter(h => idsBuqueSet.has(h.node_id)),
+        profiles: (rProfiles.data || []).filter(p => p.rol !== 'TRABAJADOR' || p.buque_id === buqueId)
+      };
+
+      const nombreArchivo = `${nombreArchivoSeguro(buque.nombre)}_${fechaHoraParaArchivo()}.json`;
+      const guardado = await guardarArchivoComo(JSON.stringify(copia, null, 2), nombreArchivo, 'application/json');
+      if (guardado) {
+        registrarLog('COPIA_SEGURIDAD', `Descargó una copia de seguridad del buque "${buque.codigo}"`);
+        mostrarAvisoModal('Copia de seguridad del buque descargada.');
+      }
     }
 
     function calcularNodosVisibles() {
