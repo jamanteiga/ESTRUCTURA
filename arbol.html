@@ -341,7 +341,7 @@
         <input type="text" id="buscador" placeholder="🔍 ¿Qué estás buscando?">
       </div>
 
-      <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Navegación <span class="flecha-menu">›</span></div>
+      <div class="menu-seccion-titulo" data-menu-seccion="navegacion" onclick="toggleSeccionMenu(this)">Navegación <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
         <a class="menu-item" href="index.html">🏠 Inicio</a>
         <a class="menu-item solo-escritorio" id="menu-link-log" href="log.html" style="display:none;">🗒️ Logs</a>
@@ -366,7 +366,7 @@
         <span class="menu-item" onclick="cerrarSesion()">🚪 Cerrar sesión</span>
       </div>
 
-      <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Bloques <span class="flecha-menu">›</span></div>
+      <div class="menu-seccion-titulo" data-menu-seccion="bloques" onclick="toggleSeccionMenu(this)">Bloques <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
         <span class="menu-item" onclick="encogerTodo()">⏫ Contraer todo</span>
         <span class="menu-item" onclick="expandirTodo()">⏬ Expandir todo</span>
@@ -378,7 +378,7 @@
         </label>
       </div>
 
-      <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Filtros <span class="flecha-menu">›</span></div>
+      <div class="menu-seccion-titulo" data-menu-seccion="filtros" onclick="toggleSeccionMenu(this)">Filtros <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
         <label class="menu-item" id="wrap-mis-tareas" style="display:none;">
           <input type="checkbox" id="chk-mis-tareas"> Ver solo mis tareas
@@ -408,7 +408,7 @@
         </label>
       </div>
 
-      <div class="menu-seccion-titulo solo-escritorio" onclick="toggleSeccionMenu(this)">Herramientas <span class="flecha-menu">›</span></div>
+      <div class="menu-seccion-titulo solo-escritorio" data-menu-seccion="herramientas" onclick="toggleSeccionMenu(this)">Herramientas <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido solo-escritorio">
         <label class="menu-item" id="wrap-modo-seleccion" style="display:none;">
           <input type="checkbox" id="chk-modo-seleccion" onchange="toggleModoSeleccion()"> ☑️ Selección múltiple
@@ -428,7 +428,7 @@
         </label>
       </div>
 
-      <div class="menu-seccion-titulo" onclick="toggleSeccionMenu(this)">Apariencia <span class="flecha-menu">›</span></div>
+      <div class="menu-seccion-titulo" data-menu-seccion="apariencia" onclick="toggleSeccionMenu(this)">Apariencia <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
         <label class="menu-item">
           <input type="radio" name="modo-tema" value="claro" id="radio-tema-claro" checked> ☀️ Claro
@@ -1070,10 +1070,7 @@
 
       if (pareceGestor()) document.getElementById('menu-item-buque').style.display = 'flex';
 
-      if (miPerfil.rol === 'ADMIN') {
-        document.querySelectorAll('.menu-seccion-titulo').forEach(t => t.classList.add('abierta'));
-        document.querySelectorAll('.menu-seccion-contenido').forEach(c => c.classList.add('abierta'));
-      }
+      restaurarEstadoMenuLateral();
       if (perfil.rol === 'ADMIN') {
         document.getElementById('menu-link-usuarios').style.display = 'flex';
         document.getElementById('menu-link-log').style.display = 'flex';
@@ -1167,12 +1164,49 @@
       }
     }
 
-    function abrirMenu() { document.getElementById('menu-overlay').classList.add('abierto'); }
-    function cerrarMenu() { document.getElementById('menu-overlay').classList.remove('abierto'); cerrarSubmenusFlotantes(); }
+    function abrirMenu() { document.getElementById('menu-overlay').classList.add('abierto'); guardarEstadoMenuLateral(); }
+    function cerrarMenu() { document.getElementById('menu-overlay').classList.remove('abierto'); cerrarSubmenusFlotantes(); guardarEstadoMenuLateral(); }
     function cerrarMenuSiFondo(e) { if (e.target.id === 'menu-overlay') cerrarMenu(); }
     function toggleSeccionMenu(titulo) {
       titulo.classList.toggle('abierta');
       titulo.nextElementSibling.classList.toggle('abierta');
+      guardarEstadoMenuLateral();
+    }
+
+    // Recuerda cómo se dejó el menú lateral (abierto/cerrado y qué secciones
+    // desplegadas) para que, venga de donde venga (p.ej. al pulsar "Cerrar"
+    // en otra página y volver aquí), aparezca exactamente igual.
+    function guardarEstadoMenuLateral() {
+      if (!miPerfil) return;
+      try {
+        const secciones = [...document.querySelectorAll('.menu-seccion-titulo.abierta')]
+          .map(t => t.dataset.menuSeccion).filter(Boolean);
+        const estado = {
+          abierto: document.getElementById('menu-overlay').classList.contains('abierto'),
+          secciones
+        };
+        localStorage.setItem('estructura_menu_lateral_' + miPerfil.id, JSON.stringify(estado));
+      } catch (e) { /* no es grave si no se puede guardar */ }
+    }
+
+    function restaurarEstadoMenuLateral() {
+      let estado = null;
+      try {
+        const guardado = localStorage.getItem('estructura_menu_lateral_' + miPerfil.id);
+        if (guardado) estado = JSON.parse(guardado);
+      } catch (e) { /* si está corrupto, se ignora */ }
+
+      if (estado) {
+        if (estado.abierto) document.getElementById('menu-overlay').classList.add('abierto');
+        (estado.secciones || []).forEach(nombre => {
+          const titulo = document.querySelector(`.menu-seccion-titulo[data-menu-seccion="${nombre}"]`);
+          if (titulo) { titulo.classList.add('abierta'); titulo.nextElementSibling.classList.add('abierta'); }
+        });
+      } else if (miPerfil.rol === 'ADMIN') {
+        // Primera vez sin nada guardado: como siempre, todo desplegado para el admin.
+        document.querySelectorAll('.menu-seccion-titulo').forEach(t => t.classList.add('abierta'));
+        document.querySelectorAll('.menu-seccion-contenido').forEach(c => c.classList.add('abierta'));
+      }
     }
 
     function cerrarSubmenusFlotantes(event) {
