@@ -165,10 +165,19 @@
     <div class="card">
       <h2 style="margin-top:0;">💾 Copia de seguridad</h2>
       <p style="font-size:12px; color:#666; margin-top:-6px;">
-        Descarga un archivo con toda la estructura, fechas, dependencias, comentarios, hitos, festivos, ausencias y usuarios — por si hace falta un respaldo aparte de Supabase.
+        Descarga un archivo con toda la estructura, fechas, dependencias, comentarios, hitos, festivos, ausencias y usuarios — por si hace falta un respaldo aparte de Supabase. Al guardar se pregunta dónde dejar el archivo (en los navegadores que lo permiten).
       </p>
-      <button onclick="descargarCopiaSeguridad()">💾 Descargar copia de seguridad</button>
+      <button onclick="descargarCopiaSeguridad()">💾 Descargar copia de seguridad (todos los buques)</button>
       <div id="estado-backup" class="estado"></div>
+
+      <p style="font-size:12px; color:#666; margin:14px 0 -2px;">
+        O una copia de un solo buque (solo su estructura, fechas, dependencias, comentarios, hitos y usuarios asignados a él):
+      </p>
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:6px;">
+        <select id="sel-backup-buque" style="min-width:220px;"></select>
+        <button onclick="descargarCopiaSeguridadBuque()">💾 Descargar copia de este buque</button>
+      </div>
+      <div id="estado-backup-buque" class="estado"></div>
     </div>
 
   </div>
@@ -328,6 +337,11 @@
         buquesCache.map(b => `<option value="${b.id}">${b.codigo}${b.nombre ? ' — ' + b.nombre : ''}</option>`).join('');
       document.getElementById('buque-nuevo').innerHTML = opciones;
       document.getElementById('editar-buque').innerHTML = opciones;
+
+      const selBackup = document.getElementById('sel-backup-buque');
+      selBackup.innerHTML = buquesCache.length === 0
+        ? '<option value="">(no hay ningún buque)</option>'
+        : buquesCache.map(b => `<option value="${b.id}">${b.codigo}${b.nombre ? ' — ' + b.nombre : ''}</option>`).join('');
     }
 
     function actualizarVisibilidadBuque(cual) {
@@ -463,6 +477,55 @@
       'festivos', 'ausencias', 'hitos', 'historial_fechas_previstas', 'profiles'
     ];
 
+    // Guarda un archivo de texto preguntando dónde dejarlo, cuando el
+    // navegador lo permite (Chrome, Edge...). En los que no lo permiten
+    // (Firefox, Safari) cae en la descarga de siempre, a la carpeta de
+    // descargas del navegador.
+    async function guardarArchivoComo(contenido, nombreSugerido, tipoMime) {
+      if (window.showSaveFilePicker) {
+        try {
+          const handle = await window.showSaveFilePicker({
+            suggestedName: nombreSugerido,
+            types: [{ description: 'Copia de seguridad', accept: { [tipoMime]: ['.json'] } }]
+          });
+          const writable = await handle.createWritable();
+          await writable.write(contenido);
+          await writable.close();
+          return true;
+        } catch (e) {
+          if (e.name === 'AbortError') return false; // el usuario cerró el diálogo sin elegir carpeta
+          throw e;
+        }
+      }
+      const blob = new Blob([contenido], { type: tipoMime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = nombreSugerido;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      return true;
+    }
+
+    // Nombre de archivo seguro a partir de un texto libre (nombre de buque,
+    // etc.): quita acentos/símbolos raros para que valga en cualquier
+    // sistema de archivos.
+    function nombreArchivoSeguro(texto) {
+      return (texto || 'sin_nombre')
+        .normalize('NFD').replace(/[̀-ͯ]/g, '') // quita acentos
+        .replace(/[^a-zA-Z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '') || 'sin_nombre';
+    }
+
+    function fechaHoraParaArchivo() {
+      const ahora = new Date();
+      const fecha = ahora.toISOString().slice(0, 10);
+      const hora = ahora.toTimeString().slice(0, 8).replace(/:/g, '-');
+      return `${fecha}_${hora}`;
+    }
+
     async function descargarCopiaSeguridad() {
       const estadoEl = document.getElementById('estado-backup');
       estadoEl.textContent = 'Generando copia de seguridad...'; estadoEl.className = 'estado';
@@ -484,19 +547,94 @@
       };
       TABLAS_COPIA_SEGURIDAD.forEach((tabla, i) => { copia[tabla] = resultados[i].data || []; });
 
-      const blob = new Blob([JSON.stringify(copia, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      const fecha = new Date().toISOString().slice(0, 10);
-      a.href = url;
-      a.download = `estructura_copia_seguridad_${fecha}.json`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      const nombreArchivo = `estructura_copia_seguridad_${fechaHoraParaArchivo()}.json`;
+      const guardado = await guardarArchivoComo(JSON.stringify(copia, null, 2), nombreArchivo, 'application/json');
 
-      estadoEl.textContent = 'Copia de seguridad descargada.'; estadoEl.className = 'estado ok';
-      registrarLog('COPIA_SEGURIDAD', 'Descargó una copia de seguridad completa');
+      estadoEl.textContent = guardado ? 'Copia de seguridad descargada.' : 'Copia de seguridad cancelada.';
+      estadoEl.className = guardado ? 'estado ok' : 'estado';
+      if (guardado) registrarLog('COPIA_SEGURIDAD', 'Descargó una copia de seguridad completa');
+    }
+
+    // Copia de seguridad limitada a un solo buque: su estructura completa
+    // (el buque y todo lo que cuelga de él), las fechas/estados de esos
+    // nodos, sus dependencias, comentarios e hitos, y los usuarios
+    // (Usuarios) asignados a ese buque en concreto — los roles de gestión
+    // (Admin/Supervisor/Windchill) no son de un buque en concreto, así que
+    // se incluyen igual en cualquier copia por buque.
+    async function descargarCopiaSeguridadBuque() {
+      const estadoEl = document.getElementById('estado-backup-buque');
+      const buqueId = document.getElementById('sel-backup-buque').value;
+      const buque = buquesCache.find(b => b.id === buqueId);
+      if (!buque) { estadoEl.textContent = 'Elige un buque.'; estadoEl.className = 'estado error'; return; }
+
+      estadoEl.textContent = 'Generando copia de seguridad del buque...'; estadoEl.className = 'estado';
+
+      const { data: todosLosNodos, error: errorNodos } = await supabaseClient.from('nodes').select('id, parent_id');
+      if (errorNodos) {
+        estadoEl.textContent = `Error al leer "nodes": ${traducirError(errorNodos.message)}`; estadoEl.className = 'estado error';
+        return;
+      }
+
+      // Ids del buque y de todo lo que cuelga de él (recorriendo por
+      // parent_id, igual que hace rutaCompleta/obtenerDescendientesIds en
+      // árbol.html, pero de abajo a arriba: de padres a hijos).
+      const hijosPorPadre = {};
+      (todosLosNodos || []).forEach(n => {
+        const clave = n.parent_id || '__raiz__';
+        if (!hijosPorPadre[clave]) hijosPorPadre[clave] = [];
+        hijosPorPadre[clave].push(n.id);
+      });
+      const idsBuque = [];
+      const pendientes = [buqueId];
+      while (pendientes.length > 0) {
+        const id = pendientes.pop();
+        idsBuque.push(id);
+        (hijosPorPadre[id] || []).forEach(hijoId => pendientes.push(hijoId));
+      }
+
+      // Se trae cada tabla entera (igual que hace la copia de seguridad
+      // completa) y se filtra aquí por idsBuque, en vez de mandar esos ids
+      // en la propia consulta: con un buque grande, meterlos todos en la
+      // URL de la consulta podría hacerla demasiado larga.
+      const idsBuqueSet = new Set(idsBuque);
+      const [rNodos, rWorkflow, rComentarios, rDependencias, rHitos, rHistorial, rProfiles] = await Promise.all([
+        supabaseClient.from('nodes').select('*'),
+        supabaseClient.from('node_workflow').select('*'),
+        supabaseClient.from('node_comentarios_modelo').select('*'),
+        supabaseClient.from('node_dependencias').select('*'),
+        supabaseClient.from('hitos').select('*').eq('buque_id', buqueId),
+        supabaseClient.from('historial_fechas_previstas').select('*'),
+        supabaseClient.from('profiles').select('*')
+      ]);
+
+      const resultados = [rNodos, rWorkflow, rComentarios, rDependencias, rHitos, rHistorial, rProfiles];
+      const errorResultado = resultados.find(r => r.error);
+      if (errorResultado) {
+        estadoEl.textContent = `Error: ${traducirError(errorResultado.error.message)}`; estadoEl.className = 'estado error';
+        return;
+      }
+
+      const copia = {
+        buque: buque,
+        generado_en: new Date().toISOString(),
+        generado_por: miPerfil?.username || null,
+        nodes: (rNodos.data || []).filter(n => idsBuqueSet.has(n.id)),
+        node_workflow: (rWorkflow.data || []).filter(w => idsBuqueSet.has(w.node_id)),
+        node_comentarios_modelo: (rComentarios.data || []).filter(c => idsBuqueSet.has(c.node_id)),
+        node_dependencias: (rDependencias.data || []).filter(d => idsBuqueSet.has(d.predecesor_id) || idsBuqueSet.has(d.sucesor_id)),
+        hitos: rHitos.data || [],
+        historial_fechas_previstas: (rHistorial.data || []).filter(h => idsBuqueSet.has(h.node_id)),
+        // Solo Usuarios (TRABAJADOR) de este buque + los roles de gestión,
+        // que no pertenecen a un buque concreto.
+        profiles: (rProfiles.data || []).filter(p => p.rol !== 'TRABAJADOR' || p.buque_id === buqueId)
+      };
+
+      const nombreArchivo = `${nombreArchivoSeguro(buque.nombre)}_${fechaHoraParaArchivo()}.json`;
+      const guardado = await guardarArchivoComo(JSON.stringify(copia, null, 2), nombreArchivo, 'application/json');
+
+      estadoEl.textContent = guardado ? 'Copia de seguridad del buque descargada.' : 'Copia de seguridad cancelada.';
+      estadoEl.className = guardado ? 'estado ok' : 'estado';
+      if (guardado) registrarLog('COPIA_SEGURIDAD', `Descargó una copia de seguridad del buque "${buque.codigo}"`);
     }
 
     function abrirModalEditar(id) {

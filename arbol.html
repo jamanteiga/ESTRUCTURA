@@ -660,6 +660,9 @@
     <div class="overlay-caja">
       <h3>Expandir por bloque</h3>
       <p style="font-size:12px; color:#666;">Elige un bloque: se despliega entero y el resto del árbol se contrae.</p>
+      <select id="modal-expandir-bloque-buque" style="margin-bottom:8px; width:100%;">
+        <option value="">🚢 Todos los buques</option>
+      </select>
       <input type="text" id="modal-expandir-bloque-buscar" placeholder="Buscar bloque por código o nombre...">
       <div class="lista-mover" id="modal-expandir-bloque-lista"></div>
       <div class="overlay-botones">
@@ -1920,8 +1923,30 @@
       cargarArbol();
     }
 
+    // Busca el Buque al que pertenece un nodo cualquiera, subiendo por sus
+    // ancestros. Se apoya en mapaNodoPorId, así que solo vale mientras el
+    // árbol esté cargado.
+    function buqueDeNodo(nodo) {
+      let actual = nodo;
+      while (actual) {
+        if (actual.tipo === 'BUQUE') return actual;
+        actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
+      }
+      return null;
+    }
+
     function abrirModalExpandirPorBloque() {
       cerrarMenu();
+      const selBuque = document.getElementById('modal-expandir-bloque-buque');
+      const buques = (mapaHijosPorPadre['__raiz__'] || []).slice()
+        .sort((a, b) => a.codigo.localeCompare(b.codigo, 'es', { sensitivity: 'base' }));
+      // Si ya hay un buque elegido en la leyenda, se parte de ese (se puede
+      // cambiar aquí sin que afecte al árbol de fondo).
+      selBuque.innerHTML = '<option value="">🚢 Todos los buques</option>' +
+        buques.map(b => `<option value="${b.id}">${b.nombre} (${b.codigo})</option>`).join('');
+      selBuque.value = filtroBuqueId || '';
+      selBuque.onchange = () => pintarListaExpandirPorBloque(document.getElementById('modal-expandir-bloque-buscar').value);
+
       document.getElementById('modal-expandir-bloque-buscar').value = '';
       pintarListaExpandirPorBloque('');
       document.getElementById('modal-expandir-bloque-buscar').oninput = (e) => pintarListaExpandirPorBloque(e.target.value);
@@ -1934,13 +1959,19 @@
 
     function pintarListaExpandirPorBloque(texto) {
       const t = texto.trim().toLowerCase();
+      const buqueElegidoId = document.getElementById('modal-expandir-bloque-buque').value;
       const bloques = todosLosNodos
         .filter(n => n.tipo === 'BLOQUE' && n.activo)
-        .filter(n => !t || n.codigo.toLowerCase().includes(t) || n.nombre.toLowerCase().includes(t));
+        .filter(n => !t || n.codigo.toLowerCase().includes(t) || n.nombre.toLowerCase().includes(t))
+        .filter(n => !buqueElegidoId || buqueDeNodo(n)?.id === buqueElegidoId);
       const cont = document.getElementById('modal-expandir-bloque-lista');
       cont.innerHTML = bloques.length === 0
         ? '<div class="opcion-mover">No hay ningún bloque que coincida.</div>'
-        : bloques.map(n => `<div class="opcion-mover" onclick="expandirPorBloque('${n.id}')">${rutaCompleta(n)}</div>`).join('');
+        : bloques.map(n => {
+            const buque = buqueDeNodo(n);
+            const etiquetaBuque = buque ? `<strong>${buque.nombre}</strong> (${buque.codigo}) — ` : '';
+            return `<div class="opcion-mover" onclick="expandirPorBloque('${n.id}')">${etiquetaBuque}${rutaCompleta(n)}</div>`;
+          }).join('');
     }
 
     function expandirPorBloque(bloqueId) {

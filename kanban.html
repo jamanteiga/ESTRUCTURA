@@ -41,6 +41,8 @@
 
     .lista-fichas { max-height: 72vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
     .ficha { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 8px; font-size: 12px; position: relative; }
+    .ficha.seleccionable { padding-left: 24px; }
+    .ficha .chk-seleccion-ficha { position: absolute; top: 8px; left: 6px; margin: 0; cursor: pointer; }
     .ficha .cod { font-weight: bold; }
     .ficha .ruta-nodo { color: #777; font-size: 10px; margin-top: 2px; }
     .ficha .asignado { color: #555; font-size: 11px; margin-top: 4px; }
@@ -53,6 +55,16 @@
     .ficha .btn-mas { position: absolute; top: 4px; right: 6px; cursor: pointer; color: #888; font-weight: bold; padding: 0 4px; }
     .ficha .btn-tomar { margin-top: 6px; padding: 3px 8px; font-size: 11px; }
     .vacio-col { color: #999; font-size: 11px; text-align: center; padding: 10px 0; }
+
+    #barra-seleccion-kanban {
+      position: sticky; bottom: 0; z-index: 500; margin-top: 10px;
+      background: #007bff; color: #fff; border-radius: 8px; padding: 10px 14px;
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      box-shadow: 0 -2px 10px rgba(0,0,0,0.2);
+    }
+    #barra-seleccion-kanban span { font-size: 13px; font-weight: bold; }
+    #barra-seleccion-kanban button { font-size: 12px; padding: 5px 10px; }
+    body.tema-oscuro #barra-seleccion-kanban { background: #14395c; }
 
     #menu-ficha-kanban, #submenu-estado-kanban {
       display: none; position: fixed; z-index: 4000; background: #fff; border: 1px solid #ccc;
@@ -105,6 +117,12 @@
     <p>Cargando...</p>
   </div>
 
+  <div id="barra-seleccion-kanban" style="display:none;">
+    <span id="barra-seleccion-texto">0 tareas seleccionadas</span>
+    <button onclick="abrirModalAsignarKanbanMasivo()">👤 Asignar seleccionadas</button>
+    <button class="secundario" onclick="cancelarSeleccionKanban()">Cancelar selección</button>
+  </div>
+
   <div id="menu-ficha-kanban"></div>
   <div id="submenu-estado-kanban"></div>
 
@@ -138,7 +156,7 @@
 
   <div class="overlay" id="modal-asignar-kanban">
     <div class="overlay-caja">
-      <h3>Asignar usuario / supervisor</h3>
+      <h3 id="ak-titulo">Asignar usuario / supervisor</h3>
       <label>Usuario</label>
       <select id="ak-trabajador"><option value="">— Sin asignar —</option></select>
       <label>Supervisor</label>
@@ -172,6 +190,10 @@
     let filtroUsuarioIdKanban = '';
     let soloMisTareasKanban = false;
     let filtroTextoKanban = '';
+    // Ids de fichas marcadas con el checklist, para asignarlas todas de
+    // golpe a un mismo usuario/supervisor (solo admin/supervisor).
+    let seleccionadosKanban = new Set();
+    let modoBulkAsignacion = false;
 
     function rutaCompleta(nodo) {
       const partes = [];
@@ -228,8 +250,7 @@
     function nodoRetrasado(nodo) {
       if (!nodo.fecha_fin_prevista) return false;
       if (calcularEstadoPropio(nodo) === 'aprobado') return false;
-      const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-      return new Date(nodo.fecha_fin_prevista + 'T00:00:00') < hoy;
+      return new Date(nodo.fecha_fin_prevista) < new Date();
     }
 
     async function registrarLog(accion, descripcion, nodeId) {
@@ -354,6 +375,12 @@
       nodos.forEach(n => { mapaNodoPorId[n.id] = n; });
       todosLosNodosKanban = nodos.filter(n => !TIPOS_SIN_ASIGNACION.has(n.tipo));
 
+      // Si algo seleccionado ya no existe (desactivado, borrado...) se quita
+      // de la selección; lo que sigue existiendo se mantiene aunque un
+      // filtro lo oculte momentáneamente de la vista.
+      seleccionadosKanban.forEach(id => { if (!mapaNodoPorId[id]) seleccionadosKanban.delete(id); });
+      actualizarBarraSeleccionKanban();
+
       const selBuque = document.getElementById('kb-filtro-buque');
       const buquesActuales = new Set(Array.from(selBuque.options).map(o => o.value));
       Object.values(mapaNodoPorId).filter(n => n.tipo === 'BUQUE').sort((a, b) => a.codigo.localeCompare(b.codigo, 'es')).forEach(b => {
@@ -395,8 +422,10 @@
       if (n.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO') badges.push(`<span class="badge-ficha badge-cambios">🛠 cambios modelo</span>`);
 
       const puedeTomar = !n.trabajador_id && !esInvitado();
+      const puedeSeleccionar = esGestor();
       return `
-        <div class="ficha" data-id="${n.id}">
+        <div class="ficha${puedeSeleccionar ? ' seleccionable' : ''}" data-id="${n.id}">
+          ${puedeSeleccionar ? `<input type="checkbox" class="chk-seleccion-ficha" title="Marcar para asignar en bloque" onclick="event.stopPropagation(); toggleSeleccionFicha('${n.id}', this.checked)" ${seleccionadosKanban.has(n.id) ? 'checked' : ''}>` : ''}
           <span class="btn-mas" onclick="mostrarMenuFichaKanban(event, '${n.id}')" title="Más acciones">⋯</span>
           <div class="cod">${n.codigo}</div>
           <div>${n.nombre}</div>
@@ -535,11 +564,13 @@
     }
 
     function abrirModalAsignarKanban(nodeId) {
+      modoBulkAsignacion = false;
       const nodo = mapaNodoPorId[nodeId];
       const selTrab = document.getElementById('ak-trabajador');
       const selRev = document.getElementById('ak-revisor');
       const usuarios = perfilesCache.filter(p => p.rol === 'TRABAJADOR');
       const revisores = perfilesCache.filter(p => p.rol === 'REVISOR');
+      document.getElementById('ak-titulo').textContent = 'Asignar usuario / supervisor';
       selTrab.innerHTML = '<option value="">— Sin asignar —</option>' + opcionesTrabajadorConCarga(usuarios, nodo.trabajador_id);
       selRev.innerHTML = '<option value="">— Sin asignar —</option>' +
         revisores.map(p => `<option value="${p.id}" ${p.id === nodo.revisor_id ? 'selected' : ''}>${p.nombre_completo}</option>`).join('');
@@ -547,6 +578,45 @@
       document.getElementById('modal-asignar-kanban').style.display = 'flex';
       nodoMenuKanbanActual = nodeId;
     }
+
+    // -------------------- Asignación masiva (checklist en las fichas) --------------------
+
+    function toggleSeleccionFicha(nodeId, marcado) {
+      if (marcado) seleccionadosKanban.add(nodeId); else seleccionadosKanban.delete(nodeId);
+      actualizarBarraSeleccionKanban();
+    }
+
+    function cancelarSeleccionKanban() {
+      seleccionadosKanban.clear();
+      actualizarBarraSeleccionKanban();
+      pintarTablero();
+    }
+
+    function actualizarBarraSeleccionKanban() {
+      const barra = document.getElementById('barra-seleccion-kanban');
+      const n = seleccionadosKanban.size;
+      if (n === 0) { barra.style.display = 'none'; return; }
+      barra.style.display = 'flex';
+      document.getElementById('barra-seleccion-texto').textContent = `${n} tarea(s) seleccionada(s)`;
+    }
+
+    function abrirModalAsignarKanbanMasivo() {
+      if (seleccionadosKanban.size === 0) return;
+      modoBulkAsignacion = true;
+      const selTrab = document.getElementById('ak-trabajador');
+      const selRev = document.getElementById('ak-revisor');
+      const usuarios = perfilesCache.filter(p => p.rol === 'TRABAJADOR');
+      const revisores = perfilesCache.filter(p => p.rol === 'REVISOR');
+      document.getElementById('ak-titulo').textContent = `Asignar ${seleccionadosKanban.size} tarea(s) seleccionada(s)`;
+      // Sin preseleccionar nada: cada tarea marcada puede tener ahora mismo
+      // un usuario/supervisor distinto (o ninguno).
+      selTrab.innerHTML = '<option value="">— Sin asignar —</option>' + opcionesTrabajadorConCarga(usuarios, null);
+      selRev.innerHTML = '<option value="">— Sin asignar —</option>' +
+        revisores.map(p => `<option value="${p.id}">${p.nombre_completo}</option>`).join('');
+      document.getElementById('ak-estado').textContent = '';
+      document.getElementById('modal-asignar-kanban').style.display = 'flex';
+    }
+
     function cerrarModalAsignarKanban() {
       document.getElementById('modal-asignar-kanban').style.display = 'none';
     }
@@ -554,6 +624,26 @@
       const estadoEl = document.getElementById('ak-estado');
       const trabajadorId = document.getElementById('ak-trabajador').value || null;
       const revisorId = document.getElementById('ak-revisor').value || null;
+
+      if (modoBulkAsignacion) {
+        const ids = Array.from(seleccionadosKanban);
+        estadoEl.textContent = `Asignando ${ids.length} tarea(s)...`; estadoEl.className = 'estado-msg';
+        let fallos = 0;
+        for (const id of ids) {
+          const { error } = await supabaseClient.rpc('asignar_trabajo', {
+            p_node_id: id, p_trabajador_id: trabajadorId, p_revisor_id: revisorId
+          });
+          if (error) { fallos++; console.warn(`Error al asignar ${mapaNodoPorId[id]?.codigo || id}:`, error.message); }
+        }
+        registrarLog('ASIGNAR_TRABAJO', `Asignó en bloque ${ids.length - fallos} tarea(s) desde el Kanban${fallos ? ` (${fallos} con error)` : ''}`);
+        seleccionadosKanban.clear();
+        actualizarBarraSeleccionKanban();
+        cerrarModalAsignarKanban();
+        await cargarKanban();
+        if (fallos > 0) mostrarAvisoModal(`${fallos} de ${ids.length} tarea(s) no se pudieron asignar. El resto sí se asignó correctamente.`);
+        return;
+      }
+
       const { error } = await supabaseClient.rpc('asignar_trabajo', {
         p_node_id: nodoMenuKanbanActual, p_trabajador_id: trabajadorId, p_revisor_id: revisorId
       });
