@@ -675,6 +675,22 @@
     </div>
   </div>
 
+  <div class="overlay" id="modal-backup-automatico">
+    <div class="overlay-caja">
+      <h3>Copia automática por hora</h3>
+      <p style="font-size:12px; color:#666;">
+        Mientras tengas árbol.html abierto en este ordenador con tu sesión de admin, se hace una copia de seguridad completa cada hora (salvo entre las 23:00 y las 06:00), directamente en la carpeta que elijas aquí. Es una copia por navegador: si cierras la pestaña o el navegador, se para hasta que la vuelvas a abrir — no sustituye a hacer copias manuales de vez en cuando desde otro sitio.
+      </p>
+      <p id="backup-auto-estado" style="font-size:13px; font-weight:bold;"></p>
+      <div class="overlay-botones">
+        <button class="secundario" onclick="cerrarModalBackupAutomatico()">Cerrar</button>
+        <button class="secundario" id="btn-backup-auto-quitar" onclick="quitarCarpetaBackupAutomatico()" style="display:none;">Quitar carpeta</button>
+        <button class="secundario" id="btn-backup-auto-reactivar" onclick="reactivarPermisoBackupAutomatico()" style="display:none;">🔓 Reactivar permiso</button>
+        <button id="btn-backup-auto-elegir" onclick="elegirCarpetaBackupAutomatico()">📁 Elegir carpeta</button>
+      </div>
+    </div>
+  </div>
+
   <div class="overlay" id="modal-duplicar">
     <div class="overlay-caja">
       <h3>Duplicar estructura de este Bloque</h3>
@@ -1083,6 +1099,7 @@
       if (perfil.rol === 'ADMIN') {
         document.getElementById('menu-link-usuarios').style.display = 'flex';
         document.getElementById('menu-item-backup').style.display = 'flex';
+        inicializarBackupAutomatico();
         document.getElementById('menu-link-log').style.display = 'flex';
         document.getElementById('wrap-papelera').style.display = 'flex';
         document.getElementById('wrap-avance').style.display = 'flex';
@@ -1562,7 +1579,8 @@
       if (!cont) return;
       const buques = (mapaHijosPorPadre['__raiz__'] || []).slice()
         .sort((a, b) => a.codigo.localeCompare(b.codigo, 'es', { sensitivity: 'base' }));
-      cont.innerHTML = '<span class="menu-item" onclick="descargarCopiaSeguridad()">🚢 Todos los buques</span>' +
+      cont.innerHTML = '<span class="menu-item" onclick="abrirModalBackupAutomatico()">⚙️ Copia automática por hora</span>' +
+        '<span class="menu-item" onclick="descargarCopiaSeguridad()">🚢 Todos los buques</span>' +
         buques.map(b => `<span class="menu-item" onclick="descargarCopiaSeguridadBuque('${b.id}')">${b.nombre} (${b.codigo})</span>`).join('');
     }
 
@@ -1684,6 +1702,175 @@
         registrarLog('COPIA_SEGURIDAD', `Descargó una copia de seguridad del buque "${buque.codigo}"`);
         mostrarAvisoModal('Copia de seguridad del buque descargada.');
       }
+    }
+
+    // -------------------- Copia de seguridad automática por hora --------------------
+    // Solo funciona en navegadores con File System Access API (Chrome/Edge en
+    // ordenador) y solo mientras el admin tiene esta pestaña abierta: no hay
+    // ningún servidor detrás que la haga si el navegador está cerrado. La
+    // carpeta elegida se guarda en este navegador (IndexedDB) para que siga
+    // ahí la próxima vez que el admin entre desde el mismo ordenador.
+
+    let handleCarpetaBackupAuto = null;
+
+    function abrirDBBackupAuto() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open('estructura_backup_auto', 1);
+        req.onupgradeneeded = () => req.result.createObjectStore('handles');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+    async function guardarHandleBackupAuto(handle) {
+      const db = await abrirDBBackupAuto();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction('handles', 'readwrite');
+        tx.objectStore('handles').put(handle, 'carpeta');
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+    async function leerHandleBackupAuto() {
+      const db = await abrirDBBackupAuto();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction('handles', 'readonly');
+        const req = tx.objectStore('handles').get('carpeta');
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => reject(req.error);
+      });
+    }
+    async function borrarHandleBackupAuto() {
+      const db = await abrirDBBackupAuto();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction('handles', 'readwrite');
+        tx.objectStore('handles').delete('carpeta');
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    function abrirModalBackupAutomatico() {
+      cerrarMenu();
+      document.getElementById('modal-backup-automatico').style.display = 'flex';
+      actualizarEstadoBackupAutoUI();
+    }
+    function cerrarModalBackupAutomatico() {
+      document.getElementById('modal-backup-automatico').style.display = 'none';
+    }
+
+    async function actualizarEstadoBackupAutoUI() {
+      const estadoEl = document.getElementById('backup-auto-estado');
+      const btnQuitar = document.getElementById('btn-backup-auto-quitar');
+      const btnReactivar = document.getElementById('btn-backup-auto-reactivar');
+      const btnElegir = document.getElementById('btn-backup-auto-elegir');
+      if (!estadoEl) return;
+
+      if (!window.showDirectoryPicker) {
+        estadoEl.textContent = 'Este navegador no permite elegir una carpeta para guardar directamente (hace falta Chrome o Edge en un ordenador). Mientras tanto, usa la copia manual ("Todos los buques" o la de un buque).';
+        btnQuitar.style.display = 'none'; btnReactivar.style.display = 'none'; btnElegir.style.display = 'none';
+        return;
+      }
+      btnElegir.style.display = 'inline-block';
+
+      if (!handleCarpetaBackupAuto) {
+        estadoEl.textContent = 'No hay ninguna carpeta elegida: la copia automática está desactivada.';
+        btnQuitar.style.display = 'none'; btnReactivar.style.display = 'none';
+        return;
+      }
+
+      const ultimo = parseInt(localStorage.getItem('estructura_ultimo_backup_auto') || '0', 10);
+      const textoUltimo = ultimo ? `Última copia automática: ${new Date(ultimo).toLocaleString('es-ES')}.` : 'Todavía no se ha hecho ninguna copia automática.';
+      const permiso = await handleCarpetaBackupAuto.queryPermission({ mode: 'readwrite' });
+      if (permiso === 'granted') {
+        estadoEl.textContent = `Carpeta elegida: "${handleCarpetaBackupAuto.name}". ${textoUltimo}`;
+        btnReactivar.style.display = 'none';
+      } else {
+        estadoEl.textContent = `Carpeta elegida: "${handleCarpetaBackupAuto.name}", pero el navegador ha quitado el permiso de escritura (puede pasar al reiniciarlo) — pulsa "Reactivar permiso". ${textoUltimo}`;
+        btnReactivar.style.display = 'inline-block';
+      }
+      btnQuitar.style.display = 'inline-block';
+    }
+
+    async function elegirCarpetaBackupAutomatico() {
+      try {
+        const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+        handleCarpetaBackupAuto = handle;
+        await guardarHandleBackupAuto(handle);
+        await actualizarEstadoBackupAutoUI();
+        comprobarBackupAutomatico();
+      } catch (e) {
+        if (e.name !== 'AbortError') mostrarAvisoModal('Error al elegir la carpeta: ' + e.message);
+      }
+    }
+
+    async function quitarCarpetaBackupAutomatico() {
+      handleCarpetaBackupAuto = null;
+      await borrarHandleBackupAuto();
+      localStorage.removeItem('estructura_ultimo_backup_auto');
+      await actualizarEstadoBackupAutoUI();
+    }
+
+    async function reactivarPermisoBackupAutomatico() {
+      if (!handleCarpetaBackupAuto) return;
+      try {
+        const permiso = await handleCarpetaBackupAuto.requestPermission({ mode: 'readwrite' });
+        await actualizarEstadoBackupAutoUI();
+        if (permiso === 'granted') comprobarBackupAutomatico();
+      } catch (e) {
+        mostrarAvisoModal('Error al pedir el permiso: ' + e.message);
+      }
+    }
+
+    // true si ahora mismo toca hacer una copia: fuera de la franja
+    // 23:00-06:00 y ha pasado al menos una hora desde la última.
+    function tocaBackupAutomaticoAhora() {
+      const hora = new Date().getHours();
+      if (hora >= 23 || hora < 6) return false;
+      const ultimo = parseInt(localStorage.getItem('estructura_ultimo_backup_auto') || '0', 10);
+      return (Date.now() - ultimo) >= 60 * 60 * 1000;
+    }
+
+    async function comprobarBackupAutomatico() {
+      if (!handleCarpetaBackupAuto || !miPerfil || miPerfil.rol !== 'ADMIN') return;
+      if (!tocaBackupAutomaticoAhora()) return;
+      try {
+        const permiso = await handleCarpetaBackupAuto.queryPermission({ mode: 'readwrite' });
+        if (permiso !== 'granted') return; // hace falta que el admin pulse "Reactivar permiso" a mano
+
+        const resultados = await Promise.all(TABLAS_COPIA_SEGURIDAD.map(tabla => supabaseClient.from(tabla).select('*')));
+        if (resultados.some(r => r.error)) return; // se reintenta en el siguiente ciclo (cada 5 min)
+
+        const copia = { generado_en: new Date().toISOString(), generado_por: miPerfil?.username || null, automatico: true };
+        TABLAS_COPIA_SEGURIDAD.forEach((tabla, i) => { copia[tabla] = resultados[i].data || []; });
+
+        const nombreArchivo = `estructura_copia_seguridad_auto_${fechaHoraParaArchivo()}.json`;
+        const fileHandle = await handleCarpetaBackupAuto.getFileHandle(nombreArchivo, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(JSON.stringify(copia, null, 2));
+        await writable.close();
+
+        localStorage.setItem('estructura_ultimo_backup_auto', String(Date.now()));
+        registrarLog('COPIA_SEGURIDAD', `Copia de seguridad automática guardada (${nombreArchivo})`);
+      } catch (e) {
+        console.warn('Backup automático: no se pudo guardar', e);
+      }
+    }
+
+    // Se llama una vez al arrancar (para admin): recupera la carpeta elegida
+    // en una sesión anterior en este mismo navegador, si la hay, y deja un
+    // temporizador comprobando cada 5 minutos si toca backup.
+    async function inicializarBackupAutomatico() {
+      if (!window.showDirectoryPicker) return;
+      try {
+        const handle = await leerHandleBackupAuto();
+        if (handle) {
+          handleCarpetaBackupAuto = handle;
+          comprobarBackupAutomatico();
+        }
+      } catch (e) {
+        console.warn('No se pudo recuperar la carpeta de backup automático guardada:', e);
+      }
+      setInterval(comprobarBackupAutomatico, 5 * 60 * 1000);
     }
 
     function calcularNodosVisibles() {
@@ -4935,7 +5122,15 @@
         supabaseClient.rpc('listar_todos_comentarios_modelo', { p_origen: 'NAV' })
       ]);
       if (rGhe.error || rNav.error) { badge.style.display = 'none'; return; }
-      const total = [...(rGhe.data || []), ...(rNav.data || [])].filter(c => !c.implementado).length;
+      // listar_todos_comentarios_modelo() trae los comentarios de todos los
+      // buques; un TRABAJADOR solo debe ver (y contar) los de su propio
+      // buque — como su mapaNodoPorId ya está limitado a ese buque
+      // (filtrarPorBuqueAsignado), basta con quedarse con los comentarios
+      // cuyo nodo esté ahí. Para admin/supervisor/windchill mapaNodoPorId
+      // tiene todos los nodos, así que no filtra nada.
+      const total = [...(rGhe.data || []), ...(rNav.data || [])]
+        .filter(c => mapaNodoPorId[c.node_id])
+        .filter(c => !c.implementado).length;
       if (total > 0) {
         badge.textContent = total;
         badge.style.display = 'inline-block';
@@ -4962,7 +5157,10 @@
           cont.innerHTML = `<p style="color:#dc3545;">Error: ${traducirError(resultado.error.message)}</p>`;
           return;
         }
-        const todas = resultado.data || [];
+        // Igual que en el contador del badge: solo los comentarios del
+        // buque visible para este usuario (para un TRABAJADOR, el suyo; para
+        // el resto de roles, todos).
+        const todas = (resultado.data || []).filter(c => mapaNodoPorId[c.node_id]);
         // Por defecto solo se ven los pendientes (ni implementados ni
         // aprobados); la casilla de arriba permite ver también los que ya
         // están aprobados.
