@@ -421,6 +421,7 @@
           <input type="checkbox" id="chk-tiempos" onchange="toggleTiempos()"> ⏱️ Tiempos
         </label>
         <a class="menu-item" id="menu-link-gantt" href="gantt.html" target="_blank" style="display:none;">🗓️ Gantt</a>
+        <a class="menu-item" id="menu-link-hitos" href="hitos.html" target="_blank" style="display:none;">🎯 Hitos</a>
         <a class="menu-item" id="menu-link-importar" href="importar.html" target="_blank" style="display:none;">📥 Importar Excel</a>
         <a class="menu-item" id="menu-link-duplicados" href="duplicados.html" target="_blank" style="display:none;">🔍 Comprobar duplicados</a>
         <span class="menu-item" id="menu-item-exportar-excel" onclick="exportarArbolExcel()" style="display:none;">⬇ Exportar árbol a Excel</span>
@@ -596,9 +597,9 @@
       <h3>📅 Fechas previstas</h3>
       <p id="fp-nodo-info" style="font-size:12px; color:#666; margin-top:-8px;"></p>
       <label>Inicio previsto</label>
-      <input type="date" id="fp-inicio">
+      <input type="datetime-local" id="fp-inicio">
       <label>Fin previsto</label>
-      <input type="date" id="fp-fin" oninput="actualizarVisibilidadMotivoRetraso()">
+      <input type="datetime-local" id="fp-fin" oninput="actualizarVisibilidadMotivoRetraso()">
       <p id="fp-sugerencia" style="font-size:12px; color:#0069d9; margin:6px 0; display:none;"></p>
       <p id="fp-base" style="font-size:12px; color:#888; margin:6px 0;"></p>
       <div id="fp-motivo-caja" style="display:none; background:#fff8e6; border:1px solid #ffe6a3; border-radius:6px; padding:8px; margin:6px 0;">
@@ -1088,6 +1089,7 @@
       }
       if (esGestor()) {
         document.getElementById('menu-item-alertas').style.display = 'flex';
+        document.getElementById('menu-link-hitos').style.display = 'flex';
       }
 
       if (miPerfil.rol === 'TRABAJADOR') {
@@ -1411,7 +1413,7 @@
       const porUsuario = {};
       todosLosNodos.forEach(n => {
         if (!n.trabajador_id || calcularEstadoPropio(n) === 'aprobado') return;
-        if (!(n.fecha_inicio_prevista && n.fecha_fin_prevista && n.fecha_inicio_prevista <= hoyIso && hoyIso <= n.fecha_fin_prevista)) return;
+        if (!(n.fecha_inicio_prevista && n.fecha_fin_prevista && n.fecha_inicio_prevista.slice(0, 10) <= hoyIso && hoyIso <= n.fecha_fin_prevista.slice(0, 10))) return;
         porUsuario[n.trabajador_id] = (porUsuario[n.trabajador_id] || 0) + 1;
       });
       const usuariosSaturados = Object.values(porUsuario).filter(c => c >= 4).length;
@@ -1697,8 +1699,7 @@
     function nodoRetrasado(nodo) {
       if (!nodo.fecha_fin_prevista) return false;
       if (calcularEstadoPropio(nodo) === 'aprobado') return false;
-      const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-      return new Date(nodo.fecha_fin_prevista + 'T00:00:00') < hoy;
+      return new Date(nodo.fecha_fin_prevista) < new Date();
     }
 
     function resaltarCoincidencia(texto) {
@@ -1751,6 +1752,9 @@
         const partes = [];
         if (nodo.trabajador_nombre) partes.push(`👷 ${nodo.trabajador_nombre}${fechaTrabajador ? ` <span class="fecha">(${fechaTrabajador})</span>` : ''}`);
         if (nodo.revisor_nombre) partes.push(`🔍 ${nodo.revisor_nombre}${fechaRevisor ? ` <span class="fecha">(${fechaRevisor})</span>` : ''}`);
+        if (nodo.fecha_inicio_prevista && nodo.fecha_fin_prevista) {
+          partes.push(`📅 <span class="fecha">${formatearFechaHora(nodo.fecha_inicio_prevista)} → ${formatearFechaHora(nodo.fecha_fin_prevista)}</span>`);
+        }
         asignadosTexto = partes.join(' · ');
       }
 
@@ -1817,7 +1821,7 @@
             <span class="toggle ${tieneHijos ? '' : 'vacio'}" onclick="toggleNodo('${nodo.id}')">${abierto ? '▼' : '▶'}</span>
             ${!sinAsignacion ? `<span class="candado" title="${nodo.bloqueado ? 'Bloqueado — clic para desbloquear' : 'Desbloqueado — clic para bloquear'}" onclick="event.stopPropagation(); accionAlternarBloqueoDesdeIcono('${nodo.id}')">${nodo.bloqueado ? '🔒' : '🔓'}</span>` : ''}
             ${(!sinAsignacion && nodo.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO') ? '<span class="cuadro-cambios-modelo" title="Pendiente de cambios en modelo"></span>' : ''}
-            ${(!sinAsignacion && nodoRetrasado(nodo)) ? `<span class="icono-retraso" title="Retrasada — prevista para ${formatearFechaCorta(new Date(nodo.fecha_fin_prevista))}">⏰</span>` : ''}
+            ${(!sinAsignacion && nodoRetrasado(nodo)) ? `<span class="icono-retraso" title="Retrasada — prevista para ${formatearFechaHora(nodo.fecha_fin_prevista)}">⏰</span>` : ''}
             <span class="flecha ${claseColor}" title="${estado}">${simboloFlecha}</span>
             ${bloqueadoWindchill ? '<span title="Bloqueado: Modelo y Plano de corte deben estar Aprobados">🔒</span>' : ''}
             <span class="codigo">${resaltarCoincidencia(etiquetaCodigoVisible(nodo))}</span>
@@ -2623,17 +2627,17 @@
       nodoFechasPrevistasActual = nodeId;
       const nodo = mapaNodoPorId[nodeId];
       document.getElementById('fp-nodo-info').textContent = `${nodo.codigo} — ${nodo.nombre}`;
-      document.getElementById('fp-inicio').value = nodo.fecha_inicio_prevista || '';
-      document.getElementById('fp-fin').value = nodo.fecha_fin_prevista || '';
+      document.getElementById('fp-inicio').value = nodo.fecha_inicio_prevista ? nodo.fecha_inicio_prevista.slice(0, 16) : '';
+      document.getElementById('fp-fin').value = nodo.fecha_fin_prevista ? nodo.fecha_fin_prevista.slice(0, 16) : '';
       document.getElementById('fp-estado').textContent = '';
-      fpFinOriginal = nodo.fecha_fin_prevista || null;
+      fpFinOriginal = nodo.fecha_fin_prevista ? nodo.fecha_fin_prevista.slice(0, 16) : null;
       document.getElementById('fp-motivo-categoria').value = '';
       document.getElementById('fp-motivo-detalle').value = '';
       document.getElementById('fp-motivo-caja').style.display = 'none';
 
       const baseEl = document.getElementById('fp-base');
       if (nodo.fecha_inicio_prevista_base || nodo.fecha_fin_prevista_base) {
-        baseEl.textContent = `Línea base: ${nodo.fecha_inicio_prevista_base ? formatearFechaCorta(new Date(nodo.fecha_inicio_prevista_base + 'T00:00:00')) : '—'} → ${nodo.fecha_fin_prevista_base ? formatearFechaCorta(new Date(nodo.fecha_fin_prevista_base + 'T00:00:00')) : '—'}`;
+        baseEl.textContent = `Línea base: ${nodo.fecha_inicio_prevista_base ? formatearFechaHora(nodo.fecha_inicio_prevista_base) : '—'} → ${nodo.fecha_fin_prevista_base ? formatearFechaHora(nodo.fecha_fin_prevista_base) : '—'}`;
         document.getElementById('fp-btn-reiniciar-base').style.display = 'inline-block';
       } else {
         baseEl.textContent = 'Todavía no tiene línea base — se fijará sola con las fechas que guardes ahora.';
@@ -2660,9 +2664,10 @@
           return contarDiasLaborablesEntre(ini0, fin0, sede, nodo.trabajador_id) || 1;
         });
         const mediaDias = Math.round(duracionesDias.reduce((a, b) => a + b, 0) / duracionesDias.length);
-        const inicioParaSugerir = document.getElementById('fp-inicio').value || new Date().toISOString().slice(0, 10);
-        const finSugerido = sumarDiasLaborables(new Date(inicioParaSugerir + 'T00:00:00'), mediaDias, sede, nodo.trabajador_id);
-        sugerenciaEl.textContent = `💡 Tareas ${etiquetaCortaTipo(nodo.tipo)} ya aprobadas tardan de media ${mediaDias} día(s) laborable(s). Con inicio ${formatearFechaCorta(new Date(inicioParaSugerir + 'T00:00:00'))}, fin sugerido: ${formatearFechaCorta(finSugerido)}.`;
+        const inicioInputVal = document.getElementById('fp-inicio').value;
+        const inicioParaSugerirIso = inicioInputVal ? inicioInputVal.slice(0, 10) : new Date().toISOString().slice(0, 10);
+        const finSugerido = sumarDiasLaborables(new Date(inicioParaSugerirIso + 'T00:00:00'), mediaDias, sede, nodo.trabajador_id);
+        sugerenciaEl.textContent = `💡 Tareas ${etiquetaCortaTipo(nodo.tipo)} ya aprobadas tardan de media ${mediaDias} día(s) laborable(s). Con inicio ${formatearFechaCorta(new Date(inicioParaSugerirIso + 'T00:00:00'))}, fin sugerido: ${formatearFechaCorta(finSugerido)}.`;
         sugerenciaEl.style.display = 'block';
       }
 
@@ -2675,7 +2680,7 @@
       if (errorHist || !historial || historial.length === 0) {
         historialEl.textContent = 'Sin cambios registrados todavía.';
       } else {
-        const fmt = iso => iso ? formatearFechaCorta(new Date(iso + 'T00:00:00')) : '—';
+        const fmt = iso => iso ? formatearFechaHora(iso) : '—';
         historialEl.innerHTML = historial.map(h => {
           const quien = perfilesCache.find(p => p.id === h.cambiado_por)?.nombre_completo || 'alguien';
           const cuando = new Date(h.cambiado_en).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
