@@ -1732,7 +1732,7 @@
         const acciones = `<button class="pequeno exito" onclick="reactivarNodo('${nodo.id}')" title="Reactivar">♻️ Reactivar</button>`;
         return `
           <li class="nodo" id="li-${nodo.id}">
-            <div class="fila-nodo inactivo">
+            <div class="fila-nodo inactivo" ${tieneHijos ? `ondblclick="toggleNodo('${nodo.id}')"` : ''}>
               <span class="toggle ${tieneHijos ? '' : 'vacio'}" onclick="toggleNodo('${nodo.id}')">${abierto ? '▼' : '▶'}</span>
               <span class="flecha f-sin_asignar">▶</span>
               <span class="codigo">${resaltarCoincidencia(etiquetaCodigoVisible(nodo))}</span>
@@ -1813,6 +1813,7 @@
           <div class="fila-nodo ${bloqueadoWindchill ? 'fila-doc-bloqueada' : ''}"
                title="${bloqueadoWindchill ? 'Bloqueado: Modelo y Plano de corte deben estar Aprobados' : tituloTipo}"
                oncontextmenu="mostrarMenuContextual(event, '${nodo.id}'); return false;"
+               ${tieneHijos ? `ondblclick="toggleNodo('${nodo.id}')"` : ''}
                ${esGestor() ? `draggable="true" ondragstart="iniciarArrastre(event, '${nodo.id}')" ondragend="finalizarArrastre(event)"` : ''}
                ondragover="sobreArrastre(event, '${nodo.id}')"
                ondragleave="salirArrastre(event)"
