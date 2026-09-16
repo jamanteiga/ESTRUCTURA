@@ -136,7 +136,7 @@
       <button class="secundario" onclick="alternarTema()">🌙/☀️</button>
       <button class="secundario" onclick="exportarExcel()">⬇ Exportar a Excel</button>
       <button class="secundario" onclick="exportarPdf()">⬇ Exportar a PDF</button>
-      <button class="secundario" onclick="exportarProject()">⬇ Exportar a Project</button>
+      <button class="secundario" onclick="exportarProject()">⬇ Exportar Gantt</button>
       <button class="peligro" onclick="cerrarPagina()">❌ Cerrar</button>
     </div>
   </div>
@@ -281,8 +281,11 @@
     }
 
     function cerrarPagina() {
-      window.close();
-      setTimeout(() => { history.back(); }, 150);
+      // Vamos siempre directos al árbol. (Antes se intentaba window.close()
+      // primero: en algunos navegadores/PWA esto no falla como cabría
+      // esperar, sino que cierra la ventana actual y deja ver la que hubiera
+      // debajo -- p.ej. otra pestaña o app -- en vez de volver al árbol.)
+      window.location.href = 'arbol.html';
     }
 
     function obtenerSemanaISO(fecha) {

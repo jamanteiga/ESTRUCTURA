@@ -346,6 +346,7 @@
         <a class="menu-item" href="index.html">🏠 Inicio</a>
         <a class="menu-item solo-escritorio" id="menu-link-log" href="log.html" style="display:none;">🗒️ Logs</a>
         <span class="menu-item solo-escritorio" id="menu-item-buque" onclick="esInvitado() ? mostrarAvisoModal('Eres un usuario Invitado: solo puedes consultar, no puedes realizar cambios.') : abrirModalCrear(null, 'BUQUE')" style="display:none;">+ Añadir Buque</span>
+        <span class="menu-item solo-escritorio" id="menu-item-pegar-buque-raiz" onclick="esInvitado() ? mostrarAvisoModal('Eres un usuario Invitado: solo puedes consultar, no puedes realizar cambios.') : abrirModalPegarRama(null)" style="display:none;">📌 Pegar buque copiado</span>
         <div class="menu-item-expandible" onclick="toggleSubmenuFlotante(event, this, 'submenu-resumen')">📊 Resumen <span class="flecha-menu">›</span></div>
         <div class="menu-submenu-contenido" id="submenu-resumen">
           <a class="menu-item" data-solo-gestor href="avances.html">📉 Avances</a>
@@ -849,19 +850,6 @@
     </div>
   </div>
 
-  <div class="overlay" id="modal-checklist-calidad" style="z-index:5000;">
-    <div class="overlay-caja" style="max-width:420px;">
-      <h3 style="margin-top:0;">✅ Checklist de calidad</h3>
-      <p style="font-size:13px; color:#666; margin-top:-6px;">Marca todos los puntos antes de poder aprobar esta tarea.</p>
-      <div id="checklist-calidad-lista" style="max-height:280px; overflow-y:auto; margin:10px 0;"></div>
-      <div class="estado" id="checklist-calidad-estado"></div>
-      <div class="overlay-botones">
-        <button class="secundario" id="checklist-calidad-cancelar">Cancelar</button>
-        <button id="checklist-calidad-continuar" disabled>Continuar</button>
-      </div>
-    </div>
-  </div>
-
   <div class="overlay" id="modal-eliminar" style="z-index:5000;">
     <div class="overlay-caja" style="max-width:420px;">
       <h3>🗑️ Eliminar definitivamente</h3>
@@ -1069,6 +1057,7 @@
         `${perfil.nombre_completo} (${perfil.username}) — ${{TRABAJADOR:'Usuario',REVISOR:'Supervisor',ADMIN:'Admin',INVITADO:'Invitado',WINDCHILL:'Windchill'}[perfil.rol] || perfil.rol}`;
 
       if (pareceGestor()) document.getElementById('menu-item-buque').style.display = 'flex';
+      actualizarVisibilidadPegarBuqueRaiz();
 
       // Un usuario normal solo ve, dentro de "Resumen", lo que le afecta a
       // él (Cambios de modelo, Cola de revisión, Pendiente de dudas,
@@ -1279,7 +1268,10 @@
     }
 
     function inicializarModoMenu() {
-      const fijo = !!miPerfil.menu_fijo;
+      // Por defecto el menú es fijo (no un cajón que se despliega encima).
+      // Solo se considera "desplegable" cuando el usuario lo ha elegido así
+      // explícitamente alguna vez (menu_fijo === false guardado en su perfil).
+      const fijo = miPerfil.menu_fijo !== false;
       document.getElementById(fijo ? 'radio-fijo' : 'radio-desplegable').checked = true;
       aplicarModoMenu(fijo ? 'fijo' : 'desplegable');
 
@@ -3797,11 +3789,28 @@
         tiposPadreValidos: new Set((data || []).map(r => r.parent_type))
       };
       registrarLog('COPIAR_RAMA', `Copió la rama "${nodo.codigo}" (lista para pegar)`, nodeId);
-      mostrarAvisoModal(`Rama "${nodo.codigo} - ${nodo.nombre}" copiada. Ahora haz clic derecho sobre el nodo donde quieras pegarla y elige "Pegar aquí".`);
+      actualizarVisibilidadPegarBuqueRaiz();
+      const avisoRaiz = ramaCopiada.tipo === 'BUQUE'
+        ? ' Al ser un Buque, también puedes pegarlo como buque nuevo desde el menú lateral ("📌 Pegar buque copiado").'
+        : '';
+      mostrarAvisoModal(`Rama "${nodo.codigo} - ${nodo.nombre}" copiada. Ahora haz clic derecho sobre el nodo donde quieras pegarla y elige "Pegar aquí".${avisoRaiz}`);
+    }
+
+    // Un Buque (tipo raíz del árbol) no tiene ningún "tipo padre" válido en
+    // node_type_rules -- por diseño, no cuelga de ningún otro nodo -- así
+    // que tiposPadreValidos siempre está vacío para él y jamás se podría
+    // pegar "dentro" de otro nodo. Por eso pegar un Buque copiado se hace
+    // aparte, como buque nuevo en la raíz (ver menu-item-pegar-buque-raiz),
+    // y no a través de "Pegar aquí" sobre un nodo del árbol.
+    function actualizarVisibilidadPegarBuqueRaiz() {
+      const el = document.getElementById('menu-item-pegar-buque-raiz');
+      if (!el) return;
+      el.style.display = (pareceGestor() && ramaCopiada && ramaCopiada.tipo === 'BUQUE') ? 'flex' : 'none';
     }
 
     function puedePegarRamaEn(nodo) {
       if (!ramaCopiada) return false;
+      if (ramaCopiada.tipo === 'BUQUE') return false; // un Buque se pega en la raíz, no dentro de otro nodo
       if (!ramaCopiada.tiposPadreValidos.has(nodo.tipo)) return false;
       if (nodo.id === ramaCopiada.id) return false;
       if (esDescendiente(nodo.id, ramaCopiada.id)) return false; // no pegar dentro de su propia rama
@@ -3810,9 +3819,10 @@
 
     function abrirModalPegarRama(nodeId) {
       nodoPegarDestino = nodeId;
-      const destino = mapaNodoPorId[nodeId];
-      document.getElementById('pegar-rama-info').textContent =
-        `Se creará una copia exacta de "${ramaCopiada.codigo} - ${ramaCopiada.nombre}" (con todo lo que lleva dentro: estructura, asignaciones, fechas y estados) dentro de "${destino.codigo}".`;
+      const destino = nodeId ? mapaNodoPorId[nodeId] : null;
+      document.getElementById('pegar-rama-info').textContent = destino
+        ? `Se creará una copia exacta de "${ramaCopiada.codigo} - ${ramaCopiada.nombre}" (con todo lo que lleva dentro: estructura, asignaciones, fechas y estados) dentro de "${destino.codigo}".`
+        : `Se creará una copia exacta de "${ramaCopiada.codigo} - ${ramaCopiada.nombre}" (con todo lo que lleva dentro: estructura, asignaciones, fechas y estados) como un Buque nuevo, independiente.`;
       document.getElementById('pegar-rama-codigo').value = ramaCopiada.codigo;
       document.getElementById('pegar-rama-nombre').value = ramaCopiada.nombre;
       document.getElementById('pegar-rama-estado').textContent = '';
@@ -3833,7 +3843,7 @@
       estadoEl.textContent = 'Pegando la rama, un momento...';
       estadoEl.className = 'estado-msg';
 
-      const destino = mapaNodoPorId[nodoPegarDestino];
+      const destino = nodoPegarDestino ? mapaNodoPorId[nodoPegarDestino] : null;
       const { error } = await supabaseClient.rpc('clonar_rama_completa', {
         p_origen_id: ramaCopiada.id, p_nuevo_parent_id: nodoPegarDestino, p_nuevo_codigo: codigo, p_nuevo_nombre: nombre
       });
@@ -3846,9 +3856,11 @@
         return;
       }
 
-      registrarLog('PEGAR_RAMA', `Pegó una copia de "${ramaCopiada.codigo}" como "${codigo}" dentro de "${destino.codigo}"`, nodoPegarDestino);
+      registrarLog('PEGAR_RAMA', destino
+        ? `Pegó una copia de "${ramaCopiada.codigo}" como "${codigo}" dentro de "${destino.codigo}"`
+        : `Pegó una copia de "${ramaCopiada.codigo}" como "${codigo}" (buque nuevo, en la raíz)`, nodoPegarDestino);
       cerrarModalPegarRama();
-      nodosAbiertos.add(nodoPegarDestino);
+      if (nodoPegarDestino) nodosAbiertos.add(nodoPegarDestino);
       btn.disabled = false;
       await cargarArbol();
     }
@@ -3938,67 +3950,6 @@
         };
         btnOk.onclick = () => { const v = input.value; limpiar(); resolve(v); };
         btnCancel.onclick = () => { limpiar(); resolve(null); };
-      });
-    }
-
-    // Antes de aprobar una tarea, exige marcar el checklist de calidad
-    // (si hay puntos activos configurados en Usuarios). Devuelve true si
-    // se puede continuar con la aprobación, false si se cancela o falla.
-    function pedirChecklistCalidad(nodeId) {
-      return new Promise(async (resolve) => {
-        const { data: items, error } = await supabaseClient.rpc('listar_checklist_calidad_nodo', { p_node_id: nodeId });
-        if (error) {
-          mostrarAvisoModal('Error al cargar el checklist de calidad: ' + traducirError(error.message));
-          resolve(false);
-          return;
-        }
-        if (!items || items.length === 0) { resolve(true); return; }
-
-        const cont = document.getElementById('checklist-calidad-lista');
-        const estadoEl = document.getElementById('checklist-calidad-estado');
-        const btnContinuar = document.getElementById('checklist-calidad-continuar');
-        const btnCancelar = document.getElementById('checklist-calidad-cancelar');
-        const modal = document.getElementById('modal-checklist-calidad');
-
-        estadoEl.textContent = ''; estadoEl.className = 'estado';
-        cont.innerHTML = items.map(it => `
-          <label style="display:flex; align-items:flex-start; gap:8px; font-weight:normal; padding:6px 0; border-bottom:1px solid #f0f0f0;">
-            <input type="checkbox" class="chk-checklist-calidad" data-item-id="${it.item_id}" ${it.marcado ? 'checked' : ''} style="width:auto; margin-top:3px;">
-            <span>${it.texto}</span>
-          </label>
-        `).join('');
-
-        const actualizarBoton = () => {
-          const cajas = cont.querySelectorAll('.chk-checklist-calidad');
-          btnContinuar.disabled = !Array.from(cajas).every(c => c.checked);
-        };
-        cont.querySelectorAll('.chk-checklist-calidad').forEach(chk => {
-          chk.onchange = async () => {
-            const marcado = chk.checked;
-            chk.disabled = true;
-            const { error } = await supabaseClient.rpc('marcar_checklist_item', {
-              p_node_id: nodeId, p_item_id: chk.dataset.itemId, p_marcado: marcado
-            });
-            chk.disabled = false;
-            if (error) {
-              estadoEl.textContent = 'Error: ' + traducirError(error.message);
-              estadoEl.className = 'estado error';
-              chk.checked = !marcado;
-            } else {
-              estadoEl.textContent = ''; estadoEl.className = 'estado';
-            }
-            actualizarBoton();
-          };
-        });
-        actualizarBoton();
-        modal.style.display = 'flex';
-
-        const limpiar = () => {
-          btnContinuar.onclick = null; btnCancelar.onclick = null;
-          modal.style.display = 'none';
-        };
-        btnContinuar.onclick = () => { limpiar(); resolve(true); };
-        btnCancelar.onclick = () => { limpiar(); resolve(false); };
       });
     }
 
@@ -4881,10 +4832,6 @@
     }
 
     async function accionRevisar(nodeId, aprobado) {
-      if (aprobado) {
-        const listo = await pedirChecklistCalidad(nodeId);
-        if (!listo) return;
-      }
       let comentario = null;
       if (!aprobado) {
         comentario = await pedirTexto('Motivo del rechazo (obligatorio):');

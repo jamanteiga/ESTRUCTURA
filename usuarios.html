@@ -343,11 +343,11 @@
     }
 
     function cerrarPagina() {
-      // Si esta pestaña se abrió con script (p.ej. target="_blank" desde otra
-      // página de la app), window.close() la cierra directamente. Si no,
-      // los navegadores lo bloquean por seguridad y volvemos siempre al árbol.
-      window.close();
-      setTimeout(() => { window.location.href = 'arbol.html'; }, 150);
+      // Vamos siempre directos al árbol. (Antes se intentaba window.close()
+      // primero: en algunos navegadores/PWA esto no falla como cabría
+      // esperar, sino que cierra la ventana actual y deja ver la que hubiera
+      // debajo -- p.ej. otra pestaña o app -- en vez de volver al árbol.)
+      window.location.href = 'arbol.html';
     }
 
     function mostrarOverlayPassword(password, titulo) {
