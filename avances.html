@@ -54,6 +54,66 @@
     const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+    // -------------------- Registro de comunicaciones (log_comunicaciones.html) --------------------
+    // Envuelve fetch para dejar constancia de cada llamada de red que hace
+    // esta página (casi siempre a Supabase): a dónde, cuánto tarda y qué
+    // datos le pasa. Aparte del registro de actividad (audit_log), que es
+    // de acciones del usuario, no de tráfico de red.
+    function redactarCuerpoComunicacion(cuerpoTexto) {
+      if (!cuerpoTexto) return null;
+      try {
+        const limpiar = (o) => {
+          if (Array.isArray(o)) return o.map(limpiar);
+          if (o && typeof o === 'object') {
+            const copia = {};
+            Object.keys(o).forEach(k => { copia[k] = /password|contrase/i.test(k) ? '***' : limpiar(o[k]); });
+            return copia;
+          }
+          return o;
+        };
+        return JSON.stringify(limpiar(JSON.parse(cuerpoTexto))).slice(0, 4000);
+      } catch (e) {
+        return String(cuerpoTexto).slice(0, 4000);
+      }
+    }
+    (function () {
+      const _fetchOriginal = window.fetch.bind(window);
+      window.fetch = async function (input, init) {
+        const inicio = performance.now();
+        const url = typeof input === 'string' ? input : (input && input.url) || '';
+        const metodo = (init && init.method) || (typeof input === 'object' && input && input.method) || 'GET';
+        if (url.indexOf('/comunicaciones_log') !== -1) return _fetchOriginal(input, init);
+        let respuesta, errorMsg = null;
+        try {
+          respuesta = await _fetchOriginal(input, init);
+          return respuesta;
+        } catch (e) {
+          errorMsg = e.message;
+          throw e;
+        } finally {
+          const duracionMs = Math.round(performance.now() - inicio);
+          const cuerpo = init && init.body && typeof init.body === 'string' ? redactarCuerpoComunicacion(init.body) : null;
+          supabaseClient.from('comunicaciones_log').insert({
+            metodo, url, cuerpo, duracion_ms: duracionMs,
+            status_code: respuesta ? respuesta.status : null, error: errorMsg
+          }).then(() => {}, () => {});
+        }
+      };
+    })();
+
+    // -------------------- Modo mantenimiento --------------------
+    // Si está activo y quien entra no es ADMIN, lo manda a mantenimiento.html
+    // en vez de dejarle seguir. Se llama justo después de conocer el rol.
+    async function comprobarMantenimiento(rol) {
+      if (rol === 'ADMIN') return false;
+      try {
+        const { data } = await supabaseClient.from('app_mantenimiento').select('activo').eq('id', 1).single();
+        if (data && data.activo) { window.location.href = 'mantenimiento.html'; return true; }
+      } catch (e) { /* si falla la comprobación, no se bloquea la app por eso */ }
+      return false;
+    }
+
+
     // Detección de móvil/tablet: iPadOS manda user-agent de escritorio
     // ("Macintosh") desde iOS 13, así que se completa con pantalla táctil
     // real (navigator.maxTouchPoints, 0 en un Mac/PC sin pantalla táctil).
@@ -132,7 +192,7 @@
       const total = propios.length;
       if (total === 0) return null;
 
-      const eventosPlan = propios.filter(n => n.fecha_fin_prevista).map(n => n.fecha_fin_prevista);
+      const eventosPlan = propios.filter(n => n.fecha_fin_prevista).map(n => n.fecha_fin_prevista.slice(0, 10));
       const eventosReal = propios.filter(n => n.revision_estado === 'APROBADO' && n.revisado_en).map(n => n.revisado_en.slice(0, 10));
       if (eventosPlan.length === 0 && eventosReal.length === 0) return null;
 
@@ -328,6 +388,7 @@
       }
 
       miPerfil = perfil;
+      if (await comprobarMantenimiento(perfil.rol)) return;
       document.getElementById('texto-usuario').textContent =
         `${perfil.nombre_completo} (${perfil.username}) — ${{TRABAJADOR:'Usuario',REVISOR:'Supervisor',ADMIN:'Admin',INVITADO:'Invitado',WINDCHILL:'Windchill'}[perfil.rol] || perfil.rol}`;
       if (perfil.rol === 'ADMIN' || perfil.rol === 'REVISOR') document.getElementById('btn-informe').style.display = 'inline-block';

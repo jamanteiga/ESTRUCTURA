@@ -350,6 +350,7 @@
       <div class="menu-seccion-contenido">
         <a class="menu-item" href="index.html">🏠 Inicio</a>
         <a class="menu-item solo-escritorio" id="menu-link-log" href="log.html" style="display:none;">🗒️ Logs</a>
+        <a class="menu-item solo-escritorio" id="menu-link-log-comunicaciones" href="log_comunicaciones.html" style="display:none;">📡 Comunicaciones</a>
         <span class="menu-item solo-escritorio" id="menu-item-buque" onclick="esInvitado() ? mostrarAvisoModal('Eres un usuario Invitado: solo puedes consultar, no puedes realizar cambios.') : abrirModalCrear(null, 'BUQUE')" style="display:none;">+ Añadir Buque</span>
         <span class="menu-item solo-escritorio" id="menu-item-pegar-buque-raiz" onclick="esInvitado() ? mostrarAvisoModal('Eres un usuario Invitado: solo puedes consultar, no puedes realizar cambios.') : abrirModalPegarRama(null)" style="display:none;">📌 Pegar buque copiado</span>
         <div class="menu-item-expandible" onclick="toggleSubmenuFlotante(event, this, 'submenu-resumen')">📊 Resumen <span class="flecha-menu">›</span></div>
@@ -898,6 +899,66 @@
     const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+    // -------------------- Registro de comunicaciones (log_comunicaciones.html) --------------------
+    // Envuelve fetch para dejar constancia de cada llamada de red que hace
+    // esta página (casi siempre a Supabase): a dónde, cuánto tarda y qué
+    // datos le pasa. Aparte del registro de actividad (audit_log), que es
+    // de acciones del usuario, no de tráfico de red.
+    function redactarCuerpoComunicacion(cuerpoTexto) {
+      if (!cuerpoTexto) return null;
+      try {
+        const limpiar = (o) => {
+          if (Array.isArray(o)) return o.map(limpiar);
+          if (o && typeof o === 'object') {
+            const copia = {};
+            Object.keys(o).forEach(k => { copia[k] = /password|contrase/i.test(k) ? '***' : limpiar(o[k]); });
+            return copia;
+          }
+          return o;
+        };
+        return JSON.stringify(limpiar(JSON.parse(cuerpoTexto))).slice(0, 4000);
+      } catch (e) {
+        return String(cuerpoTexto).slice(0, 4000);
+      }
+    }
+    (function () {
+      const _fetchOriginal = window.fetch.bind(window);
+      window.fetch = async function (input, init) {
+        const inicio = performance.now();
+        const url = typeof input === 'string' ? input : (input && input.url) || '';
+        const metodo = (init && init.method) || (typeof input === 'object' && input && input.method) || 'GET';
+        if (url.indexOf('/comunicaciones_log') !== -1) return _fetchOriginal(input, init);
+        let respuesta, errorMsg = null;
+        try {
+          respuesta = await _fetchOriginal(input, init);
+          return respuesta;
+        } catch (e) {
+          errorMsg = e.message;
+          throw e;
+        } finally {
+          const duracionMs = Math.round(performance.now() - inicio);
+          const cuerpo = init && init.body && typeof init.body === 'string' ? redactarCuerpoComunicacion(init.body) : null;
+          supabaseClient.from('comunicaciones_log').insert({
+            metodo, url, cuerpo, duracion_ms: duracionMs,
+            status_code: respuesta ? respuesta.status : null, error: errorMsg
+          }).then(() => {}, () => {});
+        }
+      };
+    })();
+
+    // -------------------- Modo mantenimiento --------------------
+    // Si está activo y quien entra no es ADMIN, lo manda a mantenimiento.html
+    // en vez de dejarle seguir. Se llama justo después de conocer el rol.
+    async function comprobarMantenimiento(rol) {
+      if (rol === 'ADMIN') return false;
+      try {
+        const { data } = await supabaseClient.from('app_mantenimiento').select('activo').eq('id', 1).single();
+        if (data && data.activo) { window.location.href = 'mantenimiento.html'; return true; }
+      } catch (e) { /* si falla la comprobación, no se bloquea la app por eso */ }
+      return false;
+    }
+
+
     // Detección de móvil/tablet. Desde iOS 13, Safari en iPad manda un
     // user-agent de escritorio (se identifica como "Macintosh"), así que
     // el user-agent solo no basta para detectarlo -- por eso se comprueba
@@ -1080,6 +1141,7 @@
       }
 
       miPerfil = perfil;
+      if (await comprobarMantenimiento(perfil.rol)) return;
       cargarEstadoAbiertos();
       document.getElementById('texto-usuario').textContent =
         `${perfil.nombre_completo} (${perfil.username}) — ${{TRABAJADOR:'Usuario',REVISOR:'Supervisor',ADMIN:'Admin',INVITADO:'Invitado',WINDCHILL:'Windchill'}[perfil.rol] || perfil.rol}`;
@@ -1101,6 +1163,7 @@
         document.getElementById('menu-item-backup').style.display = 'flex';
         inicializarBackupAutomatico();
         document.getElementById('menu-link-log').style.display = 'flex';
+        document.getElementById('menu-link-log-comunicaciones').style.display = 'flex';
         document.getElementById('wrap-papelera').style.display = 'flex';
         document.getElementById('wrap-avance').style.display = 'flex';
         document.getElementById('wrap-tiempos').style.display = 'flex';
@@ -1581,7 +1644,38 @@
         .sort((a, b) => a.codigo.localeCompare(b.codigo, 'es', { sensitivity: 'base' }));
       cont.innerHTML = '<span class="menu-item" onclick="abrirModalBackupAutomatico()">⚙️ Copia automática por hora</span>' +
         '<span class="menu-item" onclick="descargarCopiaSeguridad()">🚢 Todos los buques</span>' +
-        buques.map(b => `<span class="menu-item" onclick="descargarCopiaSeguridadBuque('${b.id}')">${b.nombre} (${b.codigo})</span>`).join('');
+        buques.map(b => `<span class="menu-item" onclick="descargarCopiaSeguridadBuque('${b.id}')">${b.nombre} (${b.codigo})</span>`).join('') +
+        '<span class="menu-item" style="color:#dc3545;" onclick="iniciarMantenimiento()">🛠️ Inicio mantenimiento</span>' +
+        '<span class="menu-item" style="color:#28a745;" onclick="finalizarMantenimiento()">✅ Fin mantenimiento</span>';
+    }
+
+    // -------------------- Modo mantenimiento (activar/desactivar) --------------------
+    // Solo ADMIN ve estas opciones (el submenú "Backup" ya es ADMIN-only).
+    // El resto de páginas comprueban app_mantenimiento.activo justo después
+    // de iniciar sesión y, si está activo y el usuario no es ADMIN, lo
+    // redirigen a mantenimiento.html (ver comprobarMantenimiento() más arriba).
+
+    async function iniciarMantenimiento() {
+      cerrarMenu();
+      const mensaje = await pedirTexto('Mensaje para los usuarios (opcional, déjalo en blanco para usar el genérico):', '');
+      if (mensaje === null) return; // canceló
+      if (!await mostrarConfirmacion('¿Poner la aplicación en mantenimiento? Todos los usuarios (salvo ADMIN) verán una página de aviso al conectarse, hasta que se pulse "Fin mantenimiento".')) return;
+
+      const { error } = await supabaseClient.rpc('establecer_mantenimiento', {
+        p_activo: true,
+        p_mensaje: mensaje.trim() ? mensaje.trim() : null
+      });
+      if (error) { mostrarAvisoModal('Error al activar el mantenimiento: ' + traducirError(error.message)); return; }
+      mostrarAvisoModal('Aplicación puesta en mantenimiento.');
+    }
+
+    async function finalizarMantenimiento() {
+      cerrarMenu();
+      if (!await mostrarConfirmacion('¿Terminar el mantenimiento? La aplicación volverá a funcionar con normalidad para todos.')) return;
+
+      const { error } = await supabaseClient.rpc('establecer_mantenimiento', { p_activo: false });
+      if (error) { mostrarAvisoModal('Error al finalizar el mantenimiento: ' + traducirError(error.message)); return; }
+      mostrarAvisoModal('Mantenimiento finalizado. La aplicación vuelve a funcionar con normalidad.');
     }
 
     async function guardarArchivoComo(contenido, nombreSugerido, tipoMime) {

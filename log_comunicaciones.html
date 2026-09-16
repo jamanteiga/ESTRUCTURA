@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESTRUCTURA - Registro de comunicaciones</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#007bff">
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 1100px; margin: 30px auto; padding: 0 20px; color: #333; }
+    h1 { font-size: 22px; }
+    .card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    body.vista-movil .solo-escritorio { display: none !important; }
+    body.tema-oscuro { background: #1a1d21; color: #e0e0e0; }
+    body.tema-oscuro .card { background: #24282e; border-color: #3a3f47; }
+    body.tema-oscuro h1 { color: #f0f0f0; }
+    body.tema-oscuro table { color: #e0e0e0; }
+    body.tema-oscuro th { background: #14395c; }
+    body.tema-oscuro td { border-color: #3a3f47; }
+    body.tema-oscuro select, body.tema-oscuro input { background: #1a1d21; color: #e0e0e0; border-color: #4a4f57; }
+    .header-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+    button { padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; }
+    button.secundario { background: #6c757d; }
+    button.secundario:hover { background: #5a6268; }
+    .estado-msg { font-size: 13px; }
+
+    .filtros { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .filtros select, .filtros input { padding: 7px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+    .filtros input[type="text"] { flex: 1; min-width: 200px; }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; background: white; font-size: 12px; }
+    th, td { padding: 7px; text-align: left; border-bottom: 1px solid #eee; vertical-align: top; }
+    th { background: #1c6e8c; color: white; position: sticky; top: 0; }
+    tr:hover { background: #f5f8ff; }
+    .col-fecha { white-space: nowrap; color: #555; }
+    .col-metodo { white-space: nowrap; font-family: monospace; font-size: 11px; background: #eef3ff; padding: 2px 6px; border-radius: 4px; }
+    .col-link { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace; font-size: 11px; }
+    .col-duracion { white-space: nowrap; color: #888; font-size: 11px; }
+    .col-datos { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace; font-size: 11px; color: #666; }
+    .col-datos.error { color: #dc3545; }
+    .fila-error { background: #fdecea; }
+    body.tema-oscuro .fila-error { background: #3a2323; }
+    .estado-http { font-weight: bold; }
+    .estado-http.ok { color: #28a745; }
+    .estado-http.mal { color: #dc3545; }
+    .contenedor-tabla { max-height: 65vh; overflow-y: auto; margin-top: 10px; }
+    .paginacion { display: flex; justify-content: center; gap: 10px; margin-top: 12px; align-items: center; font-size: 13px; }
+      @media (max-width: 480px) {
+      body { margin: 10px auto; padding: 0 8px; box-sizing: border-box; }
+      h1 { font-size: 18px; }
+    }
+</style>
+</head>
+<body>
+
+  <div class="header-bar">
+    <h1>📡 Registro de comunicaciones</h1>
+    <div>
+      <span id="texto-usuario" class="estado-msg"></span>
+      <button class="secundario" onclick="alternarTema()">🌙/☀️</button>
+      <button class="secundario" onclick="location.href='index.html'">🏠 Inicio</button>
+      <button class="secundario" onclick="location.href='arbol.html'">🌳 Árbol</button>
+      <button class="secundario" onclick="location.href='usuarios.html'">👤 Usuarios</button>
+      <button class="secundario" onclick="location.href='log.html'">🗒️ Logs</button>
+      <button class="secundario" onclick="cerrarSesion()">Cerrar sesión</button>
+      <button style="background:#dc3545;" onclick="cerrarPagina()">❌ Cerrar</button>
+    </div>
+  </div>
+
+  <div id="sin-permiso" style="display:none; color:#dc3545; font-weight:bold; text-align:center; margin-top:60px;">
+    Solo ADMIN puede ver el registro de comunicaciones.
+  </div>
+
+  <div id="panel" style="display:none;">
+    <div class="card filtros">
+      <select id="filtro-usuario"><option value="">Usuario: Todos</option></select>
+      <select id="filtro-metodo">
+        <option value="">Método: Todos</option>
+        <option value="GET">GET</option>
+        <option value="POST">POST</option>
+        <option value="PATCH">PATCH</option>
+        <option value="DELETE">DELETE</option>
+        <option value="PUT">PUT</option>
+      </select>
+      <select id="filtro-estado">
+        <option value="">Estado: Todos</option>
+        <option value="ok">Solo correctos (2xx)</option>
+        <option value="error">Solo con error</option>
+      </select>
+      <input type="date" id="filtro-desde" title="Desde">
+      <input type="date" id="filtro-hasta" title="Hasta">
+      <input type="text" id="filtro-texto" placeholder="Buscar en el link o en los datos...">
+      <button class="secundario" onclick="limpiarFiltros()">✕ Limpiar</button>
+    </div>
+
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:8px;">
+        <div id="resumen-resultados" class="estado-msg" style="color:#666;"></div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button class="secundario" onclick="exportar('csv')">⬇ Exportar CSV</button>
+          <button class="secundario" onclick="exportar('xlsx')">⬇ Exportar Excel</button>
+        </div>
+      </div>
+      <div class="contenedor-tabla">
+        <table>
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Hora</th>
+              <th>Usuario</th>
+              <th>Método</th>
+              <th>Link</th>
+              <th>Duración</th>
+              <th>Estado</th>
+              <th>Datos</th>
+            </tr>
+          </thead>
+          <tbody id="tabla-body">
+            <tr><td colspan="8">Cargando...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="paginacion" id="bloque-paginacion">
+        <button class="secundario" id="btn-pag-anterior" onclick="paginaAnterior()">‹ Anterior</button>
+        <span id="texto-pagina"></span>
+        <button class="secundario" id="btn-pag-siguiente" onclick="paginaSiguiente()">Siguiente ›</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script>
+    const SUPABASE_URL = 'https://wuarkraddnndmgvfnkmm.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // -------------------- Registro de comunicaciones (log_comunicaciones.html) --------------------
+    // Envuelve fetch para dejar constancia de cada llamada de red que hace
+    // esta página (casi siempre a Supabase): a dónde, cuánto tarda y qué
+    // datos le pasa. Aparte del registro de actividad (audit_log), que es
+    // de acciones del usuario, no de tráfico de red.
+    function redactarCuerpoComunicacion(cuerpoTexto) {
+      if (!cuerpoTexto) return null;
+      try {
+        const limpiar = (o) => {
+          if (Array.isArray(o)) return o.map(limpiar);
+          if (o && typeof o === 'object') {
+            const copia = {};
+            Object.keys(o).forEach(k => { copia[k] = /password|contrase/i.test(k) ? '***' : limpiar(o[k]); });
+            return copia;
+          }
+          return o;
+        };
+        return JSON.stringify(limpiar(JSON.parse(cuerpoTexto))).slice(0, 4000);
+      } catch (e) {
+        return String(cuerpoTexto).slice(0, 4000);
+      }
+    }
+    (function () {
+      const _fetchOriginal = window.fetch.bind(window);
+      window.fetch = async function (input, init) {
+        const inicio = performance.now();
+        const url = typeof input === 'string' ? input : (input && input.url) || '';
+        const metodo = (init && init.method) || (typeof input === 'object' && input && input.method) || 'GET';
+        if (url.indexOf('/comunicaciones_log') !== -1) return _fetchOriginal(input, init);
+        let respuesta, errorMsg = null;
+        try {
+          respuesta = await _fetchOriginal(input, init);
+          return respuesta;
+        } catch (e) {
+          errorMsg = e.message;
+          throw e;
+        } finally {
+          const duracionMs = Math.round(performance.now() - inicio);
+          const cuerpo = init && init.body && typeof init.body === 'string' ? redactarCuerpoComunicacion(init.body) : null;
+          supabaseClient.from('comunicaciones_log').insert({
+            metodo, url, cuerpo, duracion_ms: duracionMs,
+            status_code: respuesta ? respuesta.status : null, error: errorMsg
+          }).then(() => {}, () => {});
+        }
+      };
+    })();
+
+    // -------------------- Modo mantenimiento --------------------
+    // Si está activo y quien entra no es ADMIN, lo manda a mantenimiento.html
+    // en vez de dejarle seguir. Se llama justo después de conocer el rol.
+    // (Esta página es solo para ADMIN, así que en la práctica nunca redirige
+    // desde aquí, pero se deja por coherencia con el resto de páginas.)
+    async function comprobarMantenimiento(rol) {
+      if (rol === 'ADMIN') return false;
+      try {
+        const { data } = await supabaseClient.from('app_mantenimiento').select('activo').eq('id', 1).single();
+        if (data && data.activo) { window.location.href = 'mantenimiento.html'; return true; }
+      } catch (e) { /* si falla la comprobación, no se bloquea la app por eso */ }
+      return false;
+    }
+
+    // Detección de móvil/tablet: iPadOS manda user-agent de escritorio
+    // ("Macintosh") desde iOS 13, así que se completa con pantalla táctil
+    // real (navigator.maxTouchPoints, 0 en un Mac/PC sin pantalla táctil).
+    const esTactil = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+    const esMovil = esTactil || window.innerWidth < 768;
+    document.body.classList.toggle('vista-movil', esMovil);
+
+    const POR_PAGINA = 50;
+    let paginaActual = 0;
+    let totalFilas = 0;
+    let miPerfil = null;
+
+    function formatearFechaHora(iso) {
+      const d = new Date(iso);
+      const dd = String(d.getDate()).padStart(2, '0');
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const aaaa = d.getFullYear();
+      const hh = String(d.getHours()).padStart(2, '0');
+      const min = String(d.getMinutes()).padStart(2, '0');
+      return { fecha: `${dd}/${mm}/${aaaa}`, hora: `${hh}:${min}` };
+    }
+
+    function formatearDuracion(ms) {
+      if (ms == null) return '—';
+      if (ms < 1000) return `${ms} ms`;
+      return `${(ms / 1000).toFixed(2)} s`;
+    }
+
+    async function registrarLog(accion, descripcion) {
+      try {
+        await supabaseClient.from('audit_log').insert({ accion, descripcion, user_agent: navigator.userAgent });
+      } catch (e) {
+        console.warn('No se pudo registrar el log:', e);
+      }
+    }
+
+    async function cerrarSesion() {
+      await registrarLog('LOGOUT', `Cerró sesión (${miPerfil?.username || ''})`);
+      await supabaseClient.auth.signOut();
+      window.location.href = 'login.html';
+    }
+
+    function cerrarPagina() {
+      window.location.href = 'arbol.html';
+    }
+
+    function aplicarTema(tema) {
+      document.body.classList.toggle('tema-oscuro', tema === 'oscuro');
+      localStorage.setItem('estructura_tema', tema);
+    }
+    function alternarTema() {
+      aplicarTema(document.body.classList.contains('tema-oscuro') ? 'claro' : 'oscuro');
+    }
+    aplicarTema(localStorage.getItem('estructura_tema') || 'claro');
+
+    async function iniciar() {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (!session) { window.location.href = 'login.html?next=log_comunicaciones.html'; return; }
+
+      const { data: perfil, error } = await supabaseClient
+        .from('profiles').select('*').eq('id', session.user.id).single();
+
+      if (error || !perfil || !perfil.activo || perfil.rol !== 'ADMIN') {
+        document.getElementById('sin-permiso').style.display = 'block';
+        return;
+      }
+
+      document.getElementById('texto-usuario').textContent = `${perfil.nombre_completo} (${perfil.username}) — ADMIN`;
+      document.getElementById('panel').style.display = 'block';
+      miPerfil = perfil;
+      if (await comprobarMantenimiento(perfil.rol)) return;
+
+      const { data: perfiles } = await supabaseClient.from('profiles').select('id, nombre_completo').order('nombre_completo');
+      const selUsuario = document.getElementById('filtro-usuario');
+      selUsuario.innerHTML = '<option value="">Usuario: Todos</option>' +
+        (perfiles || []).map(p => `<option value="${p.id}">${p.nombre_completo}</option>`).join('');
+
+      ['filtro-usuario', 'filtro-metodo', 'filtro-estado', 'filtro-desde', 'filtro-hasta'].forEach(id => {
+        document.getElementById(id).addEventListener('change', () => { paginaActual = 0; cargarLog(); });
+      });
+      let debounceTexto = null;
+      document.getElementById('filtro-texto').addEventListener('input', () => {
+        clearTimeout(debounceTexto);
+        debounceTexto = setTimeout(() => { paginaActual = 0; cargarLog(); }, 300);
+      });
+
+      await cargarLog();
+    }
+
+    function limpiarFiltros() {
+      document.getElementById('filtro-usuario').value = '';
+      document.getElementById('filtro-metodo').value = '';
+      document.getElementById('filtro-estado').value = '';
+      document.getElementById('filtro-desde').value = '';
+      document.getElementById('filtro-hasta').value = '';
+      document.getElementById('filtro-texto').value = '';
+      paginaActual = 0;
+      cargarLog();
+    }
+
+    function paginaAnterior() { if (paginaActual > 0) { paginaActual--; cargarLog(); } }
+    function paginaSiguiente() { if ((paginaActual + 1) * POR_PAGINA < totalFilas) { paginaActual++; cargarLog(); } }
+
+    function construirConsultaBase() {
+      const usuarioId = document.getElementById('filtro-usuario').value;
+      const metodo = document.getElementById('filtro-metodo').value;
+      const estado = document.getElementById('filtro-estado').value;
+      const desde = document.getElementById('filtro-desde').value;
+      const hasta = document.getElementById('filtro-hasta').value;
+      const texto = document.getElementById('filtro-texto').value.trim();
+
+      let query = supabaseClient.from('comunicaciones_log').select('*', { count: 'exact' }).order('creado_en', { ascending: false });
+      if (usuarioId) query = query.eq('actor_id', usuarioId);
+      if (metodo) query = query.eq('metodo', metodo);
+      if (estado === 'ok') query = query.gte('status_code', 200).lt('status_code', 300);
+      else if (estado === 'error') query = query.or('status_code.gte.400,error.not.is.null');
+      if (desde) query = query.gte('creado_en', desde + 'T00:00:00');
+      if (hasta) query = query.lte('creado_en', hasta + 'T23:59:59');
+      if (texto) query = query.or(`url.ilike.%${texto}%,cuerpo.ilike.%${texto}%`);
+      return query;
+    }
+
+    async function cargarLog() {
+      const tbody = document.getElementById('tabla-body');
+      tbody.innerHTML = '<tr><td colspan="8">Cargando...</td></tr>';
+
+      const query = construirConsultaBase().range(paginaActual * POR_PAGINA, paginaActual * POR_PAGINA + POR_PAGINA - 1);
+      const { data, error, count } = await query;
+
+      if (error) { tbody.innerHTML = `<tr><td colspan="8" style="color:red;">Error: ${error.message}</td></tr>`; return; }
+
+      totalFilas = count || 0;
+
+      tbody.innerHTML = (data || []).length === 0
+        ? '<tr><td colspan="8">No hay resultados con estos filtros.</td></tr>'
+        : data.map(fila => {
+            const { fecha, hora } = formatearFechaHora(fila.creado_en);
+            const esError = fila.error || (fila.status_code && fila.status_code >= 400);
+            return `
+            <tr class="${esError ? 'fila-error' : ''}">
+              <td class="col-fecha">${fecha}</td>
+              <td class="col-fecha">${hora}</td>
+              <td>${fila.actor_nombre || '—'}</td>
+              <td><span class="col-metodo">${fila.metodo || '—'}</span></td>
+              <td class="col-link" title="${fila.url ? fila.url.replace(/"/g, '&quot;') : ''}">${fila.url || '—'}</td>
+              <td class="col-duracion">${formatearDuracion(fila.duracion_ms)}</td>
+              <td class="estado-http ${esError ? 'mal' : 'ok'}">${fila.status_code || (fila.error ? 'ERROR' : '—')}</td>
+              <td class="col-datos ${esError ? 'error' : ''}" title="${fila.error ? fila.error.replace(/"/g, '&quot;') : (fila.cuerpo ? fila.cuerpo.replace(/"/g, '&quot;') : '')}">${fila.error || fila.cuerpo || '—'}</td>
+            </tr>
+          `;
+          }).join('');
+
+      const desdeN = paginaActual * POR_PAGINA + 1;
+      const hastaN = Math.min((paginaActual + 1) * POR_PAGINA, totalFilas);
+      document.getElementById('resumen-resultados').textContent = totalFilas === 0
+        ? 'Sin resultados.'
+        : `Mostrando ${desdeN}–${hastaN} de ${totalFilas}`;
+      document.getElementById('texto-pagina').textContent = `Página ${paginaActual + 1}`;
+      document.getElementById('btn-pag-anterior').disabled = paginaActual === 0;
+      document.getElementById('btn-pag-siguiente').disabled = (paginaActual + 1) * POR_PAGINA >= totalFilas;
+    }
+
+    // -------------------- Exportar --------------------
+
+    async function obtenerTodasLasFilasFiltradas() {
+      const LOTE = 1000;
+      let desde = 0;
+      let todas = [];
+      while (true) {
+        const { data, error } = await construirConsultaBase().range(desde, desde + LOTE - 1);
+        if (error) { alert('Error al exportar: ' + error.message); return null; }
+        todas = todas.concat(data || []);
+        if (!data || data.length < LOTE) break;
+        desde += LOTE;
+      }
+      return todas;
+    }
+
+    function filaParaExportar(fila) {
+      const { fecha, hora } = formatearFechaHora(fila.creado_en);
+      return {
+        Fecha: fecha,
+        Hora: hora,
+        Usuario: fila.actor_nombre || '',
+        Metodo: fila.metodo || '',
+        Link: fila.url || '',
+        Duracion_ms: fila.duracion_ms || '',
+        Estado: fila.status_code || (fila.error ? 'ERROR' : ''),
+        Datos: fila.error || fila.cuerpo || ''
+      };
+    }
+
+    async function exportar(formato) {
+      const filas = await obtenerTodasLasFilasFiltradas();
+      if (!filas) return;
+      if (filas.length === 0) { alert('No hay resultados con estos filtros para exportar.'); return; }
+
+      const datos = filas.map(filaParaExportar);
+      const fechaArchivo = new Date().toISOString().slice(0, 10);
+
+      if (formato === 'csv') {
+        const cabeceras = Object.keys(datos[0]);
+        const escapar = (v) => `"${String(v).replace(/"/g, '""')}"`;
+        const lineas = [cabeceras.join(';')].concat(
+          datos.map(fila => cabeceras.map(c => escapar(fila[c])).join(';'))
+        );
+        const csv = '﻿' + lineas.join('\r\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `registro-comunicaciones-${fechaArchivo}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } else {
+        const hoja = XLSX.utils.json_to_sheet(datos);
+        const libro = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(libro, hoja, 'Comunicaciones');
+        XLSX.writeFile(libro, `registro-comunicaciones-${fechaArchivo}.xlsx`);
+      }
+
+      registrarLog('EXPORT_LOG_COMUNICACIONES', `Exportó el registro de comunicaciones a ${formato.toUpperCase()} (${datos.length} filas, con los filtros aplicados en pantalla)`);
+    }
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    }
+
+    iniciar();
+  </script>
+</body>
+</html>

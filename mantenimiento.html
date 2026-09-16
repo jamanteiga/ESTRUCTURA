@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESTRUCTURA - Mantenimiento</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 480px;
+      margin: 90px auto;
+      padding: 0 24px;
+      color: #333;
+      text-align: center;
+    }
+    .icono { font-size: 52px; margin-bottom: 8px; }
+    h1 { font-size: 22px; margin: 8px 0 6px; }
+    p { font-size: 15px; line-height: 1.5; color: #555; }
+    #mensaje-personalizado {
+      margin-top: 10px;
+      padding: 12px 14px;
+      background: #fff8e1;
+      border: 1px solid #ffe082;
+      border-radius: 6px;
+      font-size: 14px;
+      color: #7a5c00;
+      display: none;
+      white-space: pre-wrap;
+    }
+    button {
+      margin-top: 26px;
+      padding: 10px 22px;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 14px;
+    }
+    button:hover { background: #0069d9; }
+    button:disabled { background: #999; cursor: not-allowed; }
+    #estado-comprobacion { font-size: 12px; color: #888; margin-top: 10px; min-height: 16px; }
+  </style>
+</head>
+<body>
+  <div class="icono">🛠️</div>
+  <h1>La aplicación está en mantenimiento</h1>
+  <p>
+    Estamos realizando tareas de mantenimiento en ESTRUCTURA.<br>
+    Disculpa las molestias, volveremos a estar disponibles en breve.
+  </p>
+  <div id="mensaje-personalizado"></div>
+
+  <button id="btn-comprobar" onclick="comprobarDeNuevo(true)">🔄 Comprobar de nuevo</button>
+  <div id="estado-comprobacion"></div>
+
+  <script>
+    const SUPABASE_URL = 'https://wuarkraddnndmgvfnkmm.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <script>
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    async function comprobarDeNuevo(manual) {
+      const btn = document.getElementById('btn-comprobar');
+      const estadoEl = document.getElementById('estado-comprobacion');
+      if (manual) {
+        btn.disabled = true;
+        btn.textContent = 'Comprobando...';
+      }
+      try {
+        const { data, error } = await supabaseClient
+          .from('app_mantenimiento')
+          .select('activo, mensaje')
+          .eq('id', 1)
+          .single();
+
+        if (error) throw error;
+
+        const mensajeEl = document.getElementById('mensaje-personalizado');
+        if (data && data.mensaje) {
+          mensajeEl.textContent = data.mensaje;
+          mensajeEl.style.display = 'block';
+        } else {
+          mensajeEl.style.display = 'none';
+        }
+
+        if (!data || !data.activo) {
+          // Ya terminó el mantenimiento: la aplicación vuelve a su
+          // funcionamiento normal.
+          window.location.href = 'login.html';
+          return;
+        }
+
+        if (manual) {
+          estadoEl.textContent = 'Sigue en mantenimiento. Se volverá a comprobar automáticamente.';
+        }
+      } catch (e) {
+        if (manual) {
+          estadoEl.textContent = 'No se pudo comprobar el estado ahora mismo.';
+        }
+      } finally {
+        if (manual) {
+          btn.disabled = false;
+          btn.textContent = '🔄 Comprobar de nuevo';
+        }
+      }
+    }
+
+    comprobarDeNuevo(false);
+    setInterval(() => comprobarDeNuevo(false), 30000);
+  </script>
+</body>
+</html>
