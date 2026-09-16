@@ -329,6 +329,11 @@
     <span class="leyenda-clic" onclick="filtrarPorEstadoLeyenda('aprobado')"><span class="flecha f-aprobado">✔</span>Aprobado</span>
     <span class="leyenda-clic" onclick="filtrarPorEstadoLeyenda('rechazado')"><span class="flecha f-rechazado">✘</span>Rechazado</span>
     <span class="leyenda-clic" onclick="filtrarPorEstadoLeyenda('mezcla')" title="Ramas con hijos en varios estados distintos"><span class="flecha f-mezcla">▶</span>Estados mezclados</span>
+    <span id="wrap-filtro-buque-leyenda" style="display:none;" title="Elige un buque para ver solo su estructura, o vuelve a Todos para verlos todos a la vez">
+      <select id="sel-filtro-buque-leyenda" onchange="filtrarPorBuqueLeyenda(this.value)">
+        <option value="">🚢 Todos los buques</option>
+      </select>
+    </span>
   </div>
 
   <!-- Menú hamburguesa -->
@@ -997,6 +1002,10 @@
     let filtroEstado = '';
     let filtroSoloBloqueados = false;
     let mostrarDesactivados = false;
+    // Buque elegido en el selector de la leyenda ('' = todos). Solo lo usan
+    // admin/supervisor: un TRABAJADOR ya ve un único buque (el suyo), fijado
+    // por filtrarPorBuqueAsignado.
+    let filtroBuqueId = '';
     let vistaSimplificada = false;
     let modoPapelera = false;
     let modoAvance = false;
@@ -1125,10 +1134,26 @@
         const selUsuario = document.getElementById('sel-filtro-usuario');
         document.getElementById('wrap-filtro-usuario').style.display = 'flex';
         const soloUsuarios = perfilesCache.filter(p => p.rol === 'TRABAJADOR');
-        selUsuario.innerHTML = '<option value="">Ver tareas de: Todos</option>' +
+        let opcionesUsuario = '<option value="">Ver tareas de: Todos</option>' +
           soloUsuarios.map(p => `<option value="${p.id}">Ver tareas de: ${p.nombre_completo}</option>`).join('');
 
+        // El admin y los supervisores también pueden filtrar por supervisor:
+        // todos juntos (cualquier tarea con revisor asignado) o uno en
+        // concreto — antes el desplegable solo dejaba elegir Usuarios.
+        if (esGestor()) {
+          const soloSupervisores = perfilesCache.filter(p => p.rol === 'REVISOR');
+          if (soloSupervisores.length > 0) {
+            opcionesUsuario += '<option value="__supervisores__">Ver tareas de: Todos los supervisores</option>' +
+              soloSupervisores.map(p => `<option value="${p.id}">Ver tareas de: ${p.nombre_completo} (supervisor)</option>`).join('');
+          }
+        }
+        selUsuario.innerHTML = opcionesUsuario;
+
         document.getElementById('wrap-filtro-estado').style.display = 'flex';
+      }
+
+      if (esGestor()) {
+        document.getElementById('wrap-filtro-buque-leyenda').style.display = 'inline-flex';
       }
 
       await cargarArbol();
@@ -1392,6 +1417,7 @@
         mapaHijosPorPadre[clave].push(n);
       });
 
+      if (esGestor()) actualizarSelectorBuqueLeyenda();
       renderizarArbolCompleto();
       if (esGestor()) actualizarBadgeAlertas();
     }
@@ -1458,7 +1484,11 @@
         const t = filtroTexto.toLowerCase();
         ok = ok && (nodo.codigo.toLowerCase().includes(t) || nodo.nombre.toLowerCase().includes(t));
       }
-      if (filtroUsuarioId) {
+      if (filtroUsuarioId === '__supervisores__') {
+        // "Todos los supervisores": cualquier tarea con revisor asignado,
+        // sea quien sea.
+        ok = ok && !!nodo.revisor_id;
+      } else if (filtroUsuarioId) {
         ok = ok && (nodo.trabajador_id === filtroUsuarioId || nodo.revisor_id === filtroUsuarioId);
       }
       if (filtroEstado) {
@@ -1485,6 +1515,29 @@
       renderizarArbolCompleto();
     }
 
+    // Selector de buque de la leyenda (solo admin/supervisor): al elegir uno
+    // concreto, el árbol solo muestra ese buque; "Todos los buques" vuelve a
+    // mostrarlos todos, cada uno como una rama raíz distinta.
+    function filtrarPorBuqueLeyenda(buqueId) {
+      filtroBuqueId = buqueId;
+      renderizarArbolCompleto();
+    }
+
+    // Rellena el selector de buque de la leyenda con los buques que hay
+    // cargados en el árbol, conservando la elección actual si ese buque
+    // sigue existiendo. Se llama cada vez que se recarga el árbol, por si
+    // se ha creado, renombrado o desactivado algún buque.
+    function actualizarSelectorBuqueLeyenda() {
+      const sel = document.getElementById('sel-filtro-buque-leyenda');
+      if (!sel) return;
+      const buques = (mapaHijosPorPadre['__raiz__'] || []).slice()
+        .sort((a, b) => a.codigo.localeCompare(b.codigo, 'es', { sensitivity: 'base' }));
+      if (filtroBuqueId && !buques.some(b => b.id === filtroBuqueId)) filtroBuqueId = '';
+      sel.innerHTML = '<option value="">🚢 Todos los buques</option>' +
+        buques.map(b => `<option value="${b.id}">${b.codigo}${b.nombre ? ' — ' + b.nombre : ''}</option>`).join('');
+      sel.value = filtroBuqueId;
+    }
+
     function calcularNodosVisibles() {
       if (!filtroTexto && !filtroUsuarioId && !filtroEstado && !filtroSoloBloqueados) return null;
       const visibles = new Set();
@@ -1505,7 +1558,9 @@
       if (nodosVisiblesActual) nodosVisiblesActual.forEach(id => nodosAbiertos.add(id));
 
       const raiz = document.getElementById('arbol-raiz');
-      const nodosRaiz = (mapaHijosPorPadre['__raiz__'] || []).filter(n => !nodosVisiblesActual || nodosVisiblesActual.has(n.id));
+      const nodosRaiz = (mapaHijosPorPadre['__raiz__'] || [])
+        .filter(n => !filtroBuqueId || n.id === filtroBuqueId)
+        .filter(n => !nodosVisiblesActual || nodosVisiblesActual.has(n.id));
 
       let mensajeVacio;
       if (todosLosNodos.length === 0) {
