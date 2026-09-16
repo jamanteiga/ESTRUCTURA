@@ -193,7 +193,7 @@
 
     function cerrarPagina() {
       window.close();
-      setTimeout(() => { history.back(); }, 150);
+      setTimeout(() => { window.location.href = 'arbol.html'; }, 150);
     }
 
     function aplicarTema(tema) {
@@ -464,6 +464,7 @@
       mapaNodoPorId = {};
       nodos.forEach(n => { mapaNodoPorId[n.id] = n; });
       nodosGestorActual = nodos.filter(n => !TIPOS_SIN_ASIGNACION.has(n.tipo));
+      if (miPerfil.rol === 'TRABAJADOR') nodosGestorActual = nodosGestorActual.filter(n => n.trabajador_id === miPerfil.id);
       pintar();
     }
 
@@ -491,7 +492,7 @@
         `${perfil.nombre_completo} (${perfil.username}) — ${{TRABAJADOR:'Usuario',REVISOR:'Supervisor',ADMIN:'Admin',INVITADO:'Invitado',WINDCHILL:'Windchill'}[perfil.rol] || perfil.rol}`;
       if (perfil.rol === 'ADMIN' || perfil.rol === 'REVISOR') document.getElementById('btn-informe').style.display = 'inline-block';
 
-      if (!pareceGestor()) {
+      if (!pareceGestor() && miPerfil.rol !== 'TRABAJADOR') {
         document.getElementById('contenido').innerHTML = '<div class="card"><p>Esta página es para gestores. Ve a <a href="resumen.html">Resumen</a> para ver tus tareas.</p></div>';
         return;
       }

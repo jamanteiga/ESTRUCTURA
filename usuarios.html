@@ -108,7 +108,7 @@
       <input type="text" id="nombre-nuevo" placeholder="Nombre Apellidos">
 
       <label for="rol-nuevo">Rol</label>
-      <select id="rol-nuevo">
+      <select id="rol-nuevo" onchange="actualizarVisibilidadBuque('nuevo')">
         <option value="TRABAJADOR">Usuario</option>
         <option value="REVISOR">Supervisor</option>
         <option value="ADMIN">Admin</option>
@@ -126,6 +126,13 @@
         <option value="OF5">Oficina 5 (OF5)</option>
       </select>
 
+      <div id="wrap-buque-nuevo" style="display:none;">
+        <label for="buque-nuevo">Buque al que pertenece</label>
+        <select id="buque-nuevo">
+          <option value="">— Sin asignar —</option>
+        </select>
+      </div>
+
       <label for="password-nuevo">Contraseña inicial (déjalo en blanco para que se genere una)</label>
       <input type="text" id="password-nuevo" placeholder="Opcional">
 
@@ -142,13 +149,14 @@
               <th style="position: sticky; top: 0;">Usuario</th>
               <th style="position: sticky; top: 0;">Nombre completo</th>
               <th style="position: sticky; top: 0;">Rol</th>
+              <th style="position: sticky; top: 0;">Buque</th>
               <th style="position: sticky; top: 0;">Ubicación</th>
               <th style="position: sticky; top: 0;">Activo</th>
               <th style="position: sticky; top: 0;"></th>
             </tr>
           </thead>
           <tbody id="tabla-usuarios-body">
-            <tr><td colspan="6"><span class="spinner-carga"></span>Cargando...</td></tr>
+            <tr><td colspan="7"><span class="spinner-carga"></span>Cargando...</td></tr>
           </tbody>
         </table>
       </div>
@@ -172,7 +180,7 @@
       <label>Nombre completo</label>
       <input type="text" id="editar-nombre">
       <label>Rol</label>
-      <select id="editar-rol">
+      <select id="editar-rol" onchange="actualizarVisibilidadBuque('editar')">
         <option value="TRABAJADOR">Usuario</option>
         <option value="REVISOR">Supervisor</option>
         <option value="ADMIN">Admin</option>
@@ -188,6 +196,12 @@
         <option value="OF3">Oficina 3 (OF3)</option>
         <option value="OF5">Oficina 5 (OF5)</option>
       </select>
+      <div id="wrap-buque-editar" style="display:none;">
+        <label>Buque al que pertenece</label>
+        <select id="editar-buque">
+          <option value="">— Sin asignar —</option>
+        </select>
+      </div>
       <label>Email de contacto</label>
       <input type="text" id="editar-email">
       <label>Móvil</label>
@@ -294,7 +308,32 @@
       document.getElementById('texto-sesion-activa').textContent =
         `Conectado como ${perfil.nombre_completo} (${perfil.username}) — Admin`;
 
+      await cargarBuques();
+      actualizarVisibilidadBuque('nuevo');
       await cargarUsuarios();
+    }
+
+    let buquesCache = [];
+
+    // Un usuario normal (TRABAJADOR) solo puede pertenecer a un buque; el
+    // resto de roles (admin, supervisor, windchill) ven todos los buques sin
+    // necesidad de esta asignación, así que el selector solo se muestra
+    // cuando el rol elegido es "Usuario".
+    async function cargarBuques() {
+      const { data } = await supabaseClient
+        .from('nodes').select('id, codigo, nombre').eq('tipo', 'BUQUE').eq('activo', true)
+        .order('codigo', { ascending: true });
+      buquesCache = data || [];
+      const opciones = '<option value="">— Sin asignar —</option>' +
+        buquesCache.map(b => `<option value="${b.id}">${b.codigo}${b.nombre ? ' — ' + b.nombre : ''}</option>`).join('');
+      document.getElementById('buque-nuevo').innerHTML = opciones;
+      document.getElementById('editar-buque').innerHTML = opciones;
+    }
+
+    function actualizarVisibilidadBuque(cual) {
+      const rol = document.getElementById(cual === 'nuevo' ? 'rol-nuevo' : 'editar-rol').value;
+      document.getElementById(cual === 'nuevo' ? 'wrap-buque-nuevo' : 'wrap-buque-editar').style.display =
+        rol === 'TRABAJADOR' ? 'block' : 'none';
     }
 
     async function cerrarSesion() {
@@ -306,9 +345,9 @@
     function cerrarPagina() {
       // Si esta pestaña se abrió con script (p.ej. target="_blank" desde otra
       // página de la app), window.close() la cierra directamente. Si no,
-      // los navegadores lo bloquean por seguridad y usamos volver atrás.
+      // los navegadores lo bloquean por seguridad y volvemos siempre al árbol.
       window.close();
-      setTimeout(() => { history.back(); }, 150);
+      setTimeout(() => { window.location.href = 'arbol.html'; }, 150);
     }
 
     function mostrarOverlayPassword(password, titulo) {
@@ -327,6 +366,7 @@
       const nombre_completo = document.getElementById('nombre-nuevo').value.trim();
       const rol = document.getElementById('rol-nuevo').value;
       const ubicacion = document.getElementById('ubicacion-nuevo').value;
+      const buqueId = document.getElementById('buque-nuevo').value || null;
       const passwordInput = document.getElementById('password-nuevo').value.trim();
       const estadoEl = document.getElementById('estado-crear');
       const btn = document.getElementById('btn-crear');
@@ -351,8 +391,11 @@
         return;
       }
 
-      if (ubicacion) {
-        await supabaseClient.from('profiles').update({ ubicacion }).eq('id', data.perfil.id);
+      if (ubicacion || (rol === 'TRABAJADOR' && buqueId)) {
+        const cambios = {};
+        if (ubicacion) cambios.ubicacion = ubicacion;
+        if (rol === 'TRABAJADOR' && buqueId) cambios.buque_id = buqueId;
+        await supabaseClient.from('profiles').update(cambios).eq('id', data.perfil.id);
       }
 
       registrarLog('CREAR_USUARIO', `Creó el usuario "${username}" (${nombre_completo}), rol ${ETIQUETAS_ROL[rol] || rol}`);
@@ -363,7 +406,9 @@
       document.getElementById('nombre-nuevo').value = '';
       document.getElementById('rol-nuevo').value = 'TRABAJADOR';
       document.getElementById('ubicacion-nuevo').value = '';
+      document.getElementById('buque-nuevo').value = '';
       document.getElementById('password-nuevo').value = '';
+      actualizarVisibilidadBuque('nuevo');
 
       mostrarOverlayPassword(data.password, `Contraseña inicial de "${username}"`);
       cargarUsuarios();
@@ -380,27 +425,31 @@
 
     async function cargarUsuarios() {
       const tbody = document.getElementById('tabla-usuarios-body');
-      tbody.innerHTML = '<tr><td colspan="6"><span class="spinner-carga"></span>Cargando...</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7"><span class="spinner-carga"></span>Cargando...</td></tr>';
 
       const { data, error } = await supabaseClient
         .from('profiles').select('*');
 
-      if (error) { tbody.innerHTML = `<tr><td colspan="6" style="color:red;">Error: ${traducirError(error.message)}</td></tr>`; return; }
+      if (error) { tbody.innerHTML = `<tr><td colspan="7" style="color:red;">Error: ${traducirError(error.message)}</td></tr>`; return; }
 
       perfilesCache = (data || []).sort((a, b) =>
         (a.nombre_completo || '').localeCompare(b.nombre_completo || '', 'es', { sensitivity: 'base' })
       );
 
-      tbody.innerHTML = perfilesCache.map(perfil => `
+      tbody.innerHTML = perfilesCache.map(perfil => {
+        const buque = buquesCache.find(b => b.id === perfil.buque_id);
+        return `
         <tr class="${perfil.activo ? '' : 'inactivo'}">
           <td>${perfil.username || '(sin usuario)'}</td>
           <td>${perfil.nombre_completo}</td>
           <td>${ETIQUETAS_ROL[perfil.rol] || perfil.rol}</td>
+          <td>${perfil.rol === 'TRABAJADOR' ? (buque ? buque.codigo : '— sin asignar —') : '—'}</td>
           <td>${ETIQUETAS_UBICACION[perfil.ubicacion] || perfil.ubicacion || '—'}</td>
           <td style="text-align:center;">${perfil.activo ? '✔️' : '✘'}</td>
           <td><button onclick="abrirModalEditar('${perfil.id}')">✎ Editar</button></td>
         </tr>
-      `).join('');
+      `;
+      }).join('');
     }
 
     // -------------------- Copia de seguridad --------------------
@@ -458,6 +507,8 @@
       document.getElementById('editar-nombre').value = p.nombre_completo || '';
       document.getElementById('editar-rol').value = p.rol;
       document.getElementById('editar-ubicacion').value = p.ubicacion || '';
+      document.getElementById('editar-buque').value = p.buque_id || '';
+      actualizarVisibilidadBuque('editar');
       document.getElementById('editar-email').value = p.email_contacto || '';
       document.getElementById('editar-movil').value = p.movil || '';
       document.getElementById('editar-linkedin').value = p.linkedin || '';
@@ -481,6 +532,7 @@
       const movil = document.getElementById('editar-movil').value.trim() || null;
       const linkedin = document.getElementById('editar-linkedin').value.trim() || null;
       const activo = document.getElementById('editar-activo').checked;
+      const buque_id = rol === 'TRABAJADOR' ? (document.getElementById('editar-buque').value || null) : null;
       const anterior = perfilesCache.find(p => p.id === idEditando);
 
       if (!nombre_completo) { estadoEl.textContent = 'El nombre no puede quedar vacío'; estadoEl.className = 'estado error'; return; }
@@ -490,7 +542,7 @@
       }
 
       const { error } = await supabaseClient.from('profiles').update({
-        nombre_completo, rol, ubicacion, email_contacto, movil, linkedin, activo
+        nombre_completo, rol, ubicacion, email_contacto, movil, linkedin, activo, buque_id
       }).eq('id', idEditando);
 
       if (error) {
@@ -506,6 +558,7 @@
       if (anterior && anterior.email_contacto !== email_contacto) cambios.push('email de contacto');
       if (anterior && anterior.movil !== movil) cambios.push('móvil');
       if (anterior && anterior.linkedin !== linkedin) cambios.push('LinkedIn');
+      if (anterior && anterior.buque_id !== buque_id) cambios.push('buque asignado');
       registrarLog('EDITAR_USUARIO', `Editó a "${nombre_completo}"${cambios.length ? ' — cambios: ' + cambios.join(', ') : ' — sin cambios de datos'}`);
 
       cerrarModalEditar();

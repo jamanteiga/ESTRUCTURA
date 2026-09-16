@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ESTRUCTURA</title>
   <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="IMAGES/icon-192.png">
   <meta name="theme-color" content="#007bff">
   <style>
     body { font-family: Arial, sans-serif; max-width: 640px; margin: 60px auto; padding: 0 20px; color: #333; }
@@ -46,7 +47,7 @@
         <img class="imagen-completa" src="IMAGES/RESUMEN.jpg" alt="Resumen">
       </a>
       <a class="tarjeta" href="kanban.html">
-        <img class="imagen-completa" src="IMAGES/ARBOL-ESTRUCTURA-NAVAL-KANBAN.jpg" alt="Kanban">
+        <img class="imagen-completa" src="IMAGES/kanban-icono.svg" alt="Kanban">
       </a>
       <a class="tarjeta" id="tarjeta-usuarios" href="usuarios.html" style="display:none;">
         <img class="imagen-completa" src="IMAGES/GESTION-USUARIOS.jpg" alt="Gestión de usuarios">
@@ -54,15 +55,6 @@
       <a class="tarjeta" href="cambiar-password.html">
         <img class="imagen-completa" src="IMAGES/CAMBIAR-CONTRASENA.jpg" alt="Cambiar mi contraseña">
       </a>
-    </div>
-
-    <div class="pie" id="pref-inicio-wrap" style="display:none; margin-bottom:14px;">
-      <label style="font-size:12px; color:#666;">Al entrar, ir directo a:
-        <select id="sel-pref-inicio" onchange="guardarPrefInicio()" style="padding:4px; border-radius:4px; border:1px solid #ccc;">
-          <option value="">Esta pantalla</option>
-          <option value="resumen">Mis tareas (Resumen)</option>
-        </select>
-      </label>
     </div>
 
     <div class="pie">
@@ -114,13 +106,9 @@
       miPerfil = perfil;
 
       if (perfil.rol === 'TRABAJADOR') {
-        const pref = localStorage.getItem('estructura_inicio_' + perfil.id);
-        if (pref === 'resumen') {
-          window.location.href = 'resumen.html';
-          return;
-        }
-        document.getElementById('pref-inicio-wrap').style.display = 'block';
-        document.getElementById('sel-pref-inicio').value = pref || '';
+        // La app arranca siempre en el árbol para los usuarios normales.
+        window.location.href = 'arbol.html';
+        return;
       }
 
       document.getElementById('texto-usuario').textContent =
@@ -132,12 +120,6 @@
 
       document.getElementById('estado-carga').style.display = 'none';
       document.getElementById('contenido').style.display = 'block';
-    }
-
-    function guardarPrefInicio() {
-      const valor = document.getElementById('sel-pref-inicio').value;
-      if (valor) localStorage.setItem('estructura_inicio_' + miPerfil.id, valor);
-      else localStorage.removeItem('estructura_inicio_' + miPerfil.id);
     }
 
     async function cerrarSesion() {

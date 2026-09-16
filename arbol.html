@@ -348,13 +348,13 @@
         <span class="menu-item solo-escritorio" id="menu-item-buque" onclick="esInvitado() ? mostrarAvisoModal('Eres un usuario Invitado: solo puedes consultar, no puedes realizar cambios.') : abrirModalCrear(null, 'BUQUE')" style="display:none;">+ Añadir Buque</span>
         <div class="menu-item-expandible" onclick="toggleSubmenuFlotante(event, this, 'submenu-resumen')">📊 Resumen <span class="flecha-menu">›</span></div>
         <div class="menu-submenu-contenido" id="submenu-resumen">
-          <a class="menu-item" href="avances.html">📉 Avances</a>
+          <a class="menu-item" data-solo-gestor href="avances.html">📉 Avances</a>
           <a class="menu-item" href="cambiosmodelo.html">🔧 Cambios de modelo</a>
-          <a class="menu-item" href="cargatrabajo.html">👷 Carga de trabajo</a>
+          <a class="menu-item" data-solo-gestor href="cargatrabajo.html">👷 Carga de trabajo</a>
           <a class="menu-item" href="revision.html">⏳ Cola de revisión</a>
-          <a class="menu-item" href="kpi.html">📈 KPIs</a>
+          <a class="menu-item" data-solo-gestor href="kpi.html">📈 KPIs</a>
           <a class="menu-item" href="pendientedudas.html">❓ Pendiente de dudas</a>
-          <a class="menu-item" href="previsioncarga.html">📅 Previsión de carga</a>
+          <a class="menu-item" data-solo-gestor href="previsioncarga.html">📅 Previsión de carga</a>
           <a class="menu-item" href="rechazados.html">✘ Rechazados</a>
           <a class="menu-item" href="resumen.html">📊 Resumen general</a>
           <a class="menu-item" href="sinasignar.html">🚫 Sin asignar</a>
@@ -1070,6 +1070,14 @@
 
       if (pareceGestor()) document.getElementById('menu-item-buque').style.display = 'flex';
 
+      // Un usuario normal solo ve, dentro de "Resumen", lo que le afecta a
+      // él (Cambios de modelo, Cola de revisión, Pendiente de dudas,
+      // Rechazados, Resumen general, Sin asignar) — Avances, Carga de
+      // trabajo, KPIs y Previsión de carga son paneles de gestión.
+      if (perfil.rol === 'TRABAJADOR') {
+        document.querySelectorAll('[data-solo-gestor]').forEach(el => el.style.display = 'none');
+      }
+
       restaurarEstadoMenuLateral();
       if (perfil.rol === 'ADMIN') {
         document.getElementById('menu-link-usuarios').style.display = 'flex';
@@ -1202,8 +1210,8 @@
           const titulo = document.querySelector(`.menu-seccion-titulo[data-menu-seccion="${nombre}"]`);
           if (titulo) { titulo.classList.add('abierta'); titulo.nextElementSibling.classList.add('abierta'); }
         });
-      } else if (miPerfil.rol === 'ADMIN') {
-        // Primera vez sin nada guardado: como siempre, todo desplegado para el admin.
+      } else {
+        // Primera vez sin nada guardado: todo desplegado por defecto, sea quien sea.
         document.querySelectorAll('.menu-seccion-titulo').forEach(t => t.classList.add('abierta'));
         document.querySelectorAll('.menu-seccion-contenido').forEach(c => c.classList.add('abierta'));
       }
@@ -1351,6 +1359,30 @@
       );
     }
 
+    // Un usuario normal (TRABAJADOR) solo puede estar dado de alta en UN
+    // buque (profiles.buque_id) y no debe ver el resto. Admin, supervisor y
+    // windchill siguen viendo todos los buques sin restricción.
+    function filtrarPorBuqueAsignado(nodos) {
+      if (miPerfil.rol !== 'TRABAJADOR' || !miPerfil.buque_id) return nodos;
+
+      const hijosPorPadreTmp = {};
+      nodos.forEach(n => {
+        const clave = n.parent_id || '__raiz__';
+        if (!hijosPorPadreTmp[clave]) hijosPorPadreTmp[clave] = [];
+        hijosPorPadreTmp[clave].push(n);
+      });
+
+      const permitidos = new Set([miPerfil.buque_id]);
+      const cola = [miPerfil.buque_id];
+      while (cola.length) {
+        const actual = cola.pop();
+        (hijosPorPadreTmp[actual] || []).forEach(hijo => {
+          if (!permitidos.has(hijo.id)) { permitidos.add(hijo.id); cola.push(hijo.id); }
+        });
+      }
+      return nodos.filter(n => n.tipo === 'BUQUE' ? n.id === miPerfil.buque_id : permitidos.has(n.id));
+    }
+
     async function cargarArbol() {
       let query = supabaseClient.from('v_nodes_with_workflow').select('*').order('orden', { ascending: true });
       if (!mostrarDesactivados) query = query.eq('activo', true);
@@ -1359,7 +1391,7 @@
       const raiz = document.getElementById('arbol-raiz');
       if (error) { raiz.innerHTML = `<li style="color:red;">Error al cargar: ${error.message}</li>`; return; }
 
-      todosLosNodos = data || [];
+      todosLosNodos = filtrarPorBuqueAsignado(data || []);
       mapaHijosPorPadre = {};
       mapaNodoPorId = {};
 
