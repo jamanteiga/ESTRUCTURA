@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESTRUCTURA - Avance vs hitos</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#007bff">
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 1050px; margin: 30px auto; padding: 0 20px; color: #333; }
+    h1 { font-size: 22px; }
+    h2 { font-size: 15px; margin-top: 0; }
+    .card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    body.vista-movil .solo-escritorio { display: none !important; }
+    body.tema-oscuro { background: #1a1d21; color: #e0e0e0; }
+    body.tema-oscuro .card { background: #24282e; border-color: #3a3f47; }
+    body.tema-oscuro h1, body.tema-oscuro h2 { color: #f0f0f0; }
+    body.tema-oscuro select, body.tema-oscuro input { background: #1a1d21; color: #e0e0e0; border-color: #4a4f57; }
+    body.tema-oscuro table { color: #e0e0e0; }
+    body.tema-oscuro td, body.tema-oscuro th { border-color: #3a3f47; }
+    .header-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+    button { padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; }
+    button.secundario { background: #6c757d; }
+    button.secundario:hover { background: #5a6268; }
+    .estado-msg { font-size: 13px; }
+    label.linea { font-size: 13px; font-weight: bold; display: inline-block; margin-right: 16px; }
+    select { padding: 5px; border-radius: 4px; border: 1px solid #ccc; margin-left: 6px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 6px; background: white; font-size: 12px; }
+    body.tema-oscuro table { background: transparent; }
+    th, td { padding: 6px; text-align: left; border-bottom: 1px solid #ddd; }
+    th { background: #1c6e8c; color: white; font-size: 11px; }
+    .badge-cumplido { background: #e9f7ec; color: #218838; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold; }
+    .badge-pendiente { background: #fff3cd; color: #8a6300; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold; }
+      @media (max-width: 480px) {
+      body { margin: 10px auto; padding: 0 8px; box-sizing: border-box; }
+      h1 { font-size: 18px; }
+    }
+</style>
+</head>
+<body>
+
+  <div class="header-bar">
+    <h1>🎯 Avance real vs. teórico (según hitos)</h1>
+    <div>
+      <span id="texto-usuario" class="estado-msg"></span>
+      <button class="secundario" onclick="alternarTema()">🌙/☀️</button>
+      <button class="secundario" onclick="location.href='index.html'">🏠 Inicio</button>
+      <button class="secundario" onclick="location.href='arbol.html'">🌳 Árbol</button>
+      <button class="secundario" onclick="location.href='avances.html'">📉 Avances</button>
+      <button class="secundario" onclick="cerrarSesion()">Cerrar sesión</button>
+      <button style="background:#dc3545; color:white; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:13px;" onclick="cerrarPagina()">❌ Cerrar</button>
+    </div>
+  </div>
+
+  <div id="contenido">
+    <p>Cargando...</p>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script>
+    const SUPABASE_URL = 'https://wuarkraddnndmgvfnkmm.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // -------------------- Registro de comunicaciones (log_comunicaciones.html) --------------------
+    // Envuelve fetch para dejar constancia de cada llamada de red que hace
+    // esta página (casi siempre a Supabase): a dónde, cuánto tarda y qué
+    // datos le pasa. Aparte del registro de actividad (audit_log), que es
+    // de acciones del usuario, no de tráfico de red.
+    function redactarCuerpoComunicacion(cuerpoTexto) {
+      if (!cuerpoTexto) return null;
+      try {
+        const limpiar = (o) => {
+          if (Array.isArray(o)) return o.map(limpiar);
+          if (o && typeof o === 'object') {
+            const copia = {};
+            Object.keys(o).forEach(k => { copia[k] = /password|contrase/i.test(k) ? '***' : limpiar(o[k]); });
+            return copia;
+          }
+          return o;
+        };
+        return JSON.stringify(limpiar(JSON.parse(cuerpoTexto))).slice(0, 4000);
+      } catch (e) {
+        return String(cuerpoTexto).slice(0, 4000);
+      }
+    }
+    (function () {
+      const _fetchOriginal = window.fetch.bind(window);
+      window.fetch = async function (input, init) {
+        const inicio = performance.now();
+        const url = typeof input === 'string' ? input : (input && input.url) || '';
+        const metodo = (init && init.method) || (typeof input === 'object' && input && input.method) || 'GET';
+        if (url.indexOf('/comunicaciones_log') !== -1) return _fetchOriginal(input, init);
+        let respuesta, errorMsg = null;
+        try {
+          respuesta = await _fetchOriginal(input, init);
+          return respuesta;
+        } catch (e) {
+          errorMsg = e.message;
+          throw e;
+        } finally {
+          const duracionMs = Math.round(performance.now() - inicio);
+          const cuerpo = init && init.body && typeof init.body === 'string' ? redactarCuerpoComunicacion(init.body) : null;
+          supabaseClient.from('comunicaciones_log').insert({
+            metodo, url, cuerpo, duracion_ms: duracionMs,
+            status_code: respuesta ? respuesta.status : null, error: errorMsg
+          }).then(() => {}, () => {});
+        }
+      };
+    })();
+
+    // -------------------- Modo mantenimiento --------------------
+    // Si está activo y quien entra no es ADMIN, lo manda a mantenimiento.html
+    // en vez de dejarle seguir. Se llama justo después de conocer el rol.
+    async function comprobarMantenimiento(rol) {
+      if (rol === 'ADMIN') return false;
+      try {
+        const { data } = await supabaseClient.from('app_mantenimiento').select('activo').eq('id', 1).single();
+        if (data && data.activo) { window.location.href = 'mantenimiento.html'; return true; }
+      } catch (e) { /* si falla la comprobación, no se bloquea la app por eso */ }
+      return false;
+    }
+
+
+    // Detección de móvil/tablet: iPadOS manda user-agent de escritorio
+    // ("Macintosh") desde iOS 13, así que se completa con pantalla táctil
+    // real (navigator.maxTouchPoints, 0 en un Mac/PC sin pantalla táctil).
+    const esTactil = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+    const esMovil = esTactil || window.innerWidth < 768;
+    document.body.classList.toggle('vista-movil', esMovil);
+
+    const TIPOS_SIN_ASIGNACION = new Set(['BUQUE']);
+
+    let miPerfil = null;
+    let mapaNodoPorId = {};
+    let nodosGestorActual = [];
+    let buqueSeleccionado = null;
+    let bloqueSeleccionado = null; // null = ámbito "todo el buque"
+    let hitosAmbitoCache = [];
+    let chartAvanceHitos = null;
+
+    function esGestor() { return miPerfil.rol === 'ADMIN' || miPerfil.rol === 'REVISOR'; }
+    function esInvitado() { return miPerfil.rol === 'INVITADO'; }
+    function pareceGestor() { return esGestor() || esInvitado(); }
+
+    function buqueDeNodo(nodo) {
+      let actual = nodo;
+      while (actual) {
+        if (actual.tipo === 'BUQUE') return actual;
+        actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
+      }
+      return null;
+    }
+
+    function bloqueDeNodo(nodo) {
+      let actual = nodo;
+      while (actual) {
+        if (actual.tipo === 'BLOQUE') return actual;
+        actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
+      }
+      return null;
+    }
+
+    function listaBloquesDe(buqueId) {
+      return Object.values(mapaNodoPorId)
+        .filter(n => n.tipo === 'BLOQUE' && buqueDeNodo(n)?.id === buqueId)
+        .sort((a, b) => (a.codigo || '').localeCompare(b.codigo || '', 'es', { numeric: true }));
+    }
+
+    async function registrarLog(accion, descripcion) {
+      try {
+        await supabaseClient.from('audit_log').insert({ accion, descripcion, user_agent: navigator.userAgent });
+      } catch (e) {
+        console.warn('No se pudo registrar el log:', e);
+      }
+    }
+
+    async function cerrarSesion() {
+      await registrarLog('LOGOUT', `Cerró sesión (${miPerfil?.username || ''})`);
+      await supabaseClient.auth.signOut();
+      window.location.href = 'login.html';
+    }
+
+    function cerrarPagina() {
+      // Si se llegó aquí navegando desde árbol.html (lo normal, por el menú
+      // lateral), volvemos atrás en el historial para recuperar esa misma
+      // pestaña tal cual estaba, en vez de cargar un árbol.html nuevo desde
+      // cero. Si no se llegó desde árbol.html, se navega igual que antes.
+      if (document.referrer && document.referrer.indexOf('arbol.html') !== -1 && window.history.length > 1) {
+        window.history.back();
+      } else {
+        window.location.href = 'arbol.html';
+      }
+    }
+
+    function aplicarTema(tema) {
+      document.body.classList.toggle('tema-oscuro', tema === 'oscuro');
+      localStorage.setItem('estructura_tema', tema);
+    }
+    function alternarTema() {
+      aplicarTema(document.body.classList.contains('tema-oscuro') ? 'claro' : 'oscuro');
+    }
+    aplicarTema(localStorage.getItem('estructura_tema') || 'claro');
+
+    function formatearFechaCorta(fecha) {
+      return `${String(fecha.getDate()).padStart(2, '0')}/${String(fecha.getMonth() + 1).padStart(2, '0')}/${fecha.getFullYear()}`;
+    }
+    function formatearFechaEje(iso) {
+      const [a, m, d] = iso.split('-');
+      return `${d}/${m}`;
+    }
+
+    // -------------------- Avance real (igual criterio que avances.html) --------------------
+
+    function serieEventosReal(propios) {
+      return propios.filter(n => n.revision_estado === 'APROBADO' && n.revisado_en).map(n => n.revisado_en.slice(0, 10));
+    }
+
+    // -------------------- Avance teórico a partir de los hitos --------------------
+    // No hay ninguna fórmula "oficial" de cuánto debería llevarse hecho en
+    // cada hito intermedio, así que se reparte el 100% a partes iguales
+    // entre los hitos (el primero = 0%, el último = 100%, los de en medio
+    // en orden) y se interpola en línea recta según el tiempo real entre
+    // cada dos hitos consecutivos. Así la curva pasa exactamente por esos
+    // puntos en sus fechas reales, aunque no estén repartidos de forma
+    // regular en el calendario. Hacen falta al menos 2 hitos con fecha para
+    // poder trazarla.
+    function avanceTeoricoEnFecha(hitosOrdenados, fechaIso) {
+      const n = hitosOrdenados.length;
+      if (n < 2) return null;
+      const fecha = new Date(fechaIso + 'T00:00:00');
+      const primera = new Date(hitosOrdenados[0].fecha + 'T00:00:00');
+      const ultima = new Date(hitosOrdenados[n - 1].fecha + 'T00:00:00');
+      if (fecha <= primera) return 0;
+      if (fecha >= ultima) return 100;
+      for (let i = 0; i < n - 1; i++) {
+        const fA = new Date(hitosOrdenados[i].fecha + 'T00:00:00');
+        const fB = new Date(hitosOrdenados[i + 1].fecha + 'T00:00:00');
+        if (fecha >= fA && fecha <= fB) {
+          const pctA = (i / (n - 1)) * 100;
+          const pctB = ((i + 1) / (n - 1)) * 100;
+          const totalMs = fB - fA;
+          const frac = totalMs === 0 ? 1 : (fecha - fA) / totalMs;
+          return pctA + (pctB - pctA) * frac;
+        }
+      }
+      return null;
+    }
+
+    function construirCurva(propios, hitosOrdenados) {
+      const total = propios.length;
+      const eventosReal = serieEventosReal(propios);
+      const hoyIso = new Date().toISOString().slice(0, 10);
+
+      const fechasHitos = hitosOrdenados.map(h => h.fecha);
+      const fechas = [...new Set([...fechasHitos, ...eventosReal, hoyIso])].sort();
+
+      const contarReal = {};
+      eventosReal.forEach(f => contarReal[f] = (contarReal[f] || 0) + 1);
+
+      let acumReal = 0;
+      const puntosReal = [], puntosTeorico = [];
+      fechas.forEach(f => {
+        acumReal += (contarReal[f] || 0);
+        puntosReal.push(f <= hoyIso ? (total === 0 ? null : Math.round((acumReal / total) * 100)) : null);
+        const t = avanceTeoricoEnFecha(hitosOrdenados, f);
+        puntosTeorico.push(t === null ? null : Math.round(t));
+      });
+
+      return { labels: fechas.map(formatearFechaEje), real: puntosReal, teorico: puntosTeorico, total };
+    }
+
+    // -------------------- UI --------------------
+
+    function cambiarBuque(id) {
+      buqueSeleccionado = id;
+      bloqueSeleccionado = null;
+      pintar();
+    }
+    function cambiarAmbito(valor) {
+      bloqueSeleccionado = valor === '' ? null : valor;
+      cargarHitosYPintarCurva();
+    }
+
+    function pintar() {
+      const buques = Object.values(mapaNodoPorId).filter(n => n.tipo === 'BUQUE')
+        .sort((a, b) => (a.codigo || '').localeCompare(b.codigo || '', 'es', { numeric: true }));
+      const cont = document.getElementById('contenido');
+      if (buques.length === 0) {
+        cont.innerHTML = '<div class="card"><p style="font-size:12px; color:#888;">Todavía no hay ningún buque.</p></div>';
+        return;
+      }
+      if (!buqueSeleccionado || !buques.some(b => b.id === buqueSeleccionado)) {
+        buqueSeleccionado = buques[0].id;
+        bloqueSeleccionado = null;
+      }
+      const bloques = listaBloquesDe(buqueSeleccionado);
+
+      cont.innerHTML = `
+        <div class="card">
+          <label class="linea">Buque:
+            <select id="sel-buque" onchange="cambiarBuque(this.value)">
+              ${buques.map(b => `<option value="${b.id}" ${b.id === buqueSeleccionado ? 'selected' : ''}>${b.codigo}${b.nombre ? ' — ' + b.nombre : ''}</option>`).join('')}
+            </select>
+          </label>
+          <label class="linea">Ámbito:
+            <select id="sel-ambito" onchange="cambiarAmbito(this.value)">
+              <option value="" ${!bloqueSeleccionado ? 'selected' : ''}>🚢 Todo el buque</option>
+              ${bloques.map(b => `<option value="${b.id}" ${b.id === bloqueSeleccionado ? 'selected' : ''}>🧱 ${b.codigo}${b.nombre ? ' — ' + b.nombre : ''}</option>`).join('')}
+            </select>
+          </label>
+        </div>
+        <div class="card">
+          <h2>📈 Avance real vs. teórico</h2>
+          <p style="font-size:11px; color:#888; margin:-4px 0 8px;" id="explicacion-curva"></p>
+          <div id="curva-vacio" style="display:none; font-size:12px; color:#888;"></div>
+          <div style="height:320px;"><canvas id="chart-avance-hitos"></canvas></div>
+        </div>
+        <div class="card">
+          <h2>🚩 Hitos considerados en este ámbito (<span id="contador-hitos-ambito">0</span>)</h2>
+          <p style="font-size:11px; color:#888; margin:-4px 0 8px;">Se gestionan desde <a href="hitos.html">hitos.html</a>.</p>
+          <div id="tabla-hitos-ambito"></div>
+        </div>
+      `;
+      cargarHitosYPintarCurva();
+    }
+
+    async function cargarHitosYPintarCurva() {
+      const { data: hitosCrudos, error } = await supabaseClient.from('hitos').select('*').eq('buque_id', buqueSeleccionado).order('fecha');
+      if (error) { document.getElementById('curva-vacio').style.display = 'block'; document.getElementById('curva-vacio').textContent = 'Error: ' + error.message; return; }
+
+      const todos = hitosCrudos || [];
+      hitosAmbitoCache = bloqueSeleccionado
+        ? todos.filter(h => h.node_id === bloqueSeleccionado)
+        : todos.filter(h => !h.node_id);
+
+      document.getElementById('explicacion-curva').textContent = bloqueSeleccionado
+        ? 'Teórico calculado a partir de los hitos de este Bloque (Fecha de inicio, Fecha de fin, Puerta de calidad...). Real = % de tareas de este Bloque ya aprobadas.'
+        : 'Teórico calculado a partir de los hitos generales del buque (inicio de ingeniería, botadura, entrega...). Real = % de todo el buque ya aprobado.';
+
+      pintarTablaHitosAmbito();
+
+      const propios = bloqueSeleccionado
+        ? nodosGestorActual.filter(n => bloqueDeNodo(n)?.id === bloqueSeleccionado)
+        : nodosGestorActual.filter(n => buqueDeNodo(n)?.id === buqueSeleccionado);
+
+      const hitosOrdenados = hitosAmbitoCache.slice().sort((a, b) => a.fecha.localeCompare(b.fecha));
+      const canvas = document.getElementById('chart-avance-hitos');
+      const vacioEl = document.getElementById('curva-vacio');
+
+      if (chartAvanceHitos) { chartAvanceHitos.destroy(); chartAvanceHitos = null; }
+
+      if (hitosOrdenados.length < 2) {
+        canvas.style.display = 'none';
+        vacioEl.style.display = 'block';
+        vacioEl.textContent = `Hacen falta al menos 2 hitos con fecha en este ámbito para calcular el avance teórico (hay ${hitosOrdenados.length}). Añádelos desde hitos.html.`;
+        return;
+      }
+      if (propios.length === 0) {
+        canvas.style.display = 'none';
+        vacioEl.style.display = 'block';
+        vacioEl.textContent = 'Este ámbito todavía no tiene ninguna tarea.';
+        return;
+      }
+
+      canvas.style.display = 'block';
+      vacioEl.style.display = 'none';
+
+      const datos = construirCurva(propios, hitosOrdenados);
+
+      chartAvanceHitos = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: datos.labels,
+          datasets: [
+            { label: 'Teórico (según hitos)', data: datos.teorico, borderColor: '#6c757d', borderDash: [5, 4], pointRadius: 0, tension: 0.1, spanGaps: true },
+            { label: 'Real (% aprobado acumulado)', data: datos.real, borderColor: '#007bff', pointRadius: 0, tension: 0.1, spanGaps: false }
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          scales: { y: { min: 0, max: 100, ticks: { callback: v => v + '%' } } },
+          plugins: { legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 11 } } } }
+        }
+      });
+    }
+
+    function pintarTablaHitosAmbito() {
+      document.getElementById('contador-hitos-ambito').textContent = hitosAmbitoCache.length;
+      const cont = document.getElementById('tabla-hitos-ambito');
+      if (hitosAmbitoCache.length === 0) {
+        cont.innerHTML = '<p style="font-size:12px; color:#888;">Todavía no hay ningún hito en este ámbito.</p>';
+        return;
+      }
+      const hoyIso = new Date().toISOString().slice(0, 10);
+      const filas = hitosAmbitoCache.slice().sort((a, b) => a.fecha.localeCompare(b.fecha)).map(h => {
+        const cumplido = h.fecha <= hoyIso;
+        return `
+        <tr>
+          <td>${formatearFechaCorta(new Date(h.fecha + 'T00:00:00'))}</td>
+          <td>${h.nombre}</td>
+          <td>${h.descripcion || '—'}</td>
+          <td><span class="${cumplido ? 'badge-cumplido' : 'badge-pendiente'}">${cumplido ? '✅ Cumplido' : '🔜 Pendiente'}</span></td>
+        </tr>`;
+      }).join('');
+      cont.innerHTML = `
+        <table>
+          <thead><tr><th>Fecha</th><th>Nombre</th><th>Descripción</th><th>Estado</th></tr></thead>
+          <tbody>${filas}</tbody>
+        </table>`;
+    }
+
+    async function cargarYPintar() {
+      const { data: nodos, error } = await supabaseClient.from('v_nodes_with_workflow').select('*').eq('activo', true);
+      if (error) { document.getElementById('contenido').innerHTML = `<p style="color:red;">Error: ${error.message}</p>`; return; }
+      mapaNodoPorId = {};
+      nodos.forEach(n => { mapaNodoPorId[n.id] = n; });
+      nodosGestorActual = nodos.filter(n => !TIPOS_SIN_ASIGNACION.has(n.tipo));
+      pintar();
+    }
+
+    let debounceRecarga = null;
+    function recargarConDebounce() { clearTimeout(debounceRecarga); debounceRecarga = setTimeout(() => cargarYPintar(), 400); }
+    function suscribirseARealtime() {
+      supabaseClient.channel('avancehitos_node_workflow').on('postgres_changes', { event: '*', schema: 'public', table: 'node_workflow' }, () => recargarConDebounce()).subscribe();
+      supabaseClient.channel('avancehitos_nodes').on('postgres_changes', { event: '*', schema: 'public', table: 'nodes' }, () => recargarConDebounce()).subscribe();
+      supabaseClient.channel('avancehitos_hitos').on('postgres_changes', { event: '*', schema: 'public', table: 'hitos' }, () => cargarHitosYPintarCurva()).subscribe();
+    }
+
+    async function iniciar() {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (!session) { window.location.href = 'login.html?next=avancehitos.html'; return; }
+
+      const { data: perfil, error } = await supabaseClient
+        .from('profiles').select('*').eq('id', session.user.id).single();
+
+      if (error || !perfil || !perfil.activo) {
+        document.body.innerHTML = '<p style="color:red; font-weight:bold; margin-top:60px; text-align:center;">No tienes acceso.</p>';
+        return;
+      }
+
+      miPerfil = perfil;
+      if (await comprobarMantenimiento(perfil.rol)) return;
+      document.getElementById('texto-usuario').textContent =
+        `${perfil.nombre_completo} (${perfil.username}) — ${{TRABAJADOR:'Usuario',REVISOR:'Supervisor',ADMIN:'Admin',INVITADO:'Invitado',WINDCHILL:'Windchill'}[perfil.rol] || perfil.rol}`;
+
+      if (!pareceGestor()) {
+        document.getElementById('contenido').innerHTML = '<div class="card"><p>Esta página es para gestores. Ve a <a href="resumen.html">Resumen</a> para ver tus tareas.</p></div>';
+        return;
+      }
+
+      await cargarYPintar();
+      suscribirseARealtime();
+    }
+
+    iniciar();
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    }
+  </script>
+</body>
+</html>

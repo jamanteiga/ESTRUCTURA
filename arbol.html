@@ -356,6 +356,7 @@
         <div class="menu-item-expandible" onclick="toggleSubmenuFlotante(event, this, 'submenu-resumen')">📊 Resumen <span class="flecha-menu">›</span></div>
         <div class="menu-submenu-contenido" id="submenu-resumen">
           <a class="menu-item" data-solo-gestor href="avances.html">📉 Avances</a>
+          <a class="menu-item" data-solo-gestor href="avancehitos.html">🎯 Avance vs hitos</a>
           <a class="menu-item" href="cambiosmodelo.html">🔧 Cambios de modelo</a>
           <a class="menu-item" data-solo-gestor href="cargatrabajo.html">👷 Carga de trabajo</a>
           <a class="menu-item" href="revision.html">⏳ Cola de revisión</a>
@@ -874,6 +875,8 @@
       </div>
     </div>
   </div>
+
+  <input type="file" id="input-importar-backup" accept="application/json" style="display:none">
 
   <div class="overlay" id="modal-eliminar" style="z-index:5000;">
     <div class="overlay-caja" style="max-width:420px;">
@@ -1642,9 +1645,13 @@
       if (!cont) return;
       const buques = (mapaHijosPorPadre['__raiz__'] || []).slice()
         .sort((a, b) => a.codigo.localeCompare(b.codigo, 'es', { sensitivity: 'base' }));
-      cont.innerHTML = '<span class="menu-item" onclick="abrirModalBackupAutomatico()">⚙️ Copia automática por hora</span>' +
+      cont.innerHTML = '<span class="menu-item" style="font-weight:600; opacity:0.7; cursor:default;">— Exportar —</span>' +
+        '<span class="menu-item" onclick="abrirModalBackupAutomatico()">⚙️ Copia automática por hora</span>' +
         '<span class="menu-item" onclick="descargarCopiaSeguridad()">🚢 Todos los buques</span>' +
         buques.map(b => `<span class="menu-item" onclick="descargarCopiaSeguridadBuque('${b.id}')">${b.nombre} (${b.codigo})</span>`).join('') +
+        '<span class="menu-item" style="font-weight:600; opacity:0.7; cursor:default;">— Importar (sustituye) —</span>' +
+        '<span class="menu-item" style="color:#dc3545;" onclick="importarCopiaSeguridadCompleta()">📥 Todos los buques</span>' +
+        buques.map(b => `<span class="menu-item" style="color:#dc3545;" onclick="importarCopiaSeguridadBuque('${b.id}')">📥 ${b.nombre} (${b.codigo})</span>`).join('') +
         '<span class="menu-item" style="color:#dc3545;" onclick="iniciarMantenimiento()">🛠️ Inicio mantenimiento</span>' +
         '<span class="menu-item" style="color:#28a745;" onclick="finalizarMantenimiento()">✅ Fin mantenimiento</span>';
     }
@@ -1796,6 +1803,118 @@
         registrarLog('COPIA_SEGURIDAD', `Descargó una copia de seguridad del buque "${buque.codigo}"`);
         mostrarAvisoModal('Copia de seguridad del buque descargada.');
       }
+    }
+
+    // -------------------- Importar / restaurar una copia de seguridad --------------------
+    // Sustitución total del ámbito elegido (todo, o un buque concreto) por lo
+    // que traiga el fichero. Requiere haber ejecutado antes, en el SQL Editor
+    // de Supabase, estructura_restaurar_backup.sql (crea las funciones
+    // restaurar_backup_completo/restaurar_backup_buque). Doble aviso +
+    // escribir una palabra exacta, para evitar un borrado accidental.
+
+    function abrirSelectorArchivoImportar(callback) {
+      const input = document.getElementById('input-importar-backup');
+      input.value = '';
+      input.onchange = async () => {
+        const file = input.files && input.files[0];
+        if (!file) return;
+        let json;
+        try {
+          json = JSON.parse(await file.text());
+        } catch (e) {
+          mostrarAvisoModal('El fichero elegido no es un JSON válido de copia de seguridad.');
+          return;
+        }
+        callback(json, file.name);
+      };
+      input.click();
+    }
+
+    async function importarCopiaSeguridadCompleta() {
+      cerrarMenu();
+      if (!await mostrarConfirmacion('⚠️ REEMPLAZO TOTAL — Todos los buques\n\nEsto borra TODOS los datos actuales (buques, bloques, piezas, hitos, festivos, ausencias, usuarios...) y los sustituye exactamente por el contenido de un fichero de copia de seguridad.\n\nLo que se haya creado o cambiado después de esa copia desaparecerá. Esta acción no se puede deshacer.\n\nSe recomienda descargar antes una copia de seguridad reciente por si acaso.\n\n¿Continuar y elegir el fichero?')) return;
+
+      abrirSelectorArchivoImportar(async (backup, nombreArchivo) => {
+        if (!backup || !Array.isArray(backup.nodes)) {
+          mostrarAvisoModal('El fichero elegido no tiene el formato esperado de una copia de seguridad completa (falta "nodes").');
+          return;
+        }
+        const resumen = `Fichero: ${nombreArchivo}\n` +
+          `Generado: ${backup.generado_en ? formatearFechaHora(backup.generado_en) : '(desconocido)'}${backup.generado_por ? ' por ' + backup.generado_por : ''}\n\n` +
+          `Contiene:\n` +
+          `• ${(backup.nodes || []).length} nodos (buques/bloques/piezas...)\n` +
+          `• ${(backup.hitos || []).length} hitos\n` +
+          `• ${(backup.profiles || []).length} usuarios\n` +
+          `• ${(backup.festivos || []).length} festivos, ${(backup.ausencias || []).length} ausencias\n\n` +
+          `Esto sustituirá TODO lo que hay ahora mismo en la base de datos.`;
+        if (!await mostrarConfirmacion(resumen + '\n\n¿Seguro que quieres continuar?')) return;
+
+        const palabra = await pedirTexto('Para confirmar el reemplazo total, escribe exactamente la palabra: SUSTITUIR', '');
+        if (palabra === null) return;
+        if (palabra.trim().toUpperCase() !== 'SUSTITUIR') {
+          mostrarAvisoModal('No coincide con "SUSTITUIR" — no se ha hecho nada.');
+          return;
+        }
+
+        mostrarAvisoModal('Restaurando la copia de seguridad, no cierres esta ventana...');
+        const { error } = await supabaseClient.rpc('restaurar_backup_completo', { p_backup: backup });
+        if (error) {
+          registrarLog('INTENTO_FALLIDO', `Restauración completa fallida (${nombreArchivo}): ${error.message}`);
+          mostrarAvisoModal('Error al restaurar: ' + traducirError(error.message) +
+            '\n\nSi el error menciona una restricción de clave foránea ("foreign key constraint") de una tabla distinta de las habituales, comunícalo tal cual para poder corregirlo.');
+          return;
+        }
+        await registrarLog('RESTAURAR_BACKUP', `Restauró la copia de seguridad completa desde "${nombreArchivo}"`);
+        mostrarAvisoModal('Copia de seguridad restaurada correctamente. La página se va a recargar.');
+        setTimeout(() => location.reload(), 1500);
+      });
+    }
+
+    async function importarCopiaSeguridadBuque(buqueId) {
+      cerrarMenu();
+      const buque = mapaNodoPorId[buqueId];
+      if (!buque) return;
+
+      if (!await mostrarConfirmacion(`⚠️ REEMPLAZO TOTAL — Buque "${buque.codigo}"\n\nEsto borra todos los bloques, piezas e hitos actuales de este buque y los sustituye exactamente por el contenido de un fichero de copia de seguridad de ESTE buque. No se tocan los usuarios.\n\nLo que se haya creado o cambiado en este buque después de esa copia desaparecerá. Esta acción no se puede deshacer.\n\nSe recomienda descargar antes una copia de seguridad reciente de este buque por si acaso.\n\n¿Continuar y elegir el fichero?`)) return;
+
+      abrirSelectorArchivoImportar(async (backup, nombreArchivo) => {
+        if (!backup || !Array.isArray(backup.nodes)) {
+          mostrarAvisoModal('El fichero elegido no tiene el formato esperado de una copia de seguridad (falta "nodes").');
+          return;
+        }
+        if (!backup.buque || backup.buque.id !== buqueId) {
+          mostrarAvisoModal(`Este fichero no es una copia de seguridad de "${buque.codigo}"` + (backup.buque && backup.buque.codigo ? ` (es de "${backup.buque.codigo}").` : '.'));
+          return;
+        }
+
+        const resumen = `Fichero: ${nombreArchivo}\n` +
+          `Buque: ${backup.buque.codigo}${backup.buque.nombre ? ' — ' + backup.buque.nombre : ''}\n` +
+          `Generado: ${backup.generado_en ? formatearFechaHora(backup.generado_en) : '(desconocido)'}${backup.generado_por ? ' por ' + backup.generado_por : ''}\n\n` +
+          `Contiene:\n` +
+          `• ${(backup.nodes || []).length} nodos (bloques/piezas...)\n` +
+          `• ${(backup.hitos || []).length} hitos\n\n` +
+          `Esto sustituirá todo lo que hay ahora mismo en el buque "${buque.codigo}". No se tocarán los usuarios.`;
+        if (!await mostrarConfirmacion(resumen + '\n\n¿Seguro que quieres continuar?')) return;
+
+        const palabra = await pedirTexto(`Para confirmar el reemplazo total de este buque, escribe exactamente su código: ${buque.codigo}`, '');
+        if (palabra === null) return;
+        if (palabra.trim().toUpperCase() !== String(buque.codigo).trim().toUpperCase()) {
+          mostrarAvisoModal(`No coincide con "${buque.codigo}" — no se ha hecho nada.`);
+          return;
+        }
+
+        mostrarAvisoModal('Restaurando la copia de seguridad del buque, no cierres esta ventana...');
+        const { error } = await supabaseClient.rpc('restaurar_backup_buque', { p_buque_id: buqueId, p_backup: backup });
+        if (error) {
+          registrarLog('INTENTO_FALLIDO', `Restauración de buque fallida (${buque.codigo}, ${nombreArchivo}): ${error.message}`);
+          mostrarAvisoModal('Error al restaurar: ' + traducirError(error.message) +
+            '\n\nSi el error menciona una restricción de clave foránea ("foreign key constraint") de una tabla distinta de las habituales, comunícalo tal cual para poder corregirlo.');
+          return;
+        }
+        await registrarLog('RESTAURAR_BACKUP', `Restauró la copia de seguridad del buque "${buque.codigo}" desde "${nombreArchivo}"`);
+        mostrarAvisoModal('Copia de seguridad del buque restaurada correctamente. La página se va a recargar.');
+        setTimeout(() => location.reload(), 1500);
+      });
     }
 
     // -------------------- Copia de seguridad automática por hora --------------------
