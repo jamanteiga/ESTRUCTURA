@@ -218,7 +218,16 @@
         puntosReal.push(f <= hoyIso ? Math.round((acumReal / total) * 100) : null);
       });
 
-      return { labels: fechas.map(f => formatearFechaEjeCurva(f)), plan: puntosPlan, real: puntosReal };
+      // "Va bien" = hoy el real acumulado alcanza o supera lo que el plan
+      // decía que debería llevarse a estas alturas. hoyIso siempre está en
+      // "fechas" (se añade explícitamente arriba), así que este índice
+      // siempre existe.
+      const indiceHoy = fechas.indexOf(hoyIso);
+      const avanceRealHoy = puntosReal[indiceHoy];
+      const avancePlanHoy = puntosPlan[indiceHoy];
+      const vaBien = avanceRealHoy !== null && avanceRealHoy !== undefined && avanceRealHoy >= avancePlanHoy;
+
+      return { labels: fechas.map(f => formatearFechaEjeCurva(f)), plan: puntosPlan, real: puntosReal, vaBien };
     }
 
     function construirCurvaAvance(buqueId) {
@@ -247,9 +256,9 @@
       }
       return `
         <div class="card">
-          <h2>📈 Curva de avance por buque — plan vs. real</h2>
+          <h2>📈 Curva de avance por buque — teórico vs. real</h2>
           <p style="font-size:11px; color:#888; margin:-4px 0 8px;">
-            La línea de plan solo cuenta las tareas que ya tienen fecha fin prevista fijada (menú del árbol → Fechas previstas).
+            La línea teórica (verde) solo cuenta las tareas que ya tienen fecha fin prevista fijada (menú del árbol → Fechas previstas). La línea real se muestra en azul si hoy va igual o por delante de lo previsto, y en rojo si va por detrás.
           </p>
           <label style="display:inline-block; font-size:12px; font-weight:bold; margin-bottom:6px;">Buque:
             <select id="sel-curva-buque" onchange="buqueCurvaSeleccionado = this.value; pintarCurvaAvance();" style="padding:4px; border-radius:4px; border:1px solid #ccc; margin-left:6px;">
@@ -283,8 +292,8 @@
         data: {
           labels: datos.labels,
           datasets: [
-            { label: 'Plan (% previsto acumulado)', data: datos.plan, borderColor: '#6c757d', borderDash: [5, 4], pointRadius: 0, tension: 0.1 },
-            { label: 'Real (% aprobado acumulado)', data: datos.real, borderColor: '#007bff', pointRadius: 0, tension: 0.1, spanGaps: false }
+            { label: 'Teórico (% previsto acumulado)', data: datos.plan, borderColor: '#28a745', borderDash: [5, 4], pointRadius: 0, tension: 0.1 },
+            { label: 'Real (% aprobado acumulado)', data: datos.real, borderColor: datos.vaBien ? '#007bff' : '#dc3545', pointRadius: 0, tension: 0.1, spanGaps: false }
           ]
         },
         options: {
@@ -308,9 +317,9 @@
       }
       return `
         <div class="card">
-          <h2>📈 Curva de avance por bloque — plan vs. real</h2>
+          <h2>📈 Curva de avance por bloque — teórico vs. real</h2>
           <p style="font-size:11px; color:#888; margin:-4px 0 8px;">
-            La línea de plan solo cuenta las tareas que ya tienen fecha fin prevista fijada (menú del árbol → Fechas previstas).
+            La línea teórica (verde) solo cuenta las tareas que ya tienen fecha fin prevista fijada (menú del árbol → Fechas previstas). La línea real se muestra en azul si hoy va igual o por delante de lo previsto, y en rojo si va por detrás.
           </p>
           <label style="display:inline-block; font-size:12px; font-weight:bold; margin-bottom:6px;">Bloque:
             <select id="sel-curva-bloque" onchange="bloqueCurvaSeleccionado = this.value; pintarCurvaAvanceBloque();" style="padding:4px; border-radius:4px; border:1px solid #ccc; margin-left:6px;">
@@ -344,8 +353,8 @@
         data: {
           labels: datos.labels,
           datasets: [
-            { label: 'Plan (% previsto acumulado)', data: datos.plan, borderColor: '#6c757d', borderDash: [5, 4], pointRadius: 0, tension: 0.1 },
-            { label: 'Real (% aprobado acumulado)', data: datos.real, borderColor: '#007bff', pointRadius: 0, tension: 0.1, spanGaps: false }
+            { label: 'Teórico (% previsto acumulado)', data: datos.plan, borderColor: '#28a745', borderDash: [5, 4], pointRadius: 0, tension: 0.1 },
+            { label: 'Real (% aprobado acumulado)', data: datos.real, borderColor: datos.vaBien ? '#007bff' : '#dc3545', pointRadius: 0, tension: 0.1, spanGaps: false }
           ]
         },
         options: {

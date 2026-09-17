@@ -86,6 +86,14 @@
 
   <div id="contenido-hitos" style="display:none;">
 
+    <div class="card" style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+      <span style="font-size:12px; color:#666;">Rellena las fechas que hagan falta abajo (buque y bloques) y guárdalas todas de una vez, en vez de una por una.</span>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span class="estado-msg" id="guardar-todos-estado"></span>
+        <button onclick="guardarTodosLosHitos()">💾 Guardar todos los pendientes</button>
+      </div>
+    </div>
+
     <div class="card">
       <h2>🚢 Hitos generales del buque</h2>
       <div id="lista-hitos-buque"></div>
@@ -325,7 +333,7 @@
         <div class="fila-hito-fijo">
           <span class="nombre-hito">${nombre}</span>
           <span class="sin-fecha">Sin fecha todavía</span>
-          <input type="date" id="${idHtml}">
+          <input type="date" id="${idHtml}" data-nombre-hito="${nombre.replace(/"/g, '&quot;')}" data-node-id="${nodeId || ''}">
           <button class="pequeno" onclick="guardarHitoFijo('${nombre.replace(/'/g, "\\'")}', '${idHtml}', ${nodeId ? `'${nodeId}'` : 'null'})">Guardar</button>
         </div>`;
     }
@@ -353,6 +361,45 @@
       });
       if (error) { alert('Error: ' + error.message); return; }
       registrarLog('HITO', `Fijó "${nombre}" (${fecha})${nodeId ? ` en ${mapaNodoPorId[nodeId]?.codigo || ''}` : ''}`);
+      await cargarDatosBuque();
+    }
+
+    // Guarda de una vez todas las fechas fijas (buque + bloques) que estén
+    // rellenas pero todavía sin guardar -- los hitos ya guardados no pintan
+    // ningún <input>, así que este selector solo encuentra los pendientes.
+    async function guardarTodosLosHitos() {
+      const estadoEl = document.getElementById('guardar-todos-estado');
+      const inputs = Array.from(document.querySelectorAll('#contenido-hitos input[type="date"][data-nombre-hito]'))
+        .filter(inp => inp.value);
+
+      if (inputs.length === 0) {
+        estadoEl.textContent = 'No hay ninguna fecha nueva rellenada para guardar.';
+        estadoEl.className = 'estado-msg';
+        return;
+      }
+
+      estadoEl.textContent = `Guardando ${inputs.length} hito(s)...`;
+      estadoEl.className = 'estado-msg';
+
+      const resultados = await Promise.all(inputs.map(inp => supabaseClient.rpc('anadir_hito', {
+        p_buque_id: buqueActualId,
+        p_nombre: inp.dataset.nombreHito,
+        p_fecha: inp.value,
+        p_descripcion: null,
+        p_node_id: inp.dataset.nodeId || null
+      })));
+
+      const errores = resultados.filter(r => r.error);
+      const guardados = inputs.length - errores.length;
+      if (errores.length > 0) {
+        estadoEl.textContent = `Guardados ${guardados} de ${inputs.length}. Error en los demás: ${errores[0].error.message}`;
+        estadoEl.className = 'estado-msg error';
+      } else {
+        estadoEl.textContent = '';
+      }
+      if (guardados > 0) {
+        registrarLog('HITO', `Guardó ${guardados} hito(s) de una vez`);
+      }
       await cargarDatosBuque();
     }
 
