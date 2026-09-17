@@ -136,50 +136,52 @@ function colorRelojSegunHora(fecha) {
   return '#dc3545';
 }
 
-// Guarda, por fecha, los segundos de tiempo extra "congelados" al pulsar
-// Finalizar jornada (ver alternarFinalizarJornada). Mientras el día de HOY
-// esté cerrado, el contador de tiempo extra deja de avanzar y muestra este
-// valor fijo en vez de seguir calculando en vivo.
-const CLAVE_EXTRA_CONGELADO = 'reghor_extra_congelado';
+/**
+ * Segundos transcurridos EN BRUTO (sin descontar pausas) desde que empezó
+ * la jornada de hoy -hora de inicio del primer registro- hasta "ahora".
+ * Devuelve null si hoy todavía no hay ningún registro (la jornada no ha
+ * empezado). A diferencia de calcularTiempoEfectivoSegundos, aquí no se
+ * descuentan las pausas: es el tiempo total transcurrido desde que se
+ * empezó a trabajar, use en lo que se use ese tiempo.
+ */
+function calcularSegundosDesdeInicioJornada(ahora) {
+  const registros = registrosHoyContadorCache;
+  if (!registros || registros.length === 0) return null;
 
-function obtenerExtraCongelado() {
-  try {
-    return JSON.parse(localStorage.getItem(CLAVE_EXTRA_CONGELADO)) || {};
-  } catch (e) {
-    return {};
-  }
-}
-
-/** Segundos de tiempo extra transcurridos desde las 16:00 hasta el instante "ahora" (sin congelar). */
-function calcularSegundosExtra(ahora) {
-  const inicioExtra = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate(), 16, 0, 0, 0);
-  return Math.max(0, Math.floor((ahora - inicioExtra) / 1000));
+  const [h, m] = registros[0].horainicio.split(':').map(Number);
+  const inicioJornadaMin = h * 60 + m;
+  const minutosAhora = ahora.getHours() * 60 + ahora.getMinutes() + ahora.getSeconds() / 60;
+  const minutos = Math.max(0, minutosAhora - inicioJornadaMin);
+  return Math.floor(minutos * 60);
 }
 
 /**
- * Contador de tiempo extra (hh:mm:ss, siempre en verde) transcurrido desde
- * las 16:00 de hoy. Solo se muestra a partir de esa hora; antes queda
- * vacío y oculto. Si hoy está finalizada (Finalizar jornada), se congela en
- * el valor guardado en ese momento y deja de avanzar hasta que se reabra.
+ * Contador (hh:mm:ss, siempre en verde) del tiempo transcurrido desde que
+ * empezó la jornada de hoy. Se para y queda a "+00:00:00" en cuanto se
+ * pulsa "Finalizar jornada"; al Reabrir jornada vuelve a contar en vivo
+ * desde el inicio real de la jornada (no desde cero). Antes de que haya
+ * ningún registro hoy, queda vacío y oculto.
  */
 function actualizarContadorExtra(ahora) {
   const el = document.getElementById('contador-extra');
   if (!el) return;
 
-  const minutosDelDia = ahora.getHours() * 60 + ahora.getMinutes();
-  if (minutosDelDia < 16 * 60) {
+  const hoyStr = obtenerFechaHoyISO();
+  if (esDiaCerrado(hoyStr)) {
+    el.textContent = '+00:00:00';
+    el.style.color = '#28a745';
+    el.style.display = '';
+    return;
+  }
+
+  const segundos = calcularSegundosDesdeInicioJornada(ahora);
+  if (segundos === null) {
     el.textContent = '';
     el.style.display = 'none';
     return;
   }
 
-  const hoyStr = obtenerFechaHoyISO();
-  const congelados = obtenerExtraCongelado();
-  const totalSegundos = (esDiaCerrado(hoyStr) && typeof congelados[hoyStr] === 'number')
-    ? congelados[hoyStr]
-    : calcularSegundosExtra(ahora);
-
-  el.textContent = `+${formatearSegundosComoHHMMSS(totalSegundos)}`;
+  el.textContent = `+${formatearSegundosComoHHMMSS(segundos)}`;
   el.style.color = '#28a745';
   el.style.display = '';
 }
@@ -219,7 +221,7 @@ function iniciarRelojEnVivo() {
 // Tareas que pausan el contador de tiempo efectivo (no cuentan como trabajo).
 const TAREAS_PAUSA_CONTADOR = ["Fuera escritorio", "Comida", "Descanso 20'", "Descanso 30'", "Espera de nueva tarea"];
 
-// PROYECTO_RENDIMIENTO y calcularPorcentajeRendimiento() viven en config.js
+// PROYECTOS_RENDIMIENTO y calcularPorcentajeRendimiento() viven en config.js
 // (compartidos con graficos.js).
 
 let registrosHoyContadorCache = [];
@@ -283,23 +285,42 @@ function calcularTiempoEfectivoSegundos(ahora) {
   return Math.floor(minutosEfectivos * 60);
 }
 
-/** Minutos de hoy registrados en el proyecto de rendimiento (BAC2), incluido el tramo en curso si la última tarea es de ese proyecto y aún no tiene hora de fin. */
+/** Minutos de hoy registrados en los proyectos de rendimiento (BLOR o BAC2), incluido el tramo en curso si la última tarea es de uno de esos proyectos y aún no tiene hora de fin. */
 function calcularMinutosRendimientoHoy(ahora) {
   const registros = registrosHoyContadorCache;
   if (!registros || registros.length === 0) return 0;
-  // PROYECTO_RENDIMIENTO vive en config.js; si por error se ha sustituido
+  // PROYECTOS_RENDIMIENTO vive en config.js; si por error se ha sustituido
   // app.js sin sustituir también config.js a la vez, esto evita un
   // ReferenceError que rompería el reloj de la cabecera entero.
-  if (typeof PROYECTO_RENDIMIENTO === 'undefined') return 0;
+  if (typeof PROYECTOS_RENDIMIENTO === 'undefined') return 0;
 
   let minutos = 0;
   registros.forEach((reg, idx) => {
-    if (reg.proyecto !== PROYECTO_RENDIMIENTO) return;
+    if (!PROYECTOS_RENDIMIENTO.includes(reg.proyecto)) return;
     if (reg.horafin) {
       minutos += obtenerMinutosDuracion(reg.horainicio, reg.horafin);
     } else if (idx === registros.length - 1) {
       minutos += minutosHastaAhora(reg.horainicio, ahora);
     }
+  });
+  return minutos;
+}
+
+/**
+ * Minutos registrados en los proyectos de rendimiento (BLOR o BAC2) dentro
+ * de una lista de registros YA CERRADA de un día que no es hoy (por eso no
+ * hay "tramo en curso" que sumar en vivo: ese día no está pasando ahora
+ * mismo). Se usa para recalcular el Rto de la cabecera cuando se navega a
+ * un día distinto del actual con el selector de fecha.
+ */
+function calcularMinutosRendimientoDeLista(lista) {
+  if (!lista || lista.length === 0) return 0;
+  if (typeof PROYECTOS_RENDIMIENTO === 'undefined') return 0;
+
+  let minutos = 0;
+  lista.forEach(reg => {
+    if (!PROYECTOS_RENDIMIENTO.includes(reg.proyecto)) return;
+    minutos += obtenerMinutosDuracion(reg.horainicio, reg.horafin);
   });
   return minutos;
 }
@@ -313,7 +334,20 @@ function formatearSegundosComoHHMMSS(totalSegundos) {
   return `${hh}:${mm}:${ss}`;
 }
 
-/** Actualiza el contador de tiempo efectivo (hh:mm:ss) y el % de rendimiento de hoy, en la cabecera. */
+/**
+ * Devuelve la fecha (YYYY-MM-DD) del día actualmente activo en el listado de
+ * abajo -el que se ve en el selector de Fecha-, o null si en vez de un solo
+ * día hay un rango de varios días activo (rangoActivo), caso en el que no
+ * hay un único día para el que calcular el Rto de la cabecera.
+ */
+function obtenerFechaDiaActivo() {
+  if (rangoActivo) return null;
+  const inputFecha = document.getElementById('fecha');
+  const valor = inputFecha ? inputFecha.value.trim() : '';
+  return valor || obtenerFechaHoyISO();
+}
+
+/** Actualiza el contador de tiempo efectivo (hh:mm:ss, siempre de HOY) y el % de rendimiento de la cabecera. */
 function actualizarContadorEfectivoYRendimiento(ahora) {
   const elContador = document.getElementById('contador-efectivo');
   const elPorcentaje = document.getElementById('pct-rendimiento');
@@ -333,8 +367,31 @@ function actualizarContadorEfectivoYRendimiento(ahora) {
       elPorcentaje.textContent = 'Rto=--%';
     } else {
       const hoyStr = obtenerFechaHoyISO();
-      const minutosRendimiento = calcularMinutosRendimientoHoy(ahora);
-      const pct = calcularPorcentajeRendimiento(minutosRendimiento, hoyStr);
+      const diaActivo = obtenerFechaDiaActivo();
+
+      let minutosRendimiento;
+      let fechaParaCalculo;
+      if (diaActivo === null) {
+        // Hay un rango de varios días activo (Esta semana, Este mes...): el
+        // Rto de la cabecera es un indicador de UN día, no tiene un valor
+        // único que mostrar para un periodo completo (para eso está el
+        // gráfico de Rendimiento en graficos.html).
+        elPorcentaje.textContent = 'Rto=--%';
+        return;
+      } else if (diaActivo === hoyStr) {
+        // Viendo hoy: en vivo, incluyendo el tramo en curso si la última
+        // tarea todavía no tiene hora de fin.
+        minutosRendimiento = calcularMinutosRendimientoHoy(ahora);
+        fechaParaCalculo = hoyStr;
+      } else {
+        // Viendo un día distinto de hoy: recalculado a partir de los
+        // registros de ESE día, ya cargados en el listado de abajo (no está
+        // "en curso", así que no hay tramo en vivo que sumar).
+        minutosRendimiento = calcularMinutosRendimientoDeLista(tareasCargadasCache);
+        fechaParaCalculo = diaActivo;
+      }
+
+      const pct = calcularPorcentajeRendimiento(minutosRendimiento, fechaParaCalculo);
       elPorcentaje.textContent = (pct === null) ? 'Rto=--%' : `Rto=${Math.round(pct)}%`;
     }
   }
@@ -953,27 +1010,17 @@ function alternarFinalizarJornada() {
 
   const dias = obtenerDiasCerrados();
   const idx = dias.indexOf(fechaStr);
-  const esHoy = fechaStr === obtenerFechaHoyISO();
 
   if (idx >= 0) {
     dias.splice(idx, 1);
-    // Reabrir hoy: el contador de tiempo extra vuelve a avanzar en vivo.
-    if (esHoy) {
-      const congelados = obtenerExtraCongelado();
-      delete congelados[fechaStr];
-      localStorage.setItem(CLAVE_EXTRA_CONGELADO, JSON.stringify(congelados));
-    }
   } else {
     const texto = TEXTOS_CONFIRMAR_FINALIZAR[idiomaActual] || TEXTOS_CONFIRMAR_FINALIZAR.es;
     if (!confirm(texto)) return;
     dias.push(fechaStr);
-    // Finalizar hoy: se congela el contador de tiempo extra en su valor actual.
-    if (esHoy) {
-      const congelados = obtenerExtraCongelado();
-      congelados[fechaStr] = calcularSegundosExtra(new Date());
-      localStorage.setItem(CLAVE_EXTRA_CONGELADO, JSON.stringify(congelados));
-    }
   }
+  // Si la fecha finalizada/reabierta es la de hoy, actualizarContadorExtra
+  // (llamado cada segundo desde iniciarRelojEnVivo) recalcula solo con
+  // mirar esDiaCerrado(hoy): a "+00:00:00" al finalizar, en vivo al reabrir.
 
   localStorage.setItem(CLAVE_DIAS_CERRADOS, JSON.stringify(dias));
   actualizarEstadoDiaCerrado();
