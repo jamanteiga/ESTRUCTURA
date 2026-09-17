@@ -170,11 +170,17 @@
     }
 
     function cerrarPagina() {
-      // Vamos siempre directos al árbol. (Antes se intentaba window.close()
-      // primero: en algunos navegadores/PWA esto no falla como cabría
-      // esperar, sino que cierra la ventana actual y deja ver la que hubiera
-      // debajo -- p.ej. otra pestaña o app -- en vez de volver al árbol.)
-      window.location.href = 'arbol.html';
+      // Si se llegó aquí navegando desde árbol.html (lo normal, por el menú
+      // lateral), volvemos atrás en el historial para recuperar esa misma
+      // pestaña tal cual estaba -- con su estado y scroll -- en vez de
+      // cargar un árbol.html nuevo desde cero (lo que dejaba efectivamente
+      // una "segunda instancia" en la misma pestaña). Si no se llegó desde
+      // árbol.html (p.ej. enlace directo, favorito), se navega igual que antes.
+      if (document.referrer && document.referrer.indexOf('arbol.html') !== -1 && window.history.length > 1) {
+        window.history.back();
+      } else {
+        window.location.href = 'arbol.html';
+      }
     }
 
     function aplicarTema(tema) {
@@ -247,7 +253,7 @@
           </p>
           <label style="display:inline-block; font-size:12px; font-weight:bold; margin-bottom:6px;">Buque:
             <select id="sel-curva-buque" onchange="buqueCurvaSeleccionado = this.value; pintarCurvaAvance();" style="padding:4px; border-radius:4px; border:1px solid #ccc; margin-left:6px;">
-              ${buques.map(b => `<option value="${b.id}" ${b.id === buqueCurvaSeleccionado ? 'selected' : ''}>${b.codigo}</option>`).join('')}
+              ${buques.map(b => `<option value="${b.id}" ${b.id === buqueCurvaSeleccionado ? 'selected' : ''}>${b.codigo}${b.nombre ? ' — ' + b.nombre : ''}</option>`).join('')}
             </select>
           </label>
           <div id="curva-avance-vacio" style="display:none; font-size:12px; color:#888;">Todavía no hay fechas previstas ni tareas aprobadas en este buque para dibujar la curva.</div>
@@ -308,7 +314,7 @@
           </p>
           <label style="display:inline-block; font-size:12px; font-weight:bold; margin-bottom:6px;">Bloque:
             <select id="sel-curva-bloque" onchange="bloqueCurvaSeleccionado = this.value; pintarCurvaAvanceBloque();" style="padding:4px; border-radius:4px; border:1px solid #ccc; margin-left:6px;">
-              ${bloques.map(b => `<option value="${b.id}" ${b.id === bloqueCurvaSeleccionado ? 'selected' : ''}>${b.codigo}</option>`).join('')}
+              ${bloques.map(b => `<option value="${b.id}" ${b.id === bloqueCurvaSeleccionado ? 'selected' : ''}>${b.codigo}${b.nombre ? ' — ' + b.nombre : ''}</option>`).join('')}
             </select>
           </label>
           <div id="curva-avance-bloque-vacio" style="display:none; font-size:12px; color:#888;">Todavía no hay fechas previstas ni tareas aprobadas en este bloque para dibujar la curva.</div>

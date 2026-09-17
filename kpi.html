@@ -293,7 +293,7 @@
             <tbody>
               ${filas.map(f => `
                 <tr>
-                  <td><strong>${f.buque.codigo}</strong></td>
+                  <td><strong>${f.buque.codigo}</strong>${f.buque.nombre ? ' — ' + f.buque.nombre : ''}</td>
                   <td class="num">${f.total}</td>
                   <td class="num">${f.avance}%</td>
                   <td class="num" style="${f.cuellosBotella > 0 ? 'color:#dc3545; font-weight:bold;' : ''}">${f.cuellosBotella}</td>
@@ -325,7 +325,7 @@
           <h2>📈 KPIs por bloque</h2>
           <label style="display:inline-block; font-size:12px; font-weight:bold; margin-bottom:8px;">Bloque:
             <select onchange="filtroKPIBloqueId = this.value; pintar();" style="padding:4px; border-radius:4px; border:1px solid #ccc; margin-left:6px;">
-              ${bloques.map(b => `<option value="${b.id}" ${b.id === filtroKPIBloqueId ? 'selected' : ''}>${b.codigo}</option>`).join('')}
+              ${bloques.map(b => `<option value="${b.id}" ${b.id === filtroKPIBloqueId ? 'selected' : ''}>${b.codigo}${b.nombre ? ' — ' + b.nombre : ''}</option>`).join('')}
             </select>
           </label>
           ${!kpi ? '<p style="font-size:12px; color:#888;">Este bloque no tiene tareas todavía.</p>' : `

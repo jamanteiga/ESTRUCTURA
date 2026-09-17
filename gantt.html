@@ -352,11 +352,18 @@
     }
 
     function cerrarPagina() {
-      // Vamos siempre directos al árbol. (Antes se intentaba window.close()
-      // primero: en algunos navegadores/PWA esto no falla como cabría
-      // esperar, sino que cierra la ventana actual y deja ver la que hubiera
-      // debajo -- p.ej. otra pestaña o app -- en vez de volver al árbol.)
-      window.location.href = 'arbol.html';
+      // Si se llegó aquí navegando desde árbol.html (lo normal, por el menú
+      // lateral), volvemos atrás en el historial para recuperar esa misma
+      // pestaña tal cual estaba -- con su estado, scroll y nodos expandidos
+      // -- en vez de cargar un árbol.html nuevo desde cero (lo que dejaba
+      // efectivamente una "segunda instancia" en la misma pestaña). Si no se
+      // llegó desde árbol.html (p.ej. enlace directo, favorito), se navega
+      // igual que antes.
+      if (document.referrer && document.referrer.indexOf('arbol.html') !== -1 && window.history.length > 1) {
+        window.history.back();
+      } else {
+        window.location.href = 'arbol.html';
+      }
     }
 
     function obtenerSemanaISO(fecha) {
@@ -437,7 +444,7 @@
       }
 
       const selBuque = document.getElementById('sel-buque');
-      selBuque.innerHTML = buques.map(b => `<option value="${b.id}">${b.codigo}</option>`).join('');
+      selBuque.innerHTML = buques.map(b => `<option value="${b.id}">${b.codigo}${b.nombre ? ' — ' + b.nombre : ''}</option>`).join('');
       selBuque.addEventListener('change', () => { buqueActualId = selBuque.value; raizGanttId = buqueActualId; actualizarBadgeRama(); nodosAbiertos = new Set([buqueActualId]); cargarGantt(); });
 
       const { data: perfilesTrab } = await supabaseClient
