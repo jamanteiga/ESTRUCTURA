@@ -156,6 +156,9 @@
     <label style="font-size:12px; display:flex; align-items:center; gap:4px;">
       <input type="checkbox" id="chk-solo-ruta-critica"> 🔺 Solo ruta crítica
     </label>
+    <label style="font-size:12px; display:flex; align-items:center; gap:4px;" title="Comprime la línea temporal para que quepa entera en la pantalla, sin desplazamiento horizontal, incluyendo los hitos del buque/bloque (puertas de calidad, etc.) aunque caigan fuera del rango de trabajo.">
+      <input type="checkbox" id="chk-ajustar-pantalla"> 📐 Ajustar a pantalla
+    </label>
     <button class="secundario" onclick="expandirTodoGantt()">⏬ Expandir todo</button>
     <button class="secundario" onclick="contraerTodoGantt()">⏫ Contraer todo</button>
     <button class="secundario" onclick="abrirModalVerRama()">🔎 Ver Bloque/Subbloque...</button>
@@ -306,7 +309,15 @@
     let raizGanttId = null;
     let dependenciasCache = [];
     let soloRutaCritica = false;
+    let ajustarAPantalla = false;
     let nodosEnRutaCritica = new Set();
+    // Ancho fijo (en px) de la columna de información (Nodo+Avance+Inicio+
+    // Duración+Fin), tal cual la definen las clases CSS .col-nombre/.col-avance/
+    // .col-fecha/.col-duracion -- se usa para saber cuánto espacio le queda de
+    // verdad a la línea temporal al "Ajustar a pantalla". Si se cambian esos
+    // anchos en el CSS, hay que actualizar también estos números.
+    const ANCHO_COL_INFO_ESCRITORIO = 260 + 60 + 130 + 100 + 130;
+    const ANCHO_COL_INFO_MOVIL = 190 + 60 + 130 + 100 + 130;
     // Días de margen (LS - ES) de cada tarea con fechas previstas antes de
     // que un retraso suyo empiece a afectar a la ruta crítica. 0 en las
     // tareas críticas (por eso solo se muestra en las que no lo son).
@@ -458,6 +469,11 @@
 
       document.getElementById('chk-solo-ruta-critica').addEventListener('change', (e) => {
         soloRutaCritica = e.target.checked;
+        pintarGantt();
+      });
+
+      document.getElementById('chk-ajustar-pantalla').addEventListener('change', (e) => {
+        ajustarAPantalla = e.target.checked;
         pintarGantt();
       });
 
@@ -907,7 +923,12 @@
       const alturaDisponible = window.innerHeight - espacioSuperior - margenInferior;
       contenedor.style.maxHeight = Math.max(200, alturaDisponible) + 'px';
     }
-    window.addEventListener('resize', ajustarAlturaGantt);
+    window.addEventListener('resize', () => {
+      ajustarAlturaGantt();
+      // Si la línea temporal está ajustada a pantalla, un cambio de tamaño de
+      // ventana cambia el ancho disponible, así que hay que recalcular la escala.
+      if (ajustarAPantalla) pintarGantt();
+    });
 
     function pintarGantt() {
       const contenedor = document.getElementById('gantt-contenido');
@@ -937,14 +958,35 @@
 
       let fechaMin = new Date(rangoRaiz.inicio); fechaMin.setHours(0, 0, 0, 0);
       let fechaMaxRef = rangoRaiz.fin || ahora;
+      // Los hitos (botadura, pruebas de mar, puertas de calidad de un Bloque
+      // concreto...) pueden caer fuera del rango de trabajo real -- se incluyen
+      // aquí para que la línea temporal siempre los abarque, en vez de
+      // recortarlos silenciosamente por quedar fuera de fechaMin/fechaMax.
+      hitosCache.forEach(h => {
+        const fechaHito = new Date(h.fecha + 'T00:00:00');
+        if (fechaHito < fechaMin) fechaMin = new Date(fechaHito);
+        if (fechaHito > fechaMaxRef) fechaMaxRef = fechaHito;
+      });
       const fechaMaxDia = new Date(fechaMaxRef); fechaMaxDia.setHours(0, 0, 0, 0);
       const totalDias = Math.max(1, Math.round((fechaMaxDia - fechaMin) / 86400000) + 1);
 
       const escalaSemanas = totalDias > UMBRAL_DIAS_PARA_SEMANAS;
-      const pxPorUnidad = escalaSemanas ? PX_POR_SEMANA : PX_POR_DIA;
+      let pxPorUnidad = escalaSemanas ? PX_POR_SEMANA : PX_POR_DIA;
+
+      // "Ajustar a pantalla": en vez del ancho fijo por día/semana (que obliga
+      // a desplazarse horizontalmente en rangos largos), se comprime la escala
+      // para que la línea temporal completa -- ya extendida arriba para incluir
+      // los hitos -- quepa entera en el ancho visible.
+      if (ajustarAPantalla) {
+        const contenedorScroll = document.getElementById('gantt-scroll-contenedor');
+        const anchoColInfo = esMovil ? ANCHO_COL_INFO_MOVIL : ANCHO_COL_INFO_ESCRITORIO;
+        const anchoDisponible = Math.max(150, (contenedorScroll ? contenedorScroll.clientWidth : window.innerWidth) - anchoColInfo);
+        const totalUnidades = escalaSemanas ? Math.ceil(totalDias / 7) : totalDias;
+        pxPorUnidad = Math.max(2, anchoDisponible / totalUnidades);
+      }
 
       function diasDesde(fecha) { return (fecha - fechaMin) / 86400000; }
-      function posX(fecha) { return escalaSemanas ? (diasDesde(fecha) / 7) * PX_POR_SEMANA : diasDesde(fecha) * PX_POR_DIA; }
+      function posX(fecha) { return escalaSemanas ? (diasDesde(fecha) / 7) * pxPorUnidad : diasDesde(fecha) * pxPorUnidad; }
 
       const hoyDia = new Date(); hoyDia.setHours(0, 0, 0, 0);
       let anchoTotalLinea;
@@ -963,16 +1005,16 @@
         for (let i = 0; i < totalSemanas; i++) {
           const diaInicioSemana = new Date(fechaMin); diaInicioSemana.setDate(diaInicioSemana.getDate() + i * 7);
           const semanaNum = obtenerSemanaISO(diaInicioSemana);
-          cabeceraHtml += `<div class="gantt-dia" style="width:${PX_POR_SEMANA}px;">S${semanaNum}<br>${String(diaInicioSemana.getDate()).padStart(2,'0')}/${String(diaInicioSemana.getMonth()+1).padStart(2,'0')}</div>`;
+          cabeceraHtml += `<div class="gantt-dia" style="width:${pxPorUnidad}px;">S${semanaNum}<br>${String(diaInicioSemana.getDate()).padStart(2,'0')}/${String(diaInicioSemana.getMonth()+1).padStart(2,'0')}</div>`;
         }
-        anchoTotalLinea = totalSemanas * PX_POR_SEMANA;
+        anchoTotalLinea = totalSemanas * pxPorUnidad;
       } else {
         for (let i = 0; i < totalDias; i++) {
           const dia = new Date(fechaMin); dia.setDate(dia.getDate() + i);
           const esHoy = dia.getTime() === hoyDia.getTime();
-          cabeceraHtml += `<div class="gantt-dia ${esHoy ? 'hoy' : ''}" style="width:${PX_POR_DIA}px;">${String(dia.getDate()).padStart(2,'0')}/${String(dia.getMonth()+1).padStart(2,'0')}</div>`;
+          cabeceraHtml += `<div class="gantt-dia ${esHoy ? 'hoy' : ''}" style="width:${pxPorUnidad}px;">${String(dia.getDate()).padStart(2,'0')}/${String(dia.getMonth()+1).padStart(2,'0')}</div>`;
         }
-        anchoTotalLinea = totalDias * PX_POR_DIA;
+        anchoTotalLinea = totalDias * pxPorUnidad;
       }
       cabeceraHtml += `</div>`;
 

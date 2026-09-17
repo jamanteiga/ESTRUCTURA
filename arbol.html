@@ -2361,6 +2361,89 @@
       return null;
     }
 
+    // Igual que buqueDeNodo, pero busca el Bloque (el ancestro de tipo
+    // BLOQUE más cercano, incluyendo el propio nodo) al que pertenece --
+    // se usa para saber si, al aprobar algo, un Bloque entero ha quedado
+    // 100% completo.
+    function bloqueDeNodo(nodo) {
+      let actual = nodo;
+      while (actual) {
+        if (actual.tipo === 'BLOQUE') return actual;
+        actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
+      }
+      return null;
+    }
+
+    // -------------------- Aviso por email al completar un Bloque --------------------
+    // Cuando una aprobación deja un Bloque al 100% (todo su contenido con
+    // revision_estado APROBADO), se ofrece abrir un email ya redactado --
+    // dirigido a los supervisores que hayan intervenido en ese Bloque y a
+    // todos los ADMIN -- para que la persona lo revise y lo envíe ella misma
+    // desde su gestor de correo habitual (Outlook u otro). No se envía nada
+    // automáticamente: la aplicación no tiene permiso para mandar correos
+    // por sí sola, así que solo prepara el borrador.
+    //
+    // Para no repetir el aviso cada vez que se recarga el árbol, se recuerda
+    // en localStorage qué Bloques ya se avisaron; si el Bloque baja de 100%
+    // más adelante (p.ej. un rechazo), se olvida para poder avisar de nuevo
+    // cuando vuelva a completarse.
+    const CLAVE_BLOQUES_EMAIL_NOTIFICADOS = 'estructura_bloques_email_notificados';
+    function obtenerBloquesEmailNotificados() {
+      try { return new Set(JSON.parse(localStorage.getItem(CLAVE_BLOQUES_EMAIL_NOTIFICADOS) || '[]')); }
+      catch (e) { return new Set(); }
+    }
+    function guardarBloquesEmailNotificados(set) {
+      try { localStorage.setItem(CLAVE_BLOQUES_EMAIL_NOTIFICADOS, JSON.stringify([...set])); } catch (e) { /* no pasa nada si no se puede guardar */ }
+    }
+
+    async function comprobarBloqueListoTrasAprobar(nodeId) {
+      const nodo = mapaNodoPorId[nodeId];
+      if (!nodo) return;
+      const bloque = bloqueDeNodo(nodo);
+      if (!bloque) return;
+      const pct = calcularPorcentajeAvance(bloque.id);
+      const notificados = obtenerBloquesEmailNotificados();
+      if (pct === 100) {
+        if (notificados.has(bloque.id)) return;
+        notificados.add(bloque.id);
+        guardarBloquesEmailNotificados(notificados);
+        await ofrecerEmailBloqueListo(bloque);
+      } else if (notificados.has(bloque.id)) {
+        notificados.delete(bloque.id);
+        guardarBloquesEmailNotificados(notificados);
+      }
+    }
+
+    async function ofrecerEmailBloqueListo(bloque) {
+      const buque = buqueDeNodo(bloque);
+      const quiere = await mostrarConfirmacion(`✅ El Bloque "${bloque.codigo} - ${bloque.nombre}"${buque ? ' (' + buque.codigo + ')' : ''} está 100% aprobado.\n\n¿Abrir un email para avisar a los supervisores y administradores? (lo revisas y lo envías tú antes de que salga).`);
+      if (!quiere) return;
+      abrirEmailBloqueListo(bloque, buque);
+    }
+
+    function abrirEmailBloqueListo(bloque, buque) {
+      const idsSubarbol = [bloque.id, ...obtenerDescendientesIds(bloque.id)];
+      const revisorIds = new Set();
+      idsSubarbol.forEach(id => { const n = mapaNodoPorId[id]; if (n && n.revisor_id) revisorIds.add(n.revisor_id); });
+
+      const destinatarios = new Map();
+      perfilesCache.forEach(p => {
+        const implicado = revisorIds.has(p.id) || p.rol === 'ADMIN';
+        if (implicado && p.email_contacto && p.email_contacto.trim()) destinatarios.set(p.email_contacto.trim(), p.nombre_completo);
+      });
+
+      if (destinatarios.size === 0) {
+        mostrarAvisoModal('No se pudo preparar el email: ninguno de los supervisores o administradores implicados tiene un email de contacto guardado (Usuarios → Editar → Email).');
+        return;
+      }
+
+      const asunto = `Bloque listo: ${bloque.codigo} - ${bloque.nombre}${buque ? ' (' + buque.codigo + ')' : ''}`;
+      const cuerpo = `El Bloque "${bloque.codigo} - ${bloque.nombre}"${buque ? ' del buque ' + buque.codigo + ' (' + buque.nombre + ')' : ''} está completo: toda su documentación y trabajo han sido aprobados.\n\nComprobado el ${formatearFechaHora(new Date().toISOString())}.\n\n— Aviso de ESTRUCTURA (revisa el contenido y envíalo tú mismo)`;
+
+      registrarLog('AVISO_BLOQUE_LISTO', `Preparó un email de aviso de Bloque completo para "${bloque.codigo}" a: ${[...destinatarios.keys()].join(', ')}`, bloque.id);
+      window.location.href = `mailto:${[...destinatarios.keys()].join(',')}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`;
+    }
+
     function abrirModalExpandirPorBloque() {
       cerrarMenu();
       const selBuque = document.getElementById('modal-expandir-bloque-buque');
@@ -4698,10 +4781,12 @@
 
       let hechos = 0;
       const errores = [];
+      const idsOk = [];
       for (const id of idsPiezas) {
         const nodo = mapaNodoPorId[id];
         const { error } = await supabaseClient.rpc('aprobar_documentacion_pieza', { p_pieza_id: id });
         if (error) { errores.push(`${nodo.codigo}: ${traducirError(error.message)}`); continue; }
+        idsOk.push(id);
         hechos++;
       }
 
@@ -4715,6 +4800,7 @@
       document.getElementById('chk-modo-seleccion').checked = false;
       actualizarBarraSeleccion();
       await cargarArbol();
+      for (const id of idsOk) await comprobarBloqueListoTrasAprobar(id);
     }
 
     // Segunda pasada, normalmente del usuario Windchill (aunque también
@@ -4921,6 +5007,7 @@
       btn.disabled = true;
       let hechos = 0;
       const errores = [];
+      const idsAprobadosOk = [];
 
       for (const id of ids) {
         estadoEl.textContent = `Asignando (${hechos + errores.length + 1}/${ids.length})...`;
@@ -4949,6 +5036,7 @@
           }
         }
 
+        if (estadoElegido === 'aprobado') idsAprobadosOk.push(id);
         hechos++;
       }
 
@@ -4962,6 +5050,7 @@
         estadoEl.innerHTML = `Hecho ${hechos} de ${ids.length}. Fallaron ${errores.length}:<br>` + errores.map(e => `• ${e}`).join('<br>');
         estadoEl.className = 'estado-msg error';
         await cargarArbol();
+        for (const id of idsAprobadosOk) await comprobarBloqueListoTrasAprobar(id);
         return;
       }
 
@@ -4972,6 +5061,7 @@
       document.getElementById('chk-modo-seleccion').checked = false;
       actualizarBarraSeleccion();
       await cargarArbol();
+      for (const id of idsAprobadosOk) await comprobarBloqueListoTrasAprobar(id);
     }
 
     function abrirModalEstadoMasivo() {
@@ -5017,13 +5107,14 @@
       btn.disabled = true;
       let hechos = 0;
       const errores = [];
+      const idsOk = [];
 
       for (const id of ids) {
         estadoEl.textContent = `Aplicando (${hechos + errores.length + 1}/${ids.length})...`;
         const nodo = mapaNodoPorId[id];
         const { error } = await accionesEstado[estadoElegido](id);
         if (error) errores.push(`${nodo?.codigo || id}: ${error.message}`);
-        else hechos++;
+        else { hechos++; idsOk.push(id); }
       }
 
       registrarLog('ESTADO_MASIVO', `Cambió estado en lote a "${estadoElegido}" — ${hechos} de ${ids.length} tareas${errores.length ? ` (${errores.length} fallaron)` : ''}`);
@@ -5034,6 +5125,7 @@
         estadoEl.innerHTML = `Hecho ${hechos} de ${ids.length}. Fallaron ${errores.length}:<br>` + errores.map(e => `• ${e}`).join('<br>');
         estadoEl.className = 'estado-msg error';
         await cargarArbol();
+        if (estadoElegido === 'aprobado') for (const id of idsOk) await comprobarBloqueListoTrasAprobar(id);
         return;
       }
 
@@ -5044,6 +5136,7 @@
       document.getElementById('chk-modo-seleccion').checked = false;
       actualizarBarraSeleccion();
       await cargarArbol();
+      if (estadoElegido === 'aprobado') for (const id of idsOk) await comprobarBloqueListoTrasAprobar(id);
     }
 
     async function guardarAsignacion() {
@@ -5389,6 +5482,7 @@
       }
       registrarLog(aprobado ? 'APROBAR' : 'RECHAZAR', `${aprobado ? 'Aprobó' : 'Rechazó'} "${nodo?.codigo}"${comentario ? ` — ${aprobado ? 'comentario' : 'motivo'}: ${comentario}` : ''}`, nodeId);
       await cargarArbol();
+      if (aprobado) await comprobarBloqueListoTrasAprobar(nodeId);
     }
 
     function mostrarAviso(tipo, titulo, detalle, ruta) {

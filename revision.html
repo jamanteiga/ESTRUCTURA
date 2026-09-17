@@ -208,6 +208,7 @@
 
     let miPerfil = null;
     let mapaNodoPorId = {};
+    let mapaHijosPorPadre = {};
     let nodosGestorActual = [];
     let filtroUsuarioId = null;
     let filtroRevisorId = null;
@@ -235,6 +236,121 @@
         actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
       }
       return partes.join('>');
+    }
+
+    function formatearFechaHora(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      const mes = String(d.getMonth() + 1).padStart(2, '0');
+      const aaaa = d.getFullYear();
+      return `${hh}:${mm} ${dd}/${mes}/${aaaa}`;
+    }
+
+    function buqueDeNodo(nodo) {
+      let actual = nodo;
+      while (actual) {
+        if (actual.tipo === 'BUQUE') return actual;
+        actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
+      }
+      return null;
+    }
+
+    function bloqueDeNodo(nodo) {
+      let actual = nodo;
+      while (actual) {
+        if (actual.tipo === 'BLOQUE') return actual;
+        actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
+      }
+      return null;
+    }
+
+    function obtenerDescendientesIds(nodeId) {
+      const resultado = [];
+      const hijos = mapaHijosPorPadre[nodeId] || [];
+      hijos.forEach(h => { resultado.push(h.id); resultado.push(...obtenerDescendientesIds(h.id)); });
+      return resultado;
+    }
+
+    const AVANCE_POR_ESTADO = {
+      sin_asignar: 0, asignada_sin_empezar: 0, en_proceso: 5, pendiente_revision: 90, rechazado: 95, aprobado: 100
+      // pendiente_dudas y pendiente_cambios_modelo no llevan porcentaje: se excluyen del cálculo.
+    };
+
+    function calcularPorcentajeAvance(nodeId) {
+      const idsSubarbol = [nodeId, ...obtenerDescendientesIds(nodeId)];
+      const relevantes = idsSubarbol
+        .map(id => mapaNodoPorId[id])
+        .filter(n => n && !TIPOS_SIN_ASIGNACION.has(n.tipo))
+        .map(n => calcularEstadoPropio(n))
+        .filter(estado => estado !== 'pendiente_dudas' && estado !== 'pendiente_cambios_modelo');
+      if (relevantes.length === 0) return null;
+      const suma = relevantes.reduce((acc, estado) => acc + AVANCE_POR_ESTADO[estado], 0);
+      return Math.round(suma / relevantes.length);
+    }
+
+    // -------------------- Aviso por email al completar un Bloque --------------------
+    // Igual que en árbol.html: cuando una aprobación deja un Bloque al 100%,
+    // se ofrece abrir un email ya redactado (a los supervisores del Bloque +
+    // todos los ADMIN) para que la persona lo revise y lo envíe ella misma.
+    // No se manda nada automáticamente.
+    const CLAVE_BLOQUES_EMAIL_NOTIFICADOS = 'estructura_bloques_email_notificados';
+    function obtenerBloquesEmailNotificados() {
+      try { return new Set(JSON.parse(localStorage.getItem(CLAVE_BLOQUES_EMAIL_NOTIFICADOS) || '[]')); }
+      catch (e) { return new Set(); }
+    }
+    function guardarBloquesEmailNotificados(set) {
+      try { localStorage.setItem(CLAVE_BLOQUES_EMAIL_NOTIFICADOS, JSON.stringify([...set])); } catch (e) { /* no pasa nada si no se puede guardar */ }
+    }
+
+    async function comprobarBloqueListoTrasAprobar(nodeId) {
+      const nodo = mapaNodoPorId[nodeId];
+      if (!nodo) return;
+      const bloque = bloqueDeNodo(nodo);
+      if (!bloque) return;
+      const pct = calcularPorcentajeAvance(bloque.id);
+      const notificados = obtenerBloquesEmailNotificados();
+      if (pct === 100) {
+        if (notificados.has(bloque.id)) return;
+        notificados.add(bloque.id);
+        guardarBloquesEmailNotificados(notificados);
+        await ofrecerEmailBloqueListo(bloque);
+      } else if (notificados.has(bloque.id)) {
+        notificados.delete(bloque.id);
+        guardarBloquesEmailNotificados(notificados);
+      }
+    }
+
+    async function ofrecerEmailBloqueListo(bloque) {
+      const buque = buqueDeNodo(bloque);
+      const quiere = await mostrarConfirmacion(`✅ El Bloque "${bloque.codigo} - ${bloque.nombre}"${buque ? ' (' + buque.codigo + ')' : ''} está 100% aprobado.\n\n¿Abrir un email para avisar a los supervisores y administradores? (lo revisas y lo envías tú antes de que salga).`);
+      if (!quiere) return;
+      abrirEmailBloqueListo(bloque, buque);
+    }
+
+    function abrirEmailBloqueListo(bloque, buque) {
+      const idsSubarbol = [bloque.id, ...obtenerDescendientesIds(bloque.id)];
+      const revisorIds = new Set();
+      idsSubarbol.forEach(id => { const n = mapaNodoPorId[id]; if (n && n.revisor_id) revisorIds.add(n.revisor_id); });
+
+      const destinatarios = new Map();
+      perfilesCache.forEach(p => {
+        const implicado = revisorIds.has(p.id) || p.rol === 'ADMIN';
+        if (implicado && p.email_contacto && p.email_contacto.trim()) destinatarios.set(p.email_contacto.trim(), p.nombre_completo);
+      });
+
+      if (destinatarios.size === 0) {
+        mostrarAvisoModal('No se pudo preparar el email: ninguno de los supervisores o administradores implicados tiene un email de contacto guardado (Usuarios → Editar → Email).');
+        return;
+      }
+
+      const asunto = `Bloque listo: ${bloque.codigo} - ${bloque.nombre}${buque ? ' (' + buque.codigo + ')' : ''}`;
+      const cuerpo = `El Bloque "${bloque.codigo} - ${bloque.nombre}"${buque ? ' del buque ' + buque.codigo + ' (' + buque.nombre + ')' : ''} está completo: toda su documentación y trabajo han sido aprobados.\n\nComprobado el ${formatearFechaHora(new Date().toISOString())}.\n\n— Aviso de ESTRUCTURA (revisa el contenido y envíalo tú mismo)`;
+
+      registrarLog('AVISO_BLOQUE_LISTO', `Preparó un email de aviso de Bloque completo para "${bloque.codigo}" a: ${[...destinatarios.keys()].join(', ')}`);
+      window.location.href = `mailto:${[...destinatarios.keys()].join(',')}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`;
     }
 
     async function registrarLog(accion, descripcion) {
@@ -356,6 +472,9 @@
       const { error } = await supabaseClient.rpc(rpc, { p_node_id: nodeId, ...(params || {}) });
       if (error) { mostrarAvisoModal('Error: ' + traducirError(error.message)); return; }
       await cargarYPintar();
+      if (rpc === 'revisar_nodo' && params && params.p_aprobado === true) {
+        await comprobarBloqueListoTrasAprobar(nodeId);
+      }
     }
 
     function mostrarSubmenuEstadoResumen(elementoPadre, nodeId) {
@@ -525,7 +644,13 @@
       const { data: nodos, error } = await supabaseClient.from('v_nodes_with_workflow').select('*').eq('activo', true);
       if (error) { document.getElementById('contenido').innerHTML = `<p style="color:red;">Error: ${error.message}</p>`; return; }
       mapaNodoPorId = {};
-      nodos.forEach(n => { mapaNodoPorId[n.id] = n; });
+      mapaHijosPorPadre = {};
+      nodos.forEach(n => {
+        mapaNodoPorId[n.id] = n;
+        const clave = n.parent_id || '__raiz__';
+        if (!mapaHijosPorPadre[clave]) mapaHijosPorPadre[clave] = [];
+        mapaHijosPorPadre[clave].push(n);
+      });
       nodosGestorActual = nodos.filter(n => !TIPOS_SIN_ASIGNACION.has(n.tipo));
       if (miPerfil.rol === 'TRABAJADOR') nodosGestorActual = nodosGestorActual.filter(n => n.trabajador_id === miPerfil.id);
       pintar();
