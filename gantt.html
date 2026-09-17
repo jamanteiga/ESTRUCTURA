@@ -136,7 +136,8 @@
       <button class="secundario" onclick="alternarTema()">🌙/☀️</button>
       <button class="secundario" onclick="exportarExcel()">⬇ Exportar a Excel</button>
       <button class="secundario" onclick="exportarPdf()">⬇ Exportar a PDF</button>
-      <button class="secundario" onclick="exportarProject()">⬇ Exportar Gantt</button>
+      <button class="secundario" onclick="exportarProject()">⬇ Exportar a MS Project (.xml)</button>
+      <button class="secundario" onclick="exportarGanttProject()">⬇ Exportar a GanttProject (.gan)</button>
       <button class="peligro" onclick="cerrarPagina()">❌ Cerrar</button>
     </div>
   </div>
@@ -1301,6 +1302,144 @@
       URL.revokeObjectURL(url);
 
       registrarLog('EXPORT_GANTT', `Exportó el Gantt de "${nombreRaiz}" a Microsoft Project (${filas.length} tareas)`);
+    }
+
+    // -------------------- Exportar a GanttProject (.gan) --------------------
+    // Formato nativo de GanttProject (su propio XML -- distinto del MSPDI de
+    // Microsoft Project de arriba, aunque los dos sean XML). A diferencia del
+    // export de Project, aquí las tareas van anidadas dentro de su tarea
+    // padre (no con un nivel plano) y la duración se cuenta en días
+    // laborables de lunes a viernes -- el calendario por defecto de
+    // GanttProject -- para que al abrirlo no se descuadre la fecha de fin
+    // respecto a la que se ve aquí.
+    function contarDiasLaborablesGan(inicio, fin) {
+      let dias = 0;
+      const actual = new Date(inicio); actual.setHours(0, 0, 0, 0);
+      const finDia = new Date(fin); finDia.setHours(0, 0, 0, 0);
+      while (actual <= finDia) {
+        const diaSemana = actual.getDay(); // 0=domingo, 6=sábado
+        if (diaSemana !== 0 && diaSemana !== 6) dias++;
+        actual.setDate(actual.getDate() + 1);
+      }
+      return Math.max(1, dias);
+    }
+
+    function formatearFechaGan(fecha) {
+      const y = fecha.getFullYear();
+      const m = String(fecha.getMonth() + 1).padStart(2, '0');
+      const d = String(fecha.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+
+    // Reconstruye la jerarquía padre/hijo a partir del nivel plano que ya
+    // trae construirFilasExportCompletas() (mismo truco que la pila usada al
+    // importar/exportar Excel por ruta).
+    function construirArbolExportGan(filas) {
+      const raiz = { hijos: [] };
+      const pila = [{ nivel: -1, nodo: raiz }];
+      filas.forEach((f, i) => {
+        const item = { fila: f, hijos: [], id: i };
+        while (pila.length > 1 && pila[pila.length - 1].nivel >= f.nivel) pila.pop();
+        pila[pila.length - 1].nodo.hijos.push(item);
+        pila.push({ nivel: f.nivel, nodo: item });
+      });
+      return raiz.hijos;
+    }
+
+    function exportarGanttProject() {
+      const filas = construirFilasExportCompletas();
+      if (filas.length === 0) { alert('No hay tareas que exportar.'); return; }
+
+      const ahora = new Date();
+      const arbolExport = construirArbolExportGan(filas);
+
+      const recursos = [...new Set(filas.map(f => f.trabajador).filter(Boolean))];
+      const idRecursoPorNombre = {};
+      recursos.forEach((nombre, i) => { idRecursoPorNombre[nombre] = i; });
+
+      const asignaciones = [];
+
+      function renderTarea(item) {
+        const f = item.fila;
+        const inicio = f.inicio || ahora;
+        const fin = f.fin || inicio;
+        const duracion = contarDiasLaborablesGan(inicio, fin);
+        const pct = f.avance !== null ? f.avance : 0;
+        const nombre = escaparXml(`${f.codigo} - ${f.nombre}`);
+        const color = f.critica ? '#e06666' : '#8cb6ce';
+
+        if (f.trabajador && idRecursoPorNombre[f.trabajador] !== undefined) {
+          asignaciones.push(`<allocation task-id="${item.id}" resource-id="${idRecursoPorNombre[f.trabajador]}" function="Default:0" responsible="true" load="100.0"/>`);
+        }
+
+        const hijosXml = item.hijos.map(renderTarea).join('');
+        return `<task id="${item.id}" name="${nombre}" color="${color}" meeting="false" start="${formatearFechaGan(inicio)}" duration="${duracion}" complete="${pct}" expand="true">${hijosXml}</task>`;
+      }
+
+      const tareasXml = arbolExport.map(renderTarea).join('');
+      const recursosXml = recursos.map((nombre, i) => `<resource id="${i}" name="${escaparXml(nombre)}" function="Default:0" contacts="" phone=""/>`).join('');
+      const nombreRaiz = nombreRaizActual();
+      const hoyIso = formatearFechaGan(ahora);
+
+      const gan = `<?xml version="1.0" encoding="UTF-8"?>
+<project name="${escaparXml('ESTRUCTURA - ' + nombreRaiz)}" company="" webLink="" view-date="${hoyIso}" view-index="0" gantt-divider-location="300" resource-divider-location="300" version="3.3.3312" locale="es">
+    <description/>
+    <view zooming-state="default:1" id="gantt-chart">
+        <field id="tpd3" name="Name" width="200" order="0"/>
+        <field id="tpd4" name="Begin date" width="75" order="1"/>
+        <field id="tpd5" name="End date" width="75" order="2"/>
+        <field id="tpd6" name="Duration" width="49" order="3"/>
+        <field id="tpd7" name="Completion" width="50" order="4"/>
+        <field id="tpd8" name="Coordinator" width="72" order="5"/>
+        <timeline/>
+        <resource-fields>
+            <field id="0" name="Name" width="210" order="0"/>
+        </resource-fields>
+    </view>
+    <view id="resource-table">
+        <field id="0" name="Name" width="210" order="0"/>
+    </view>
+    <calendars>
+        <day-types>
+            <day-type id="0"/>
+            <day-type id="1"/>
+            <default-week id="1" name="default" sun="1" mon="0" tue="0" wed="0" thu="0" fri="0" sat="1"/>
+            <only-show-weekends value="false"/>
+            <overriden-day-types/>
+            <days/>
+        </day-types>
+    </calendars>
+    <tasks empty-milestones="true">
+        <taskproperties>
+            <taskproperty id="tpd0" name="type" type="default" valuetype="icon"/>
+            <taskproperty id="tpd1" name="priority" type="default" valuetype="icon"/>
+            <taskproperty id="tpd2" name="info" type="default" valuetype="icon"/>
+            <taskproperty id="tpd3" name="name" type="default" valuetype="text"/>
+            <taskproperty id="tpd4" name="begindate" type="default" valuetype="date"/>
+            <taskproperty id="tpd5" name="enddate" type="default" valuetype="date"/>
+            <taskproperty id="tpd6" name="duration" type="default" valuetype="int"/>
+            <taskproperty id="tpd7" name="completion" type="default" valuetype="int"/>
+            <taskproperty id="tpd8" name="coordinator" type="default" valuetype="text"/>
+        </taskproperties>
+        ${tareasXml}
+    </tasks>
+    <resources>${recursosXml}</resources>
+    <allocations>${asignaciones.join('')}</allocations>
+    <vacations/>
+    <previous/>
+    <roles roleset-name="Default"/>
+    <roles roleset-name="SoftwareDevelopment"/>
+</project>`;
+
+      const blob = new Blob([gan], { type: 'application/xml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `gantt-${nombreRaiz}-${new Date().toISOString().slice(0,10)}.gan`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      registrarLog('EXPORT_GANTT', `Exportó el Gantt de "${nombreRaiz}" a GanttProject (${filas.length} tareas)`);
     }
 
     // Exportar a PDF: se expande todo temporalmente para que no falte ninguna
