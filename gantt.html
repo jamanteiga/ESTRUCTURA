@@ -40,7 +40,9 @@
     .gantt-fila { display: flex; border-bottom: 1px solid #eee; align-items: center; }
     .gantt-fila:hover { background: rgba(0,123,255,0.05); }
     .gantt-fila.fila-critica .col-nombre strong { color: #dc3545; }
-    .gantt-fila.fila-ruta-critica { box-shadow: inset 3px 0 0 #6f42c1; }
+    .gantt-fila.fila-ruta-critica { box-shadow: inset 3px 0 0 #6f42c1; background: rgba(111,66,193,0.05); }
+    .gantt-fila.fila-ruta-critica:hover { background: rgba(111,66,193,0.1); }
+    .gantt-barra.ruta-critica { outline: 2px solid #6f42c1; outline-offset: 1px; }
     .gantt-barra-prevista {
       position: absolute; top: 1px; height: 4px; border-radius: 2px; background: transparent;
       border: 1px solid #6c757d; box-sizing: border-box; z-index: 2;
@@ -1045,6 +1047,9 @@
         const nombreTrab = nodo.trabajador_id ? (mapaNombresPerfil[nodo.trabajador_id] || '?') : null;
         const nombreRev = nodo.revisor_id ? (mapaNombresPerfil[nodo.revisor_id] || '?') : null;
         const sufijoPersonas = [nombreTrab ? `Usuario: ${nombreTrab}` : null, nombreRev ? `Supervisor: ${nombreRev}` : null].filter(Boolean).join(' · ');
+        const enRutaCritica = nodosEnRutaCritica.has(id);
+        const claseRutaCritica = enRutaCritica ? ' ruta-critica' : '';
+        const tituloRutaCritica = enRutaCritica ? ' — 🔺 En la ruta crítica' : '';
 
         let barrasHtml = '';
         if (nodo.fecha_inicio_prevista && nodo.fecha_fin_prevista) {
@@ -1058,17 +1063,17 @@
           if (tieneHijos) {
             const iniBar = posX(rango.inicio);
             const finBar = posX(rango.fin || ahora);
-            barrasHtml = `<div class="gantt-barra c-agregado" style="left:${iniBar}px; width:${Math.max(ANCHO_MIN_BARRA, finBar - iniBar)}px;" title="Resumen de la rama — ${nodo.codigo}"></div>`;
+            barrasHtml = `<div class="gantt-barra c-agregado${claseRutaCritica}" style="left:${iniBar}px; width:${Math.max(ANCHO_MIN_BARRA, finBar - iniBar)}px;" title="Resumen de la rama — ${nodo.codigo}${tituloRutaCritica}"></div>`;
           } else if (nodo.asignado_en) {
             const iniAsig = posX(new Date(nodo.asignado_en));
             const finAsig = nodo.trabajo_iniciado_en ? posX(new Date(nodo.trabajo_iniciado_en)) : posX(ahora);
-            barrasHtml += `<div class="gantt-barra c-sin-empezar" style="left:${iniAsig}px; width:${Math.max(ANCHO_MIN_BARRA, finAsig-iniAsig)}px;" title="Asignada, sin empezar${sufijoPersonas ? ' — ' + sufijoPersonas : ''}"></div>`;
+            barrasHtml += `<div class="gantt-barra c-sin-empezar${claseRutaCritica}" style="left:${iniAsig}px; width:${Math.max(ANCHO_MIN_BARRA, finAsig-iniAsig)}px;" title="Asignada, sin empezar${sufijoPersonas ? ' — ' + sufijoPersonas : ''}${tituloRutaCritica}"></div>`;
 
             let finTrabajo = finAsig;
             if (nodo.trabajo_iniciado_en) {
               const iniTrab = finAsig;
               finTrabajo = nodo.trabajo_terminado_en ? posX(new Date(nodo.trabajo_terminado_en)) : posX(ahora);
-              barrasHtml += `<div class="gantt-barra c-trabajo" style="left:${iniTrab}px; width:${Math.max(ANCHO_MIN_BARRA, finTrabajo-iniTrab)}px;" title="En proceso${sufijoPersonas ? ' — ' + sufijoPersonas : ''}"></div>`;
+              barrasHtml += `<div class="gantt-barra c-trabajo${claseRutaCritica}" style="left:${iniTrab}px; width:${Math.max(ANCHO_MIN_BARRA, finTrabajo-iniTrab)}px;" title="En proceso${sufijoPersonas ? ' — ' + sufijoPersonas : ''}${tituloRutaCritica}"></div>`;
             }
             if (nodo.trabajo_terminado_en) {
               const iniEsp = finTrabajo;
@@ -1079,7 +1084,7 @@
               const tituloEspera = esCuelloBotella
                 ? `⚠️ Esperando revisión desde hace ${Math.floor(diasEsperando)} días${sufijoPersonas ? ' — ' + sufijoPersonas : ''}`
                 : `Esperando revisión${sufijoPersonas ? ' — ' + sufijoPersonas : ''}`;
-              barrasHtml += `<div class="gantt-barra ${claseEspera}" style="left:${iniEsp}px; width:${Math.max(ANCHO_MIN_BARRA, finEsp-iniEsp)}px;" title="${tituloEspera}"></div>`;
+              barrasHtml += `<div class="gantt-barra ${claseEspera}${claseRutaCritica}" style="left:${iniEsp}px; width:${Math.max(ANCHO_MIN_BARRA, finEsp-iniEsp)}px;" title="${tituloEspera}${tituloRutaCritica}"></div>`;
             }
           }
         }
