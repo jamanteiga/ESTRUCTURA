@@ -94,6 +94,7 @@
         <button class="secundario" onclick="location.href='resumen.html'">📊 Resumen</button>
         <button class="secundario" onclick="location.href='arbol.html'">🌳 Árbol</button>
         <button class="secundario" onclick="location.href='log.html'">🗒️ Registro</button>
+        <button class="secundario" onclick="location.href='admin.html'">🛠️ Panel admin</button>
         <button class="secundario" onclick="cerrarSesion()">Cerrar sesión</button>
         <button style="background:#dc3545;" onclick="cerrarPagina()">❌ Cerrar</button>
       </div>
@@ -131,6 +132,11 @@
         <select id="buque-nuevo">
           <option value="">— Sin asignar —</option>
         </select>
+      </div>
+
+      <div id="wrap-buques-asignados-nuevo" style="display:none;">
+        <label>Buques que puede ver y revisar (déjalo sin marcar ninguno para que vea todos, como hasta ahora)</label>
+        <div id="lista-buques-asignados-nuevo" style="border:1px solid #ccc; border-radius:4px; padding:8px; max-height:140px; overflow-y:auto; font-size:13px; font-weight:normal;"></div>
       </div>
 
       <label for="password-nuevo">Contraseña inicial (déjalo en blanco para que se genere una)</label>
@@ -210,6 +216,10 @@
         <select id="editar-buque">
           <option value="">— Sin asignar —</option>
         </select>
+      </div>
+      <div id="wrap-buques-asignados-editar" style="display:none;">
+        <label>Buques que puede ver y revisar (déjalo sin marcar ninguno para que vea todos, como hasta ahora)</label>
+        <div id="lista-buques-asignados-editar" style="border:1px solid #ccc; border-radius:4px; padding:8px; max-height:140px; overflow-y:auto; font-size:13px; font-weight:normal;"></div>
       </div>
       <label>Email de contacto</label>
       <input type="text" id="editar-email">
@@ -399,6 +409,17 @@
       document.getElementById('buque-nuevo').innerHTML = opciones;
       document.getElementById('editar-buque').innerHTML = opciones;
 
+      const checksVacio = buquesCache.length === 0
+        ? '<span style="color:#888;">(no hay ningún buque todavía)</span>'
+        : buquesCache.map(b => `
+            <label style="display:flex; align-items:center; gap:6px; font-weight:normal; margin:0 0 4px;">
+              <input type="checkbox" class="chk-buque-asignado" value="${b.id}" style="width:auto;">
+              ${b.codigo}${b.nombre ? ' — ' + b.nombre : ''}
+            </label>
+          `).join('');
+      document.getElementById('lista-buques-asignados-nuevo').innerHTML = checksVacio;
+      document.getElementById('lista-buques-asignados-editar').innerHTML = checksVacio;
+
       const selBackup = document.getElementById('sel-backup-buque');
       selBackup.innerHTML = buquesCache.length === 0
         ? '<option value="">(no hay ningún buque)</option>'
@@ -409,6 +430,21 @@
       const rol = document.getElementById(cual === 'nuevo' ? 'rol-nuevo' : 'editar-rol').value;
       document.getElementById(cual === 'nuevo' ? 'wrap-buque-nuevo' : 'wrap-buque-editar').style.display =
         rol === 'TRABAJADOR' ? 'block' : 'none';
+      document.getElementById(cual === 'nuevo' ? 'wrap-buques-asignados-nuevo' : 'wrap-buques-asignados-editar').style.display =
+        rol === 'REVISOR' ? 'block' : 'none';
+    }
+
+    // Ids de buque marcados en la lista de checkboxes "Buques que puede
+    // ver y revisar" (nuevo o editar). Vacío = ve todos (sin restricción).
+    function leerBuquesAsignadosMarcados(cual) {
+      const cont = document.getElementById(cual === 'nuevo' ? 'lista-buques-asignados-nuevo' : 'lista-buques-asignados-editar');
+      return Array.from(cont.querySelectorAll('.chk-buque-asignado:checked')).map(chk => chk.value);
+    }
+
+    function marcarBuquesAsignados(cual, ids) {
+      const cont = document.getElementById(cual === 'nuevo' ? 'lista-buques-asignados-nuevo' : 'lista-buques-asignados-editar');
+      const idsSet = new Set(ids || []);
+      cont.querySelectorAll('.chk-buque-asignado').forEach(chk => { chk.checked = idsSet.has(chk.value); });
     }
 
     async function cerrarSesion() {
@@ -466,10 +502,12 @@
         return;
       }
 
-      if (ubicacion || (rol === 'TRABAJADOR' && buqueId)) {
+      const buquesAsignadosNuevo = rol === 'REVISOR' ? leerBuquesAsignadosMarcados('nuevo') : [];
+      if (ubicacion || (rol === 'TRABAJADOR' && buqueId) || buquesAsignadosNuevo.length > 0) {
         const cambios = {};
         if (ubicacion) cambios.ubicacion = ubicacion;
         if (rol === 'TRABAJADOR' && buqueId) cambios.buque_id = buqueId;
+        if (buquesAsignadosNuevo.length > 0) cambios.buques_asignados = buquesAsignadosNuevo;
         await supabaseClient.from('profiles').update(cambios).eq('id', data.perfil.id);
       }
 
@@ -483,6 +521,7 @@
       document.getElementById('ubicacion-nuevo').value = '';
       document.getElementById('buque-nuevo').value = '';
       document.getElementById('password-nuevo').value = '';
+      marcarBuquesAsignados('nuevo', []);
       actualizarVisibilidadBuque('nuevo');
 
       mostrarOverlayPassword(data.password, `Contraseña inicial de "${username}"`);
@@ -513,12 +552,20 @@
 
       tbody.innerHTML = perfilesCache.map(perfil => {
         const buque = buquesCache.find(b => b.id === perfil.buque_id);
+        let celdaBuque = '—';
+        if (perfil.rol === 'TRABAJADOR') {
+          celdaBuque = buque ? buque.codigo : '— sin asignar —';
+        } else if (perfil.rol === 'REVISOR' && Array.isArray(perfil.buques_asignados) && perfil.buques_asignados.length > 0) {
+          celdaBuque = perfil.buques_asignados.map(id => buquesCache.find(b => b.id === id)?.codigo || '?').join(', ');
+        } else if (perfil.rol === 'REVISOR') {
+          celdaBuque = 'Todos';
+        }
         return `
         <tr class="${perfil.activo ? '' : 'inactivo'}">
           <td>${perfil.username || '(sin usuario)'}</td>
           <td>${perfil.nombre_completo}</td>
           <td>${ETIQUETAS_ROL[perfil.rol] || perfil.rol}</td>
-          <td>${perfil.rol === 'TRABAJADOR' ? (buque ? buque.codigo : '— sin asignar —') : '—'}</td>
+          <td>${celdaBuque}</td>
           <td>${ETIQUETAS_UBICACION[perfil.ubicacion] || perfil.ubicacion || '—'}</td>
           <td style="text-align:center;">${perfil.activo ? '✔️' : '✘'}</td>
           <td><button onclick="abrirModalEditar('${perfil.id}')">✎ Editar</button></td>
@@ -707,6 +754,7 @@
       document.getElementById('editar-rol').value = p.rol;
       document.getElementById('editar-ubicacion').value = p.ubicacion || '';
       document.getElementById('editar-buque').value = p.buque_id || '';
+      marcarBuquesAsignados('editar', p.buques_asignados || []);
       actualizarVisibilidadBuque('editar');
       document.getElementById('editar-email').value = p.email_contacto || '';
       document.getElementById('editar-movil').value = p.movil || '';
@@ -732,6 +780,7 @@
       const linkedin = document.getElementById('editar-linkedin').value.trim() || null;
       const activo = document.getElementById('editar-activo').checked;
       const buque_id = rol === 'TRABAJADOR' ? (document.getElementById('editar-buque').value || null) : null;
+      const buques_asignados = rol === 'REVISOR' ? leerBuquesAsignadosMarcados('editar') : [];
       const anterior = perfilesCache.find(p => p.id === idEditando);
 
       if (!nombre_completo) { estadoEl.textContent = 'El nombre no puede quedar vacío'; estadoEl.className = 'estado error'; return; }
@@ -741,7 +790,7 @@
       }
 
       const { error } = await supabaseClient.from('profiles').update({
-        nombre_completo, rol, ubicacion, email_contacto, movil, linkedin, activo, buque_id
+        nombre_completo, rol, ubicacion, email_contacto, movil, linkedin, activo, buque_id, buques_asignados
       }).eq('id', idEditando);
 
       if (error) {
@@ -758,7 +807,21 @@
       if (anterior && anterior.movil !== movil) cambios.push('móvil');
       if (anterior && anterior.linkedin !== linkedin) cambios.push('LinkedIn');
       if (anterior && anterior.buque_id !== buque_id) cambios.push('buque asignado');
+      const anteriorBuquesAsignados = JSON.stringify((anterior && anterior.buques_asignados) || []);
+      const cambioBuquesAsignados = anteriorBuquesAsignados !== JSON.stringify(buques_asignados || []);
+      if (cambioBuquesAsignados) cambios.push('buques que puede ver como supervisor');
       registrarLog('EDITAR_USUARIO', `Editó a "${nombre_completo}"${cambios.length ? ' — cambios: ' + cambios.join(', ') : ' — sin cambios de datos'}`);
+
+      // Además del registro general de arriba, se deja un registro aparte y
+      // fácil de filtrar para "Historial de cambios de rol y permisos" del
+      // Panel de administración (acción CAMBIO_ROL / CAMBIO_BUQUE_ASIGNADO).
+      if (anterior && anterior.rol !== rol) {
+        registrarLog('CAMBIO_ROL', `"${nombre_completo}": rol ${ETIQUETAS_ROL[anterior.rol] || anterior.rol} → ${ETIQUETAS_ROL[rol] || rol}`);
+      }
+      if (cambioBuquesAsignados) {
+        const nombresBuques = buques_asignados.map(id => buquesCache.find(b => b.id === id)?.codigo || id);
+        registrarLog('CAMBIO_BUQUE_ASIGNADO', `"${nombre_completo}" (${ETIQUETAS_ROL[rol] || rol}): ahora ve ${nombresBuques.length ? nombresBuques.join(', ') : 'todos los buques'}`);
+      }
 
       cerrarModalEditar();
       cargarUsuarios();

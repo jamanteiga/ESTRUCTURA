@@ -371,6 +371,7 @@
         <a class="menu-item" id="menu-item-alertas" href="resumen.html" style="display:none;" title="Tareas retrasadas y usuarios con demasiada carga hoy — detalle en Resumen">⚠️ Alertas<span id="badge-alertas" style="display:none; background:#dc3545; color:#fff; border-radius:10px; padding:1px 7px; font-size:11px; font-weight:bold; margin-left:6px;"></span></a>
         <span class="menu-item" id="menu-item-resumen-comentarios" onclick="abrirResumenComentariosModelo()" style="display:none;">📋 Comentarios pendientes de modelo<span id="badge-comentarios-pendientes" style="display:none; background:#dc3545; color:#fff; border-radius:10px; padding:1px 7px; font-size:11px; font-weight:bold; margin-left:6px;"></span></span>
         <a class="menu-item solo-escritorio" id="menu-link-usuarios" href="usuarios.html" style="display:none;">👤 Usuarios</a>
+        <a class="menu-item solo-escritorio" id="menu-link-admin" href="admin.html" style="display:none;">🛠️ Panel de administración</a>
         <div class="menu-item-expandible solo-escritorio" id="menu-item-backup" onclick="toggleSubmenuFlotante(event, this, 'submenu-backup')" style="display:none;">💾 Backup <span class="flecha-menu">›</span></div>
         <div class="menu-submenu-contenido solo-escritorio" id="submenu-backup">
           <span class="menu-item">Cargando buques...</span>
@@ -1163,6 +1164,7 @@
       restaurarEstadoMenuLateral();
       if (perfil.rol === 'ADMIN') {
         document.getElementById('menu-link-usuarios').style.display = 'flex';
+        document.getElementById('menu-link-admin').style.display = 'flex';
         document.getElementById('menu-item-backup').style.display = 'flex';
         inicializarBackupAutomatico();
         document.getElementById('menu-link-log').style.display = 'flex';
@@ -1219,7 +1221,7 @@
         cargarArbol();
       });
 
-      await cargarPerfiles();
+      await Promise.all([cargarPerfiles(), cargarEstructuraMinimaPersonalizada()]);
 
       if (pareceGestor() || miPerfil.rol === 'TRABAJADOR') {
         const selUsuario = document.getElementById('sel-filtro-usuario');
@@ -1250,6 +1252,13 @@
       await cargarArbol();
       suscribirseARealtime();
       inicializarModoMenu();
+
+      // Si se llega desde el Panel de administración pidiendo ver la
+      // papelera directamente (arbol.html?papelera=1), la abre sola.
+      if (esAdmin() && new URLSearchParams(window.location.search).get('papelera') === '1') {
+        const chk = document.getElementById('chk-papelera');
+        if (chk) { chk.checked = true; togglePapelera(); }
+      }
     }
 
     function esGestor() { return miPerfil.rol === 'ADMIN' || miPerfil.rol === 'REVISOR'; }
@@ -1466,10 +1475,20 @@
     }
 
     // Un usuario normal (TRABAJADOR) solo puede estar dado de alta en UN
-    // buque (profiles.buque_id) y no debe ver el resto. Admin, supervisor y
-    // windchill siguen viendo todos los buques sin restricción.
+    // buque (profiles.buque_id) y no debe ver el resto. Admin y windchill
+    // siguen viendo todos los buques sin restricción. Un Supervisor
+    // (REVISOR) ve todos los buques SALVO que un Admin le haya asignado
+    // uno o varios concretos en Usuarios (profiles.buques_asignados) --
+    // pensado para cuando hay supervisores dedicados a un proyecto en
+    // concreto y no deben ver (ni liarse revisando) el resto.
     function filtrarPorBuqueAsignado(nodos) {
-      if (miPerfil.rol !== 'TRABAJADOR' || !miPerfil.buque_id) return nodos;
+      let idsRaiz = null;
+      if (miPerfil.rol === 'TRABAJADOR' && miPerfil.buque_id) {
+        idsRaiz = [miPerfil.buque_id];
+      } else if (miPerfil.rol === 'REVISOR' && Array.isArray(miPerfil.buques_asignados) && miPerfil.buques_asignados.length > 0) {
+        idsRaiz = miPerfil.buques_asignados;
+      }
+      if (!idsRaiz) return nodos;
 
       const hijosPorPadreTmp = {};
       nodos.forEach(n => {
@@ -1478,15 +1497,16 @@
         hijosPorPadreTmp[clave].push(n);
       });
 
-      const permitidos = new Set([miPerfil.buque_id]);
-      const cola = [miPerfil.buque_id];
+      const idsRaizSet = new Set(idsRaiz);
+      const permitidos = new Set(idsRaiz);
+      const cola = idsRaiz.slice();
       while (cola.length) {
         const actual = cola.pop();
         (hijosPorPadreTmp[actual] || []).forEach(hijo => {
           if (!permitidos.has(hijo.id)) { permitidos.add(hijo.id); cola.push(hijo.id); }
         });
       }
-      return nodos.filter(n => n.tipo === 'BUQUE' ? n.id === miPerfil.buque_id : permitidos.has(n.id));
+      return nodos.filter(n => n.tipo === 'BUQUE' ? idsRaizSet.has(n.id) : permitidos.has(n.id));
     }
 
     async function cargarArbol() {
@@ -3819,7 +3839,13 @@
     // Qué genera "Generar estructura mínima" según el tipo del nodo donde se invoca.
     // Un array vacío = el tipo participa del menú pero no tiene nada definido debajo (aviso en vez de crear).
     // NL no aparece aquí a propósito: esa rama se genera siempre a mano.
-    const ESTRUCTURA_MINIMA_POR_TIPO = {
+    // Esta es la definición DE FÁBRICA -- se usa tal cual salvo que un Admin
+    // la haya editado desde el Panel de administración (tabla
+    // estructura_minima_config), en cuyo caso cargarEstructuraMinimaPersonalizada()
+    // sustituye ESTRUCTURA_MINIMA_POR_TIPO por esa versión al iniciar. Si esa
+    // tabla no existe todavía o falla la lectura, se sigue con esta de
+    // siempre sin que se note.
+    const ESTRUCTURA_MINIMA_POR_TIPO_DEFECTO = {
       BLOQUE:   [ RAMA_ANIDADOS, RAMA_PI ],
       ANIDADOS: RAMA_ANIDADOS.hijos,
       PI:       RAMA_PI.hijos,
@@ -3834,6 +3860,18 @@
       UC:       RAMA_UC.hijos,
       NC:       []
     };
+    let ESTRUCTURA_MINIMA_POR_TIPO = ESTRUCTURA_MINIMA_POR_TIPO_DEFECTO;
+    async function cargarEstructuraMinimaPersonalizada() {
+      try {
+        const { data } = await supabaseClient.from('estructura_minima_config').select('definicion').eq('id', 1).single();
+        if (data && data.definicion && typeof data.definicion === 'object' && Object.keys(data.definicion).length > 0) {
+          ESTRUCTURA_MINIMA_POR_TIPO = data.definicion;
+        }
+      } catch (e) {
+        // Tabla no desplegada todavía, sin permiso, etc. -- se sigue con la
+        // definición de fábrica sin que "Generar estructura mínima" se rompa.
+      }
+    }
 
     async function crearRamaMinima(spec, parentId, orden) {
       const codigo = spec.codigo || spec.tipo;

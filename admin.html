@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESTRUCTURA - Panel de administración</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#007bff">
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 1100px; margin: 30px auto; padding: 0 20px; color: #333; }
+    h1 { font-size: 22px; }
+    h2 { font-size: 16px; margin: 0 0 4px; }
+    .subtitulo-card { font-size: 12px; color: #666; margin: -2px 0 12px; }
+    .card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 18px; }
+    body.vista-movil .solo-escritorio { display: none !important; }
+    body.tema-oscuro { background: #1a1d21; color: #e0e0e0; }
+    body.tema-oscuro .card { background: #24282e; border-color: #3a3f47; }
+    body.tema-oscuro h1, body.tema-oscuro h2 { color: #f0f0f0; }
+    body.tema-oscuro table { color: #e0e0e0; background: #24282e; }
+    body.tema-oscuro th { background: #14395c; }
+    body.tema-oscuro td { border-color: #3a3f47; }
+    body.tema-oscuro select, body.tema-oscuro input, body.tema-oscuro textarea { background: #1a1d21; color: #e0e0e0; border-color: #4a4f57; }
+    body.tema-oscuro .subtitulo-card { color: #a0a0a0; }
+    body.tema-oscuro .metrica-caja { background: #1a1d21 !important; border-color: #3a3f47 !important; }
+    .header-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+    button { padding: 7px 14px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; }
+    button:hover { background: #0069d9; }
+    button:disabled { background: #999; cursor: not-allowed; }
+    button.secundario { background: #6c757d; }
+    button.secundario:hover { background: #5a6268; }
+    button.peligro { background: #dc3545; }
+    button.peligro:hover { background: #c82333; }
+    .estado { font-size: 13px; margin-top: 8px; }
+    .ok { color: #218838; }
+    .error { color: #dc3545; }
+    .aviso { color: #b8860b; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; background: white; font-size: 13px; }
+    th, td { padding: 7px; text-align: left; border-bottom: 1px solid #eee; }
+    th { background: #1c6e8c; color: white; }
+    label { display: block; font-weight: bold; font-size: 12px; margin-bottom: 4px; margin-top: 10px; }
+    input, select, textarea { padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 14px; font-family: inherit; }
+    input[type="text"], input[type="file"] { width: 100%; }
+    textarea { width: 100%; font-family: monospace; font-size: 12px; }
+    .metricas-fila { display: flex; gap: 12px; flex-wrap: wrap; }
+    .metrica-caja { flex: 1; min-width: 140px; background: white; border: 1px solid #eee; border-radius: 6px; padding: 10px 14px; }
+    .metrica-caja .num { font-size: 22px; font-weight: bold; }
+    .metrica-caja .etq { font-size: 11px; color: #888; }
+    .fila-accion { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+    details summary { cursor: pointer; font-weight: bold; font-size: 13px; margin-top: 8px; }
+    .spinner-carga {
+      display: inline-block; width: 14px; height: 14px; border: 2px solid #ccc; border-top-color: #007bff;
+      border-radius: 50%; animation: girar 0.7s linear infinite; vertical-align: middle; margin-right: 6px;
+    }
+    @keyframes girar { to { transform: rotate(360deg); } }
+    @media (max-width: 480px) {
+      body { margin: 10px auto; padding: 0 8px; box-sizing: border-box; }
+      h1 { font-size: 18px; }
+      .metricas-fila { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header-bar">
+    <h1>🛠️ Panel de administración</h1>
+    <div>
+      <span id="texto-usuario" class="estado ok"></span>
+      <button class="secundario" onclick="alternarTema()">🌙/☀️</button>
+      <button class="secundario" onclick="location.href='index.html'">🏠 Inicio</button>
+      <button class="secundario" onclick="location.href='arbol.html'">🌳 Árbol</button>
+      <button class="secundario" onclick="location.href='usuarios.html'">👤 Usuarios</button>
+      <button class="secundario" onclick="location.href='log.html'">🗒️ Registro</button>
+      <button class="secundario" onclick="cerrarSesion()">Cerrar sesión</button>
+      <button style="background:#dc3545;" onclick="cerrarPagina()">❌ Cerrar</button>
+    </div>
+  </div>
+
+  <div id="sin-permiso" style="display:none; color:#dc3545; font-weight:bold; text-align:center; margin-top:60px;">
+    Solo ADMIN puede ver el Panel de administración.
+  </div>
+
+  <div class="overlay" id="modal-aviso" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.55); align-items:center; justify-content:center; z-index:5000;">
+    <div style="background:white; border-radius:8px; padding:22px; max-width:440px; width:90%; text-align:center;">
+      <p id="modal-aviso-texto" style="font-size:14px; margin:10px 0 18px; white-space:pre-line;"></p>
+      <button onclick="document.getElementById('modal-aviso').style.display='none';">Aceptar</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="modal-confirmacion" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.55); align-items:center; justify-content:center; z-index:5000;">
+    <div style="background:white; border-radius:8px; padding:22px; max-width:420px; width:90%; text-align:center;">
+      <p id="modal-confirmacion-texto" style="font-size:14px; margin:10px 0 18px; white-space:pre-line;"></p>
+      <div style="display:flex; justify-content:center; gap:8px;">
+        <button style="background:#6c757d;" id="confirmacion-no">Cancelar</button>
+        <button id="confirmacion-si">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel" style="display:none;">
+
+    <!-- 1) Papelera de nodos desactivados -->
+    <div class="card">
+      <h2>🗑️ Papelera de nodos desactivados</h2>
+      <p class="subtitulo-card">Ya existe: se gestiona desde el propio árbol. Este acceso directo la abre marcada.</p>
+      <div class="fila-accion">
+        <button class="secundario" onclick="location.href='arbol.html?papelera=1'">Ver papelera en el árbol</button>
+      </div>
+    </div>
+
+    <!-- 2) Panel de salud del sistema -->
+    <div class="card">
+      <h2>🏥 Salud del sistema</h2>
+      <p class="subtitulo-card">Última copia de seguridad, tamaño de la base de datos y actividad reciente.</p>
+      <div id="salud-contenido"><span class="spinner-carga"></span>Cargando...</div>
+    </div>
+
+    <!-- 3) Permisos de Supervisor por buque -->
+    <div class="card">
+      <h2>🚢 Permisos de Supervisor por buque</h2>
+      <p class="subtitulo-card">
+        Por defecto un Supervisor ve y revisa todos los buques. Para dedicar uno a un proyecto concreto,
+        edítalo en Usuarios y marca ahí qué buques puede ver — el árbol se lo respeta automáticamente.
+      </p>
+      <div class="fila-accion">
+        <button class="secundario" onclick="location.href='usuarios.html'">Ir a Usuarios</button>
+      </div>
+      <div id="lista-supervisores-restringidos" style="margin-top:10px;"></div>
+    </div>
+
+    <!-- 4) Historial de cambios de rol y permisos -->
+    <div class="card">
+      <h2>📜 Historial de cambios de rol y permisos</h2>
+      <p class="subtitulo-card">Cada cambio de rol o de buques asignados a un Supervisor queda registrado y se puede consultar aquí.</p>
+      <div class="fila-accion">
+        <button class="secundario" onclick="location.href='log.html?accion=CAMBIO_ROL'">Ver cambios de rol</button>
+        <button class="secundario" onclick="location.href='log.html?accion=CAMBIO_BUQUE_ASIGNADO'">Ver cambios de permisos por buque</button>
+      </div>
+      <div class="fila-accion">
+        <select id="sel-historial-usuario" style="min-width:220px;"><option value="">— Elige un usuario —</option></select>
+        <button class="secundario" onclick="verHistorialDeUsuario()">Ver su historial completo</button>
+      </div>
+    </div>
+
+    <!-- 5) Panel de intentos fallidos -->
+    <div class="card">
+      <h2>⛔ Panel de intentos fallidos</h2>
+      <p class="subtitulo-card">Intentos denegados por falta de permiso e inicios de sesión fallidos.</p>
+      <div id="fallos-contenido"><span class="spinner-carga"></span>Cargando...</div>
+      <div class="fila-accion">
+        <button class="secundario" onclick="location.href='log.html?fallos=1'">Ver todos en el registro</button>
+      </div>
+    </div>
+
+    <!-- 6) Métricas de adopción -->
+    <div class="card">
+      <h2>📊 Métricas de adopción de la aplicación</h2>
+      <p class="subtitulo-card">Actividad de cada usuario en los últimos 30 días (acciones registradas), para ver quién usa poco la aplicación.</p>
+      <div id="adopcion-contenido"><span class="spinner-carga"></span>Cargando...</div>
+    </div>
+
+    <!-- 7) Estructura mínima editable -->
+    <div class="card">
+      <h2>🏗️ Estructura mínima editable</h2>
+      <p class="subtitulo-card">
+        Qué crea de golpe "Generar estructura mínima" en el árbol, según el tipo de nodo. Formato JSON:
+        cada tipo tiene una lista de hijos (<code>tipo</code>, y opcionalmente <code>codigo</code>, <code>nombre</code> e <code>hijos</code> anidados).
+        Si algo sale mal, el árbol sigue usando siempre la definición de fábrica de siempre.
+      </p>
+      <details>
+        <summary>Tipos de nodo válidos</summary>
+        <p id="ref-tipos-nodo" style="font-size:12px; color:#666; margin-top:6px;"></p>
+      </details>
+      <textarea id="txt-estructura-minima" rows="14" spellcheck="false" placeholder="Cargando..."></textarea>
+      <div class="fila-accion">
+        <button onclick="guardarEstructuraMinima()">💾 Guardar cambios</button>
+        <button class="secundario" onclick="recargarEstructuraMinima()">🔄 Descartar y recargar</button>
+        <button class="secundario" onclick="restaurarEstructuraMinimaDeFabrica()">↩️ Restaurar valores de fábrica</button>
+      </div>
+      <div id="estado-estructura-minima" class="estado"></div>
+      <p id="meta-estructura-minima" style="font-size:11px; color:#888; margin-top:6px;"></p>
+    </div>
+
+    <!-- 8) Importación masiva de festivos -->
+    <div class="card">
+      <h2>📅 Importación masiva de festivos</h2>
+      <p class="subtitulo-card">Columnas: Fecha, Sede (vacío = festivo nacional), Descripcion, Ambito (nacional / autonomico / local).</p>
+      <div class="fila-accion">
+        <button class="secundario" onclick="descargarPlantillaFestivos()">⬇ Descargar plantilla</button>
+        <input type="file" id="input-festivos" accept=".xlsx,.xls" style="max-width:260px;">
+      </div>
+      <div id="preview-festivos"></div>
+    </div>
+
+    <!-- 9) Importación masiva de ausencias -->
+    <div class="card">
+      <h2>🌴 Importación masiva de ausencias</h2>
+      <p class="subtitulo-card">Columnas: Usuario (su nombre de usuario o nombre completo), FechaInicio, FechaFin, Motivo (opcional).</p>
+      <div class="fila-accion">
+        <button class="secundario" onclick="descargarPlantillaAusencias()">⬇ Descargar plantilla</button>
+        <input type="file" id="input-ausencias" accept=".xlsx,.xls" style="max-width:260px;">
+      </div>
+      <div id="preview-ausencias"></div>
+    </div>
+
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script>
+    const SUPABASE_URL = 'https://wuarkraddnndmgvfnkmm.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // -------------------- Registro de comunicaciones (log_comunicaciones.html) --------------------
+    function redactarCuerpoComunicacion(cuerpoTexto) {
+      if (!cuerpoTexto) return null;
+      try {
+        const limpiar = (o) => {
+          if (Array.isArray(o)) return o.map(limpiar);
+          if (o && typeof o === 'object') {
+            const copia = {};
+            Object.keys(o).forEach(k => { copia[k] = /password|contrase/i.test(k) ? '***' : limpiar(o[k]); });
+            return copia;
+          }
+          return o;
+        };
+        return JSON.stringify(limpiar(JSON.parse(cuerpoTexto))).slice(0, 4000);
+      } catch (e) {
+        return String(cuerpoTexto).slice(0, 4000);
+      }
+    }
+    (function () {
+      const _fetchOriginal = window.fetch.bind(window);
+      window.fetch = async function (input, init) {
+        const inicio = performance.now();
+        const url = typeof input === 'string' ? input : (input && input.url) || '';
+        const metodo = (init && init.method) || (typeof input === 'object' && input && input.method) || 'GET';
+        if (url.indexOf('/comunicaciones_log') !== -1) return _fetchOriginal(input, init);
+        let respuesta, errorMsg = null;
+        try {
+          respuesta = await _fetchOriginal(input, init);
+          return respuesta;
+        } catch (e) {
+          errorMsg = e.message;
+          throw e;
+        } finally {
+          const duracionMs = Math.round(performance.now() - inicio);
+          const cuerpo = init && init.body && typeof init.body === 'string' ? redactarCuerpoComunicacion(init.body) : null;
+          supabaseClient.from('comunicaciones_log').insert({
+            metodo, url, cuerpo, duracion_ms: duracionMs,
+            status_code: respuesta ? respuesta.status : null, error: errorMsg
+          }).then(() => {}, () => {});
+        }
+      };
+    })();
+
+    // -------------------- Modo mantenimiento --------------------
+    async function comprobarMantenimiento(rol) {
+      if (rol === 'ADMIN') return false;
+      try {
+        const { data } = await supabaseClient.from('app_mantenimiento').select('activo').eq('id', 1).single();
+        if (data && data.activo) { window.location.href = 'mantenimiento.html'; return true; }
+      } catch (e) { /* si falla la comprobación, no se bloquea la app por eso */ }
+      return false;
+    }
+
+    const esTactil = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+    const esMovil = esTactil || window.innerWidth < 768;
+    document.body.classList.toggle('vista-movil', esMovil);
+
+    function aplicarTema(tema) {
+      document.body.classList.toggle('tema-oscuro', tema === 'oscuro');
+      localStorage.setItem('estructura_tema', tema);
+    }
+    function alternarTema() {
+      aplicarTema(document.body.classList.contains('tema-oscuro') ? 'claro' : 'oscuro');
+    }
+    aplicarTema(localStorage.getItem('estructura_tema') || 'claro');
+
+    let miPerfil = null;
+    let buquesCache = [];
+    let perfilesCache = [];
+
+    async function registrarLog(accion, descripcion) {
+      try {
+        await supabaseClient.from('audit_log').insert({ accion, descripcion, user_agent: navigator.userAgent });
+      } catch (e) {
+        console.warn('No se pudo registrar el log:', e);
+      }
+    }
+
+    async function cerrarSesion() {
+      await registrarLog('LOGOUT', `Cerró sesión (${miPerfil?.username || ''})`);
+      await supabaseClient.auth.signOut();
+      window.location.href = 'login.html';
+    }
+
+    function cerrarPagina() { window.location.href = 'arbol.html'; }
+
+    function mostrarAviso(mensaje) {
+      document.getElementById('modal-aviso-texto').textContent = mensaje;
+      document.getElementById('modal-aviso').style.display = 'flex';
+    }
+
+    function mostrarConfirmacion(mensaje) {
+      return new Promise((resolve) => {
+        document.getElementById('modal-confirmacion-texto').textContent = mensaje;
+        document.getElementById('modal-confirmacion').style.display = 'flex';
+        const btnSi = document.getElementById('confirmacion-si');
+        const btnNo = document.getElementById('confirmacion-no');
+        const limpiar = () => { btnSi.onclick = null; btnNo.onclick = null; document.getElementById('modal-confirmacion').style.display = 'none'; };
+        btnSi.onclick = () => { limpiar(); resolve(true); };
+        btnNo.onclick = () => { limpiar(); resolve(false); };
+      });
+    }
+
+    function traducirError(mensaje) {
+      if (!mensaje) return 'Ha ocurrido un error inesperado.';
+      const m = mensaje.toLowerCase();
+      if (m.includes('permission denied') || m.includes('solo')) return mensaje;
+      if (m.includes('failed to fetch') || m.includes('networkerror')) return 'No se pudo conectar — comprueba tu conexión a internet.';
+      if (m.includes('jwt') || m.includes('token') || m.includes('session')) return 'Tu sesión ha caducado — vuelve a iniciar sesión.';
+      return mensaje;
+    }
+
+    const ETIQUETAS_ROL = { TRABAJADOR: 'Usuario', REVISOR: 'Supervisor', ADMIN: 'Admin', INVITADO: 'Invitado', WINDCHILL: 'Windchill' };
+    const ETIQUETAS_TIPO = {
+      BUQUE: 'Buque', BLOQUE: 'Bloque', SB: 'Subbloque', SBE: 'Unión de subbloques', SBL: 'Unión en grada',
+      CS: 'Conjunto simple', UA: 'Unidad abierta', GR: 'Grupo', UL: 'Unidad longitudinal', NL: 'Panel',
+      UP: 'Unidad plana fabricada', NP: 'Panel plano', PS: 'Previa simple', PT: 'Previa en T', PE: 'Pieza especial',
+      PM: 'Piezas menores', UC: 'Unidad fabricada de forro', NC: 'Panel curvo de forro', PI: 'Producto intermedio',
+      ANIDADOS: 'Anidados', PDB: 'Plano de bloque', PANELES: 'Paneles', PL: 'Plancha', PERF: 'Perfil',
+      PLANCHA_1000: 'Plancha 1000', PLANCHA_2000: 'Plancha 2000', PLANCHA_3000: 'Plancha 3000',
+      PERFIL_4000: 'Perfil 4000', PERFIL_6000: 'Perfil 6000'
+    };
+
+    // Misma definición de fábrica que lleva arbol.html -- se usa aquí solo
+    // para el botón "Restaurar valores de fábrica" del editor.
+    const ESTRUCTURA_MINIMA_DEFECTO = {
+      BLOQUE: [
+        { tipo: 'ANIDADOS', hijos: [
+            { tipo: 'PL', hijos: [ { tipo: 'PLANCHA_1000', codigo: 'PL1000' }, { tipo: 'PLANCHA_2000', codigo: 'PL2000' }, { tipo: 'PLANCHA_3000', codigo: 'PL3000' } ] },
+            { tipo: 'PERF', hijos: [ { tipo: 'PERFIL_4000', codigo: 'PERF4000' }, { tipo: 'PERFIL_6000', codigo: 'PERF6000' } ] }
+        ] },
+        { tipo: 'PI', hijos: [
+            { tipo: 'SB', hijos: [ { tipo: 'UA', hijos: [ { tipo: 'GR', hijos: [ { tipo: 'UL', hijos: [ { tipo: 'NL' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' } ] } ] }, { tipo: 'PS' }, { tipo: 'PM' } ] } ] },
+            { tipo: 'PM' }, { tipo: 'PS' }, { tipo: 'UC', hijos: [ { tipo: 'NC' } ] }
+        ] }
+      ],
+      ANIDADOS: [
+        { tipo: 'PL', hijos: [ { tipo: 'PLANCHA_1000', codigo: 'PL1000' }, { tipo: 'PLANCHA_2000', codigo: 'PL2000' }, { tipo: 'PLANCHA_3000', codigo: 'PL3000' } ] },
+        { tipo: 'PERF', hijos: [ { tipo: 'PERFIL_4000', codigo: 'PERF4000' }, { tipo: 'PERFIL_6000', codigo: 'PERF6000' } ] }
+      ],
+      PI: [
+        { tipo: 'SB', hijos: [ { tipo: 'UA', hijos: [ { tipo: 'GR', hijos: [ { tipo: 'UL', hijos: [ { tipo: 'NL' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' } ] } ] }, { tipo: 'PS' }, { tipo: 'PM' } ] } ] },
+        { tipo: 'PM' }, { tipo: 'PS' }, { tipo: 'UC', hijos: [ { tipo: 'NC' } ] }
+      ],
+      SB: [ { tipo: 'UA', hijos: [ { tipo: 'GR', hijos: [ { tipo: 'UL', hijos: [ { tipo: 'NL' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' } ] } ] }, { tipo: 'PS' }, { tipo: 'PM' } ] } ],
+      UA: [ { tipo: 'GR', hijos: [ { tipo: 'UL', hijos: [ { tipo: 'NL' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' } ] } ] }, { tipo: 'PS' }, { tipo: 'PM' } ],
+      GR: [ { tipo: 'UL', hijos: [ { tipo: 'NL' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' } ] } ],
+      UL: [ { tipo: 'NL' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' } ],
+      UP: [ { tipo: 'NP' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' } ],
+      PS: [], PT: [], PE: [],
+      UC: [ { tipo: 'NC' } ],
+      NC: []
+    };
+
+    async function iniciar() {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (!session) { window.location.href = 'login.html?next=admin.html'; return; }
+
+      const { data: perfil, error } = await supabaseClient.from('profiles').select('*').eq('id', session.user.id).single();
+
+      if (error || !perfil || !perfil.activo || perfil.rol !== 'ADMIN') {
+        document.getElementById('sin-permiso').style.display = 'block';
+        return;
+      }
+
+      miPerfil = perfil;
+      if (await comprobarMantenimiento(perfil.rol)) return;
+
+      document.getElementById('texto-usuario').textContent = `${perfil.nombre_completo} (${perfil.username}) — Admin`;
+      document.getElementById('panel').style.display = 'block';
+
+      document.getElementById('ref-tipos-nodo').textContent =
+        Object.keys(ETIQUETAS_TIPO).map(t => `${t} (${ETIQUETAS_TIPO[t]})`).join(', ');
+
+      const { data: buques } = await supabaseClient.from('nodes').select('id, codigo, nombre').eq('tipo', 'BUQUE').eq('activo', true).order('codigo');
+      buquesCache = buques || [];
+      const { data: perfiles } = await supabaseClient.from('profiles').select('*').order('nombre_completo');
+      perfilesCache = perfiles || [];
+
+      const selHistorial = document.getElementById('sel-historial-usuario');
+      selHistorial.innerHTML = '<option value="">— Elige un usuario —</option>' +
+        perfilesCache.map(p => `<option value="${p.nombre_completo}">${p.nombre_completo} (${ETIQUETAS_ROL[p.rol] || p.rol})</option>`).join('');
+
+      pintarSupervisoresRestringidos();
+      cargarSaludSistema();
+      cargarFallosRecientes();
+      cargarAdopcion();
+      cargarEstructuraMinima();
+
+      document.getElementById('input-festivos').addEventListener('change', manejarArchivoFestivos);
+      document.getElementById('input-ausencias').addEventListener('change', manejarArchivoAusencias);
+    }
+
+    function verHistorialDeUsuario() {
+      const nombre = document.getElementById('sel-historial-usuario').value;
+      if (!nombre) { mostrarAviso('Elige primero un usuario.'); return; }
+      window.location.href = `log.html?texto=${encodeURIComponent(nombre)}`;
+    }
+
+    // -------------------- 3) Permisos de Supervisor por buque (resumen) --------------------
+
+    function pintarSupervisoresRestringidos() {
+      const cont = document.getElementById('lista-supervisores-restringidos');
+      const supervisores = perfilesCache.filter(p => p.rol === 'REVISOR' && p.activo);
+      if (supervisores.length === 0) { cont.innerHTML = '<p style="font-size:13px; color:#888;">No hay ningún Supervisor de alta.</p>'; return; }
+      cont.innerHTML = '<table><thead><tr><th>Supervisor</th><th>Buques que ve</th></tr></thead><tbody>' +
+        supervisores.map(p => {
+          const restringido = Array.isArray(p.buques_asignados) && p.buques_asignados.length > 0;
+          const texto = restringido
+            ? p.buques_asignados.map(id => buquesCache.find(b => b.id === id)?.codigo || '?').join(', ')
+            : 'Todos los buques';
+          return `<tr><td>${p.nombre_completo}</td><td>${restringido ? `<strong>${texto}</strong>` : texto}</td></tr>`;
+        }).join('') + '</tbody></table>';
+    }
+
+    // -------------------- 2) Salud del sistema --------------------
+
+    function formatearTranscurrido(iso) {
+      const minutos = Math.floor((new Date() - new Date(iso)) / 60000);
+      const horas = Math.floor(minutos / 60);
+      const dias = Math.floor(horas / 24);
+      if (dias > 0) return `hace ${dias} día(s)`;
+      return `hace ${horas}h ${String(minutos % 60).padStart(2, '0')}min`;
+    }
+
+    async function cargarSaludSistema() {
+      const cont = document.getElementById('salud-contenido');
+      const [rSalud, rBackup] = await Promise.all([
+        supabaseClient.rpc('admin_salud_sistema'),
+        supabaseClient.from('audit_log').select('creado_en, descripcion').eq('accion', 'COPIA_SEGURIDAD').order('creado_en', { ascending: false }).limit(1)
+      ]);
+
+      if (rSalud.error) {
+        cont.innerHTML = `<p class="error">No se pudo cargar (¿falta ejecutar estructura_panel_admin.sql en Supabase?): ${traducirError(rSalud.error.message)}</p>`;
+        return;
+      }
+
+      const salud = rSalud.data || {};
+      const ultimoBackup = (rBackup.data || [])[0];
+      const horasDesdeBackup = ultimoBackup ? (new Date() - new Date(ultimoBackup.creado_en)) / 3600000 : null;
+      const avisoBackup = horasDesdeBackup === null || horasDesdeBackup > 24;
+
+      cont.innerHTML = `
+        <div class="metricas-fila">
+          <div class="metrica-caja">
+            <div class="num">${salud.tamano_bd_legible || '—'}</div>
+            <div class="etq">TAMAÑO DE LA BASE DE DATOS</div>
+          </div>
+          <div class="metrica-caja">
+            <div class="num">${salud.nodos_activos ?? '—'}</div>
+            <div class="etq">NODOS ACTIVOS (${salud.buques_activos ?? '—'} buques)</div>
+          </div>
+          <div class="metrica-caja">
+            <div class="num">${salud.usuarios_activos ?? '—'}</div>
+            <div class="etq">USUARIOS ACTIVOS</div>
+          </div>
+          <div class="metrica-caja">
+            <div class="num">${salud.acciones_ultimas_24h ?? '—'}</div>
+            <div class="etq">ACCIONES EN LAS ÚLTIMAS 24H</div>
+          </div>
+        </div>
+        <p style="margin-top:12px; font-size:13px;" class="${avisoBackup ? 'aviso' : 'ok'}">
+          ${ultimoBackup
+            ? `${avisoBackup ? '⚠️' : '✔️'} Última copia de seguridad: ${new Date(ultimoBackup.creado_en).toLocaleString('es-ES')} (${formatearTranscurrido(ultimoBackup.creado_en)})${avisoBackup ? ' — lleva más de 24h sin hacerse una nueva.' : ''}`
+            : '⚠️ No hay ninguna copia de seguridad registrada todavía.'}
+        </p>
+      `;
+    }
+
+    // -------------------- 5) Panel de intentos fallidos --------------------
+
+    async function cargarFallosRecientes() {
+      const cont = document.getElementById('fallos-contenido');
+      const hace7dias = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+      const { data, error } = await supabaseClient
+        .from('audit_log').select('actor_nombre, accion, descripcion, creado_en')
+        .in('accion', ['INTENTO_FALLIDO', 'LOGIN_FALLIDO'])
+        .gte('creado_en', hace7dias)
+        .order('creado_en', { ascending: false })
+        .limit(2000);
+
+      if (error) { cont.innerHTML = `<p class="error">${traducirError(error.message)}</p>`; return; }
+
+      const filas = data || [];
+      const hace24h = new Date(Date.now() - 24 * 3600 * 1000);
+      const ultimas24h = filas.filter(f => new Date(f.creado_en) >= hace24h);
+
+      const porUsuario = {};
+      filas.forEach(f => {
+        const nombre = f.actor_nombre || '(sin identificar)';
+        porUsuario[nombre] = (porUsuario[nombre] || 0) + 1;
+      });
+      const topUsuarios = Object.entries(porUsuario).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+      cont.innerHTML = `
+        <div class="metricas-fila">
+          <div class="metrica-caja">
+            <div class="num">${ultimas24h.length}</div>
+            <div class="etq">EN LAS ÚLTIMAS 24H</div>
+          </div>
+          <div class="metrica-caja">
+            <div class="num">${filas.length}</div>
+            <div class="etq">EN LOS ÚLTIMOS 7 DÍAS</div>
+          </div>
+        </div>
+        ${topUsuarios.length > 0 ? `
+          <table style="margin-top:10px;"><thead><tr><th>Usuario</th><th>Intentos fallidos (7 días)</th></tr></thead><tbody>
+            ${topUsuarios.map(([nombre, n]) => `<tr><td>${nombre}</td><td>${n}</td></tr>`).join('')}
+          </tbody></table>
+        ` : '<p style="font-size:13px; color:#888; margin-top:8px;">Ningún intento fallido en los últimos 7 días.</p>'}
+      `;
+    }
+
+    // -------------------- 6) Métricas de adopción --------------------
+
+    async function cargarAdopcion() {
+      const cont = document.getElementById('adopcion-contenido');
+      const hace30dias = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+      const { data, error } = await supabaseClient
+        .from('audit_log').select('actor_id, actor_nombre, accion, creado_en')
+        .gte('creado_en', hace30dias)
+        .order('creado_en', { ascending: false })
+        .limit(20000);
+
+      if (error) { cont.innerHTML = `<p class="error">${traducirError(error.message)}</p>`; return; }
+
+      const filas = data || [];
+      const porActor = {};
+      filas.forEach(f => {
+        const id = f.actor_id || f.actor_nombre || '?';
+        if (!porActor[id]) porActor[id] = { nombre: f.actor_nombre || '(sin identificar)', acciones: 0, logins: 0, ultima: f.creado_en };
+        porActor[id].acciones++;
+        if (f.accion === 'LOGIN') porActor[id].logins++;
+        if (f.creado_en > porActor[id].ultima) porActor[id].ultima = f.creado_en;
+      });
+
+      // Se cruza con la lista de usuarios activos para que también salgan
+      // los que NO han hecho nada en 30 días (adopción más baja de todas).
+      const usuariosActivos = perfilesCache.filter(p => p.activo);
+      const filasTabla = usuariosActivos.map(p => {
+        const entrada = Object.values(porActor).find(a => a.nombre === p.nombre_completo);
+        return {
+          nombre: p.nombre_completo,
+          rol: ETIQUETAS_ROL[p.rol] || p.rol,
+          acciones: entrada ? entrada.acciones : 0,
+          logins: entrada ? entrada.logins : 0,
+          ultima: entrada ? entrada.ultima : null
+        };
+      }).sort((a, b) => {
+        // Sin actividad primero (adopción más baja), luego por fecha ascendente.
+        if (!a.ultima && !b.ultima) return 0;
+        if (!a.ultima) return -1;
+        if (!b.ultima) return 1;
+        return new Date(a.ultima) - new Date(b.ultima);
+      });
+
+      cont.innerHTML = `
+        <p style="font-size:12px; color:#888; margin:0 0 6px;">${filasTabla.filter(f => f.acciones === 0).length} usuario(s) sin ninguna actividad registrada en 30 días.</p>
+        <table><thead><tr><th>Usuario</th><th>Rol</th><th>Accesos (30 días)</th><th>Acciones (30 días)</th><th>Última actividad</th></tr></thead><tbody>
+          ${filasTabla.map(f => `
+            <tr>
+              <td>${f.nombre}</td>
+              <td>${f.rol}</td>
+              <td>${f.logins}</td>
+              <td>${f.acciones}</td>
+              <td>${f.ultima ? new Date(f.ultima).toLocaleString('es-ES') : '<span class="error">Sin actividad</span>'}</td>
+            </tr>
+          `).join('')}
+        </tbody></table>
+      `;
+    }
+
+    // -------------------- 7) Estructura mínima editable --------------------
+
+    let estructuraMinimaCargada = null;
+
+    async function cargarEstructuraMinima() {
+      const txt = document.getElementById('txt-estructura-minima');
+      const estadoEl = document.getElementById('estado-estructura-minima');
+      const metaEl = document.getElementById('meta-estructura-minima');
+      estadoEl.textContent = ''; estadoEl.className = 'estado';
+
+      const { data, error } = await supabaseClient.from('estructura_minima_config').select('*').eq('id', 1).single();
+
+      if (error || !data) {
+        txt.value = JSON.stringify(ESTRUCTURA_MINIMA_DEFECTO, null, 2);
+        metaEl.textContent = 'No se pudo cargar la definición guardada (¿falta ejecutar estructura_panel_admin.sql?) — se muestra la de fábrica sin guardar todavía.';
+        return;
+      }
+
+      estructuraMinimaCargada = data.definicion;
+      txt.value = JSON.stringify(data.definicion, null, 2);
+      const autor = perfilesCache.find(p => p.id === data.actualizado_por);
+      metaEl.textContent = `Última actualización: ${new Date(data.actualizado_en).toLocaleString('es-ES')}${autor ? ' por ' + autor.nombre_completo : ''}.`;
+    }
+
+    function recargarEstructuraMinima() { cargarEstructuraMinima(); }
+
+    function restaurarEstructuraMinimaDeFabrica() {
+      document.getElementById('txt-estructura-minima').value = JSON.stringify(ESTRUCTURA_MINIMA_DEFECTO, null, 2);
+      document.getElementById('estado-estructura-minima').textContent = 'Valores de fábrica cargados en el editor — pulsa "Guardar cambios" para aplicarlos.';
+      document.getElementById('estado-estructura-minima').className = 'estado aviso';
+    }
+
+    // Comprueba que cada "tipo" usado exista de verdad, recorriendo también
+    // los "hijos" anidados -- para no guardar una definición que luego
+    // rompería "Generar estructura mínima" con un tipo inventado.
+    function tiposInvalidosEn(definicion) {
+      const invalidos = new Set();
+      function recorrer(lista) {
+        (lista || []).forEach(item => {
+          if (!item || typeof item !== 'object' || typeof item.tipo !== 'string') { invalidos.add(JSON.stringify(item)); return; }
+          if (!(item.tipo in ETIQUETAS_TIPO)) invalidos.add(item.tipo);
+          if (item.hijos) recorrer(item.hijos);
+        });
+      }
+      Object.keys(definicion).forEach(clave => {
+        if (!(clave in ETIQUETAS_TIPO)) invalidos.add(clave);
+        recorrer(definicion[clave]);
+      });
+      return [...invalidos];
+    }
+
+    async function guardarEstructuraMinima() {
+      const estadoEl = document.getElementById('estado-estructura-minima');
+      const texto = document.getElementById('txt-estructura-minima').value;
+      let definicion;
+      try {
+        definicion = JSON.parse(texto);
+      } catch (e) {
+        estadoEl.textContent = 'El texto no es JSON válido: ' + e.message; estadoEl.className = 'estado error';
+        return;
+      }
+      if (typeof definicion !== 'object' || Array.isArray(definicion) || definicion === null) {
+        estadoEl.textContent = 'Debe ser un objeto {tipo: [hijos...]}, no una lista suelta ni un valor simple.';
+        estadoEl.className = 'estado error';
+        return;
+      }
+      const invalidos = tiposInvalidosEn(definicion);
+      if (invalidos.length > 0) {
+        estadoEl.textContent = `Hay tipo(s) que no existen y no se puede guardar: ${invalidos.join(', ')}. Revisa el desplegable de tipos válidos de arriba.`;
+        estadoEl.className = 'estado error';
+        return;
+      }
+
+      if (!await mostrarConfirmacion('¿Guardar esta definición? Afecta a "Generar estructura mínima" para todos los usuarios desde ya.')) return;
+
+      estadoEl.textContent = 'Guardando...'; estadoEl.className = 'estado';
+      const { error } = await supabaseClient.rpc('guardar_estructura_minima', { p_definicion: definicion });
+      if (error) {
+        estadoEl.textContent = 'Error: ' + traducirError(error.message); estadoEl.className = 'estado error';
+        registrarLog('INTENTO_FALLIDO', `Intento de guardar la estructura mínima denegado: ${error.message}`);
+        return;
+      }
+      estadoEl.textContent = '✔️ Guardado. El árbol lo usará desde la próxima vez que se abra.'; estadoEl.className = 'estado ok';
+      registrarLog('CAMBIO_ESTRUCTURA_MINIMA', 'Editó la definición de "Generar estructura mínima" desde el Panel de administración');
+      cargarEstructuraMinima();
+    }
+
+    // -------------------- 8/9) Importación masiva de festivos y ausencias --------------------
+
+    function descargarPlantillaFestivos() {
+      const datos = [
+        { Fecha: '2027-01-01', Sede: '', Descripcion: 'Año Nuevo', Ambito: 'nacional' },
+        { Fecha: '2027-05-15', Sede: 'Madrid', Descripcion: 'San Isidro Labrador', Ambito: 'local' }
+      ];
+      const hoja = XLSX.utils.json_to_sheet(datos);
+      const libro = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(libro, hoja, 'Festivos');
+      XLSX.writeFile(libro, 'plantilla-festivos.xlsx');
+    }
+
+    function descargarPlantillaAusencias() {
+      const datos = [
+        { Usuario: perfilesCache[0]?.username || 'jperez', FechaInicio: '2027-08-01', FechaFin: '2027-08-15', Motivo: 'Vacaciones' }
+      ];
+      const hoja = XLSX.utils.json_to_sheet(datos);
+      const libro = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(libro, hoja, 'Ausencias');
+      XLSX.writeFile(libro, 'plantilla-ausencias.xlsx');
+    }
+
+    // Acepta fecha como texto "YYYY-MM-DD"/"DD/MM/YYYY" o como fecha real de
+    // Excel (número de serie) -- Excel guarda fechas como números salvo que
+    // la celda esté formateada como texto.
+    function parsearFechaExcel(valor) {
+      if (valor === undefined || valor === null || valor === '') return null;
+      if (typeof valor === 'number') {
+        const fecha = XLSX.SSF.parse_date_code(valor);
+        if (!fecha) return null;
+        return `${fecha.y}-${String(fecha.m).padStart(2, '0')}-${String(fecha.d).padStart(2, '0')}`;
+      }
+      const texto = valor.toString().trim();
+      let m = texto.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+      if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+      m = texto.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+      return null;
+    }
+
+    function leerHojaExcel(archivo, callback) {
+      const lector = new FileReader();
+      lector.onload = (ev) => {
+        const datos = new Uint8Array(ev.target.result);
+        const libro = XLSX.read(datos, { type: 'array' });
+        const hoja = libro.Sheets[libro.SheetNames[0]];
+        callback(XLSX.utils.sheet_to_json(hoja, { raw: true }));
+      };
+      lector.readAsArrayBuffer(archivo);
+    }
+
+    const AMBITOS_VALIDOS = ['nacional', 'autonomico', 'local'];
+
+    function manejarArchivoFestivos(e) {
+      const archivo = e.target.files[0];
+      if (!archivo) return;
+      leerHojaExcel(archivo, (filas) => {
+        const preparadas = filas.map(f => {
+          const fecha = parsearFechaExcel(f.Fecha);
+          const sede = (f.Sede || '').toString().trim() || null;
+          const descripcion = (f.Descripcion || '').toString().trim();
+          const ambito = (f.Ambito || '').toString().trim().toLowerCase();
+          const problemas = [];
+          if (!fecha) problemas.push('fecha inválida');
+          if (!descripcion) problemas.push('falta la descripción');
+          if (!AMBITOS_VALIDOS.includes(ambito)) problemas.push('ámbito debe ser nacional/autonomico/local');
+          return { fecha, sede, descripcion, ambito, problemas };
+        });
+        pintarPreviewFestivos(preparadas);
+      });
+    }
+
+    let filasFestivosPreview = [];
+
+    function pintarPreviewFestivos(filas) {
+      filasFestivosPreview = filas;
+      const cont = document.getElementById('preview-festivos');
+      const validas = filas.filter(f => f.problemas.length === 0).length;
+      cont.innerHTML = `
+        <table><thead><tr><th>Fecha</th><th>Sede</th><th>Descripción</th><th>Ámbito</th><th>Estado</th></tr></thead><tbody>
+          ${filas.map(f => `
+            <tr>
+              <td>${f.fecha || '—'}</td><td>${f.sede || 'Nacional'}</td><td>${f.descripcion || '—'}</td><td>${f.ambito || '—'}</td>
+              <td>${f.problemas.length ? `<span class="error">${f.problemas.join('; ')}</span>` : '<span class="ok">✔️ OK</span>'}</td>
+            </tr>
+          `).join('')}
+        </tbody></table>
+        <div class="fila-accion">
+          <button ${validas === 0 ? 'disabled' : ''} onclick="importarFestivos()">
+            Importar ${validas} festivo(s) válido(s)
+          </button>
+        </div>
+        <div id="estado-import-festivos" class="estado"></div>
+      `;
+    }
+
+    async function importarFestivos() {
+      const validas = filasFestivosPreview.filter(f => f.problemas.length === 0).length;
+      if (!await mostrarConfirmacion(`¿Importar ${validas} festivo(s)? Los que ya existan (misma fecha, sede y descripción) se ignoran solos, no se duplican.`)) return;
+      const estadoEl = document.getElementById('estado-import-festivos');
+      estadoEl.textContent = 'Importando...'; estadoEl.className = 'estado';
+      let ok = 0, fallos = [];
+      for (const f of filasFestivosPreview.filter(f => f.problemas.length === 0)) {
+        const { error } = await supabaseClient.rpc('anadir_festivo', { p_fecha: f.fecha, p_sede: f.sede, p_descripcion: f.descripcion, p_ambito: f.ambito });
+        if (error) fallos.push(`${f.fecha} ${f.descripcion}: ${error.message}`); else ok++;
+      }
+      estadoEl.textContent = fallos.length > 0
+        ? `Importados ${ok} de ${filas.length}. Errores: ${fallos.join(' | ')}`
+        : `✔️ ${ok} festivo(s) importado(s) correctamente.`;
+      estadoEl.className = fallos.length > 0 ? 'estado error' : 'estado ok';
+      if (ok > 0) registrarLog('IMPORTAR_FESTIVOS', `Importó ${ok} festivo(s) desde Excel`);
+    }
+
+    function manejarArchivoAusencias(e) {
+      const archivo = e.target.files[0];
+      if (!archivo) return;
+      leerHojaExcel(archivo, (filas) => {
+        const preparadas = filas.map(f => {
+          const textoUsuario = (f.Usuario || '').toString().trim();
+          const perfil = perfilesCache.find(p =>
+            (p.username || '').toLowerCase() === textoUsuario.toLowerCase() ||
+            (p.nombre_completo || '').toLowerCase() === textoUsuario.toLowerCase()
+          );
+          const fechaInicio = parsearFechaExcel(f.FechaInicio);
+          const fechaFin = parsearFechaExcel(f.FechaFin);
+          const motivo = (f.Motivo || '').toString().trim() || null;
+          const problemas = [];
+          if (!perfil) problemas.push('usuario no encontrado');
+          if (!fechaInicio) problemas.push('fecha inicio inválida');
+          if (!fechaFin) problemas.push('fecha fin inválida');
+          if (fechaInicio && fechaFin && fechaFin < fechaInicio) problemas.push('fecha fin anterior a inicio');
+          return { textoUsuario, usuarioId: perfil?.id || null, nombreUsuario: perfil?.nombre_completo || textoUsuario, fechaInicio, fechaFin, motivo, problemas };
+        });
+        pintarPreviewAusencias(preparadas);
+      });
+    }
+
+    let filasAusenciasPreview = [];
+
+    function pintarPreviewAusencias(filas) {
+      filasAusenciasPreview = filas;
+      const cont = document.getElementById('preview-ausencias');
+      const validas = filas.filter(f => f.problemas.length === 0).length;
+      cont.innerHTML = `
+        <table><thead><tr><th>Usuario</th><th>Desde</th><th>Hasta</th><th>Motivo</th><th>Estado</th></tr></thead><tbody>
+          ${filas.map(f => `
+            <tr>
+              <td>${f.nombreUsuario}</td><td>${f.fechaInicio || '—'}</td><td>${f.fechaFin || '—'}</td><td>${f.motivo || '—'}</td>
+              <td>${f.problemas.length ? `<span class="error">${f.problemas.join('; ')}</span>` : '<span class="ok">✔️ OK</span>'}</td>
+            </tr>
+          `).join('')}
+        </tbody></table>
+        <div class="fila-accion">
+          <button ${validas === 0 ? 'disabled' : ''} onclick="importarAusencias()">
+            Importar ${validas} ausencia(s) válida(s)
+          </button>
+        </div>
+        <div id="estado-import-ausencias" class="estado"></div>
+      `;
+    }
+
+    async function importarAusencias() {
+      const validas = filasAusenciasPreview.filter(f => f.problemas.length === 0).length;
+      if (!await mostrarConfirmacion(`¿Importar ${validas} ausencia(s)? A diferencia de los festivos, aquí no hay comprobación de duplicados -- si el archivo ya se importó antes, se repetirían.`)) return;
+      const estadoEl = document.getElementById('estado-import-ausencias');
+      estadoEl.textContent = 'Importando...'; estadoEl.className = 'estado';
+      let ok = 0, fallos = [];
+      for (const f of filasAusenciasPreview.filter(f => f.problemas.length === 0)) {
+        const { error } = await supabaseClient.rpc('anadir_ausencia', { p_usuario_id: f.usuarioId, p_fecha_inicio: f.fechaInicio, p_fecha_fin: f.fechaFin, p_motivo: f.motivo });
+        if (error) fallos.push(`${f.nombreUsuario}: ${error.message}`); else ok++;
+      }
+      estadoEl.textContent = fallos.length > 0
+        ? `Importadas ${ok} de ${filas.length}. Errores: ${fallos.join(' | ')}`
+        : `✔️ ${ok} ausencia(s) importada(s) correctamente.`;
+      estadoEl.className = fallos.length > 0 ? 'estado error' : 'estado ok';
+      if (ok > 0) registrarLog('IMPORTAR_AUSENCIAS', `Importó ${ok} ausencia(s) desde Excel`);
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        document.querySelectorAll('.overlay').forEach(ov => { if (ov.style.display === 'flex') ov.style.display = 'none'; });
+      }
+    });
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    }
+
+    iniciar();
+  </script>
+</body>
+</html>

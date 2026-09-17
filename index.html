@@ -52,6 +52,10 @@
       <a class="tarjeta" id="tarjeta-usuarios" href="usuarios.html" style="display:none;">
         <img class="imagen-completa" src="IMAGES/GESTION-USUARIOS.jpg" alt="Gestión de usuarios">
       </a>
+      <a class="tarjeta" id="tarjeta-admin" href="admin.html" style="display:none;">
+        <span class="icono">🛠️</span>
+        Panel de administración
+      </a>
       <a class="tarjeta" href="cambiar-password.html">
         <img class="imagen-completa" src="IMAGES/CAMBIAR-CONTRASENA.jpg" alt="Cambiar mi contraseña">
       </a>
@@ -177,6 +181,7 @@
 
       if (perfil.rol === 'ADMIN') {
         document.getElementById('tarjeta-usuarios').style.display = 'block';
+        document.getElementById('tarjeta-admin').style.display = 'block';
       }
 
       document.getElementById('estado-carga').style.display = 'none';

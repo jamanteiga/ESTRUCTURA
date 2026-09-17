@@ -45,6 +45,7 @@
 
     .selector-vista { display: flex; gap: 6px; }
     .selector-vista button.activo { background: #14395c; }
+    .filtros button.activo { background: #14395c; color: #fff; }
 
     .timeline { list-style: none; padding: 0; margin: 10px 0 0; max-height: 65vh; overflow-y: auto; }
     .timeline li { display: flex; gap: 12px; padding: 10px 4px; border-bottom: 1px solid #eee; }
@@ -82,6 +83,8 @@
       <button class="secundario" onclick="location.href='index.html'">🏠 Inicio</button>
       <button class="secundario" onclick="location.href='arbol.html'">🌳 Árbol</button>
       <button class="secundario" onclick="location.href='usuarios.html'">👤 Usuarios</button>
+      <button class="secundario" onclick="location.href='admin.html'">🛠️ Panel admin</button>
+      <button class="secundario" onclick="location.href='log_comunicaciones.html'">📡 Comunicaciones</button>
       <button style="background:#dc3545;" onclick="mostrarPanelAhora()">🔴 Ahora</button>
       <button class="secundario" onclick="cerrarSesion()">Cerrar sesión</button>
       <button style="background:#dc3545;" onclick="cerrarPagina()">❌ Cerrar</button>
@@ -101,6 +104,7 @@
       <input type="text" id="filtro-nodo" placeholder="Nodo (código)..." style="max-width:140px;">
       <input type="text" id="filtro-texto" placeholder="Buscar en la descripción...">
       <button class="secundario" id="btn-solo-estructura" onclick="toggleFiltroEstructura()">🏗️ Solo cambios de estructura</button>
+      <button class="secundario" id="btn-solo-fallos" onclick="toggleFiltroFallos()" style="color:#dc3545;">⛔ Solo intentos fallidos</button>
       <button class="secundario" onclick="limpiarFiltros()">✕ Limpiar</button>
     </div>
 
@@ -162,6 +166,66 @@
     const SUPABASE_URL = 'https://wuarkraddnndmgvfnkmm.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // -------------------- Registro de comunicaciones (log_comunicaciones.html) --------------------
+    // Envuelve fetch para dejar constancia de cada llamada de red que hace
+    // esta página (casi siempre a Supabase): a dónde, cuánto tarda y qué
+    // datos le pasa. Aparte del registro de actividad (audit_log), que es
+    // de acciones del usuario, no de tráfico de red.
+    function redactarCuerpoComunicacion(cuerpoTexto) {
+      if (!cuerpoTexto) return null;
+      try {
+        const limpiar = (o) => {
+          if (Array.isArray(o)) return o.map(limpiar);
+          if (o && typeof o === 'object') {
+            const copia = {};
+            Object.keys(o).forEach(k => { copia[k] = /password|contrase/i.test(k) ? '***' : limpiar(o[k]); });
+            return copia;
+          }
+          return o;
+        };
+        return JSON.stringify(limpiar(JSON.parse(cuerpoTexto))).slice(0, 4000);
+      } catch (e) {
+        return String(cuerpoTexto).slice(0, 4000);
+      }
+    }
+    (function () {
+      const _fetchOriginal = window.fetch.bind(window);
+      window.fetch = async function (input, init) {
+        const inicio = performance.now();
+        const url = typeof input === 'string' ? input : (input && input.url) || '';
+        const metodo = (init && init.method) || (typeof input === 'object' && input && input.method) || 'GET';
+        if (url.indexOf('/comunicaciones_log') !== -1) return _fetchOriginal(input, init);
+        let respuesta, errorMsg = null;
+        try {
+          respuesta = await _fetchOriginal(input, init);
+          return respuesta;
+        } catch (e) {
+          errorMsg = e.message;
+          throw e;
+        } finally {
+          const duracionMs = Math.round(performance.now() - inicio);
+          const cuerpo = init && init.body && typeof init.body === 'string' ? redactarCuerpoComunicacion(init.body) : null;
+          supabaseClient.from('comunicaciones_log').insert({
+            metodo, url, cuerpo, duracion_ms: duracionMs,
+            status_code: respuesta ? respuesta.status : null, error: errorMsg
+          }).then(() => {}, () => {});
+        }
+      };
+    })();
+
+    // -------------------- Modo mantenimiento --------------------
+    // Si está activo y quien entra no es ADMIN, lo manda a mantenimiento.html
+    // en vez de dejarle seguir. Se llama justo después de conocer el rol.
+    async function comprobarMantenimiento(rol) {
+      if (rol === 'ADMIN') return false;
+      try {
+        const { data } = await supabaseClient.from('app_mantenimiento').select('activo').eq('id', 1).single();
+        if (data && data.activo) { window.location.href = 'mantenimiento.html'; return true; }
+      } catch (e) { /* si falla la comprobación, no se bloquea la app por eso */ }
+      return false;
+    }
+
 
     // Detección de móvil/tablet: iPadOS manda user-agent de escritorio
     // ("Macintosh") desde iOS 13, así que se completa con pantalla táctil
@@ -277,6 +341,7 @@
       document.getElementById('texto-usuario').textContent = `${perfil.nombre_completo} (${perfil.username}) — ADMIN`;
       document.getElementById('panel').style.display = 'block';
       miPerfil = perfil;
+      if (await comprobarMantenimiento(perfil.rol)) return;
 
       const { data: perfiles } = await supabaseClient.from('profiles').select('id, nombre_completo').order('nombre_completo');
       const selUsuario = document.getElementById('filtro-usuario');
@@ -286,12 +351,20 @@
       const params = new URLSearchParams(window.location.search);
       const nodoUrl = params.get('nodo');
       if (nodoUrl) document.getElementById('filtro-nodo').value = nodoUrl;
+      const usuarioUrl = params.get('usuario');
+      if (usuarioUrl) document.getElementById('filtro-usuario').value = usuarioUrl;
+      const accionUrl = params.get('accion');
+      if (accionUrl) document.getElementById('filtro-accion').value = accionUrl;
+      const textoUrl = params.get('texto');
+      if (textoUrl) document.getElementById('filtro-texto').value = textoUrl;
 
       ['filtro-usuario', 'filtro-accion', 'filtro-desde', 'filtro-hasta'].forEach(id => {
         document.getElementById(id).addEventListener('change', () => {
           if (id === 'filtro-accion' && document.getElementById(id).value) {
             filtroSoloEstructura = false;
             document.getElementById('btn-solo-estructura').classList.remove('activo');
+            filtroSoloFallos = false;
+            document.getElementById('btn-solo-fallos').classList.remove('activo');
           }
           paginaActual = 0; cargarLog();
         });
@@ -308,6 +381,10 @@
       });
 
       await cargarAccionesDisponibles();
+      if (params.get('fallos') === '1') {
+        filtroSoloFallos = true;
+        document.getElementById('btn-solo-fallos').classList.add('activo');
+      }
       await cargarLog();
     }
 
@@ -328,6 +405,8 @@
       document.getElementById('filtro-nodo').value = '';
       filtroSoloEstructura = false;
       document.getElementById('btn-solo-estructura').classList.remove('activo');
+      filtroSoloFallos = false;
+      document.getElementById('btn-solo-fallos').classList.remove('activo');
       paginaActual = 0;
       cargarLog();
     }
@@ -341,7 +420,30 @@
     function toggleFiltroEstructura() {
       filtroSoloEstructura = !filtroSoloEstructura;
       document.getElementById('btn-solo-estructura').classList.toggle('activo', filtroSoloEstructura);
-      if (filtroSoloEstructura) document.getElementById('filtro-accion').value = '';
+      if (filtroSoloEstructura) {
+        document.getElementById('filtro-accion').value = '';
+        filtroSoloFallos = false;
+        document.getElementById('btn-solo-fallos').classList.remove('activo');
+      }
+      paginaActual = 0;
+      cargarLog();
+    }
+
+    // "Panel de intentos fallidos" (mejora de Admin): un botón rápido para
+    // ver solo los intentos denegados por falta de permiso (INTENTO_FALLIDO)
+    // y los inicios de sesión fallidos (LOGIN_FALLIDO), sin tener que saber
+    // de antemano que esos son los nombres exactos de la acción.
+    let filtroSoloFallos = false;
+    const ACCIONES_FALLOS = ['INTENTO_FALLIDO', 'LOGIN_FALLIDO'];
+
+    function toggleFiltroFallos() {
+      filtroSoloFallos = !filtroSoloFallos;
+      document.getElementById('btn-solo-fallos').classList.toggle('activo', filtroSoloFallos);
+      if (filtroSoloFallos) {
+        document.getElementById('filtro-accion').value = '';
+        filtroSoloEstructura = false;
+        document.getElementById('btn-solo-estructura').classList.remove('activo');
+      }
       paginaActual = 0;
       cargarLog();
     }
@@ -357,6 +459,7 @@
       let query = supabaseClient.from('audit_log').select('*', { count: 'exact' }).order('creado_en', { ascending: false });
       if (usuarioId) query = query.eq('actor_id', usuarioId);
       if (filtroSoloEstructura) query = query.in('accion', ACCIONES_ESTRUCTURA);
+      else if (filtroSoloFallos) query = query.in('accion', ACCIONES_FALLOS);
       else if (accion) query = query.eq('accion', accion);
       if (desde) query = query.gte('creado_en', desde + 'T00:00:00');
       if (hasta) query = query.lte('creado_en', hasta + 'T23:59:59');
