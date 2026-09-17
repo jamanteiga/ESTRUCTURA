@@ -2243,16 +2243,20 @@
         hijosPorPadre[clave].push(n);
       });
 
+      // Misma notación de ruta que espera importar.html (Ruta/Tipo/Nombre...
+      // en vez de Nivel/Tipo/Codigo): así lo exportado se puede reimportar
+      // tal cual, y las rutas se pueden leer y editar a simple vista.
       const filas = [];
-      function recorrer(nodeId, nivel) {
+      function recorrer(nodeId, rutaPadre) {
         const nodo = mapaPorId[nodeId];
+        const ruta = rutaPadre ? `${rutaPadre}/${nodo.codigo}` : nodo.codigo;
         filas.push({
-          Nivel: nivel, Tipo: nodo.tipo, Codigo: nodo.codigo, Nombre: nodo.nombre,
+          Ruta: ruta, Tipo: nodo.tipo, Nombre: nodo.nombre,
           Descripcion: nodo.descripcion || '', Orden: nodo.orden || 0
         });
-        (hijosPorPadre[nodeId] || []).forEach(h => recorrer(h.id, nivel + 1));
+        (hijosPorPadre[nodeId] || []).forEach(h => recorrer(h.id, ruta));
       }
-      (hijosPorPadre['__raiz__'] || []).forEach(n => recorrer(n.id, 1));
+      (hijosPorPadre['__raiz__'] || []).forEach(n => recorrer(n.id, ''));
 
       if (filas.length === 0) { mostrarAvisoModal('No hay ningún nodo activo que exportar.'); return; }
 
@@ -2421,6 +2425,7 @@
             ${!sinAsignacion ? `<span class="candado" title="${nodo.bloqueado ? 'Bloqueado — clic para desbloquear' : 'Desbloqueado — clic para bloquear'}" onclick="event.stopPropagation(); accionAlternarBloqueoDesdeIcono('${nodo.id}')">${nodo.bloqueado ? '🔒' : '🔓'}</span>` : ''}
             ${(!sinAsignacion && nodo.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO') ? '<span class="cuadro-cambios-modelo" title="Pendiente de cambios en modelo"></span>' : ''}
             ${(!sinAsignacion && nodoRetrasado(nodo)) ? `<span class="icono-retraso" title="Retrasada — prevista para ${formatearFechaHora(nodo.fecha_fin_prevista)}">⏰</span>` : ''}
+            ${nodo.tipo === 'BLOQUE' && nodo.congelado ? '<span title="Bloque congelado por un Supervisor/Admin — nadie puede cambiar el estado de lo que cuelga de él" style="cursor:help;">🧊</span>' : (nodo.tipo !== 'BLOQUE' && estaBajoBloqueCongelado(nodo) ? '<span title="Dentro de un Bloque congelado — no se puede cambiar el estado hasta que lo descongelen" style="cursor:help; opacity:0.7;">🧊</span>' : '')}
             <span class="flecha ${claseColor}" title="${estado}">${simboloFlecha}</span>
             ${bloqueadoWindchill ? '<span title="Bloqueado: Modelo y Plano de corte deben estar Aprobados">🔒</span>' : ''}
             <span class="codigo">${resaltarCoincidencia(etiquetaCodigoVisible(nodo))}</span>
@@ -2491,6 +2496,14 @@
         actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
       }
       return null;
+    }
+
+    // Para pintar el aviso 🧊 en los descendientes de un Bloque congelado
+    // (el propio Bloque ya se marca aparte, comprobando nodo.congelado
+    // directamente). Ver estructura_congelar_bloque.sql.
+    function estaBajoBloqueCongelado(nodo) {
+      const bloque = bloqueDeNodo(nodo);
+      return !!(bloque && bloque.congelado);
     }
 
     // -------------------- Aviso por email al completar un Bloque --------------------
@@ -2962,6 +2975,15 @@
             items.push({ label: '⧉ Duplicar', tip: 'Se duplica el nodo seleccionado.', fn: () => abrirModalDuplicar(nodeId) });
           }
         }
+        if (nodo.tipo === 'BLOQUE' && esGestor()) {
+          items.push({
+            label: nodo.congelado ? '🔥 Descongelar Bloque' : '🧊 Congelar Bloque',
+            tip: nodo.congelado
+              ? 'Descongela este Bloque: se vuelve a permitir cambiar el estado de las tareas que cuelgan de él.'
+              : 'Congela este Bloque: nadie (ni siquiera el usuario asignado) podrá cambiar el estado de ninguna tarea que cuelgue de él hasta que un Supervisor o Admin lo descongele.',
+            fn: () => accionAlternarCongelacionBloque(nodeId, !nodo.congelado)
+          });
+        }
         if (!sinAsignacion) {
           items.push({ label: '👤 Asignar usuario', tip: 'Asignación de tarea a un usuario.', fn: () => abrirModalAsignar(nodeId) });
 
@@ -3266,6 +3288,28 @@
         return;
       }
       accionAlternarBloqueo(nodeId, !nodo.bloqueado);
+    }
+
+    // -------------------- Congelar / Descongelar un Bloque completo --------------------
+    // Distinto del bloqueo de una tarea suelta: aquí solo ADMIN/REVISOR
+    // puede congelar y, sobre todo, solo ADMIN/REVISOR puede descongelar
+    // -- ni siquiera el usuario asignado a una tarea de dentro puede saltarse
+    // la congelación desbloqueando su propia tarea (lo impide un trigger en
+    // el servidor). Ver estructura_congelar_bloque.sql.
+    async function accionAlternarCongelacionBloque(nodeId, nuevoValor) {
+      const nodo = mapaNodoPorId[nodeId];
+      const numDescendientes = obtenerDescendientesIds(nodeId).length;
+      if (nuevoValor && !await mostrarConfirmacion(`¿Congelar el Bloque "${nodo?.codigo}"? Mientras esté congelado, nadie podrá cambiar el estado de ninguna de sus ${numDescendientes} tarea(s) hasta que un Supervisor o Admin lo descongele.`)) return;
+
+      const { error } = await supabaseClient.rpc('congelar_bloque', { p_node_id: nodeId, p_congelado: nuevoValor });
+      if (error) {
+        mostrarAvisoModal('Error: ' + traducirError(error.message));
+        registrarLog('INTENTO_FALLIDO', `Intento de ${nuevoValor ? 'congelar' : 'descongelar'} el Bloque "${nodo?.codigo}" denegado: ${error.message}`, nodeId);
+        return;
+      }
+      registrarLog(nuevoValor ? 'CONGELAR_BLOQUE' : 'DESCONGELAR_BLOQUE',
+        `${nuevoValor ? 'Congeló' : 'Descongeló'} el Bloque "${nodo?.codigo}"${numDescendientes > 0 ? ` (${numDescendientes} nodo(s) afectados)` : ''}`, nodeId);
+      await cargarArbol();
     }
 
     // -------------------- Calendario laboral (festivos + ausencias) --------------------

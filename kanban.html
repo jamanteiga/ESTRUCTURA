@@ -39,8 +39,12 @@
     .col-rechazado { border-top: 4px solid rgb(255,0,0); }
     .col-aprobado { border-top: 4px solid rgb(146,208,80); }
 
-    .lista-fichas { max-height: 72vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+    .lista-fichas { max-height: 72vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; min-height: 40px; }
+    .card-col.drop-activo { background: #eaf3ff; border-color: #8fc0ff; }
+    body.tema-oscuro .card-col.drop-activo { background: #1c2b40; border-color: #3a6ea5; }
     .ficha { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 8px; font-size: 12px; position: relative; }
+    .ficha[draggable="true"] { cursor: grab; }
+    .ficha.arrastrando { opacity: 0.4; }
     .ficha.seleccionable { padding-left: 24px; }
     .ficha .chk-seleccion-ficha { position: absolute; top: 8px; left: 6px; margin: 0; cursor: pointer; }
     .ficha .cod { font-weight: bold; }
@@ -484,8 +488,10 @@
 
       const puedeTomar = !n.trabajador_id && !esInvitado();
       const puedeSeleccionar = esGestor();
+      const puedeArrastrar = !esInvitado();
       return `
-        <div class="ficha${puedeSeleccionar ? ' seleccionable' : ''}" data-id="${n.id}">
+        <div class="ficha${puedeSeleccionar ? ' seleccionable' : ''}" data-id="${n.id}"
+          ${puedeArrastrar ? `draggable="true" ondragstart="arrastrarFichaKanban(event, '${n.id}')" ondragend="finArrastreFichaKanban(event)"` : ''}>
           ${puedeSeleccionar ? `<input type="checkbox" class="chk-seleccion-ficha" title="Marcar para asignar en bloque" onclick="event.stopPropagation(); toggleSeleccionFicha('${n.id}', this.checked)" ${seleccionadosKanban.has(n.id) ? 'checked' : ''}>` : ''}
           <span class="btn-mas" onclick="mostrarMenuFichaKanban(event, '${n.id}')" title="Más acciones">⋯</span>
           <div class="cod">${n.codigo}</div>
@@ -508,7 +514,7 @@
       document.getElementById('tablero-contenido').innerHTML = `
         <div class="tablero">
           ${COLUMNAS.map(c => `
-            <div class="card-col col-${c.clave}">
+            <div class="card-col col-${c.clave}" data-columna="${c.clave}" ondragover="permitirDropKanban(event)" ondragenter="entrarColumnaKanban(event)" ondragleave="salirColumnaKanban(event)" ondrop="soltarFichaKanban(event, '${c.clave}')">
               <h2>${c.titulo}<span class="contador-col">${porColumna[c.clave].length}</span></h2>
               <div class="lista-fichas">
                 ${porColumna[c.clave].length === 0 ? '<div class="vacio-col">Nada aquí</div>' : porColumna[c.clave].map(renderFicha).join('')}
@@ -536,6 +542,73 @@
       const nodo = mapaNodoPorId[nodeId];
       registrarLog('CAMBIO_ESTADO_KANBAN', `Cambió el estado de "${nodo?.codigo}" desde el Kanban (${rpc})`, nodeId);
       await cargarKanban();
+    }
+
+    // -------------------- Arrastrar y soltar --------------------
+    // Coger una ficha y soltarla en otra columna hace la misma llamada que
+    // elegir la opción equivalente en el menú "⋯ > Estado tarea" -- el
+    // permiso real (quién puede aprobar, rechazar, etc.) lo sigue
+    // decidiendo el propio RPC en el servidor, igual que si se hiciera
+    // desde el menú.
+    let nodeIdArrastradoKanban = null;
+
+    function arrastrarFichaKanban(e, nodeId) {
+      nodeIdArrastradoKanban = nodeId;
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', nodeId); } catch (err) { /* algunos navegadores móviles no lo permiten -- se usa la variable de respaldo */ }
+      e.currentTarget.classList.add('arrastrando');
+    }
+
+    function finArrastreFichaKanban(e) {
+      e.currentTarget.classList.remove('arrastrando');
+      nodeIdArrastradoKanban = null;
+      document.querySelectorAll('.card-col.drop-activo').forEach(el => el.classList.remove('drop-activo'));
+    }
+
+    function permitirDropKanban(e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+    }
+
+    function entrarColumnaKanban(e) {
+      e.preventDefault();
+      e.currentTarget.classList.add('drop-activo');
+    }
+
+    function salirColumnaKanban(e) {
+      if (e.currentTarget.contains(e.relatedTarget)) return; // sigue dentro de la misma columna
+      e.currentTarget.classList.remove('drop-activo');
+    }
+
+    async function soltarFichaKanban(e, columnaDestino) {
+      e.preventDefault();
+      e.currentTarget.classList.remove('drop-activo');
+
+      const nodeId = (e.dataTransfer && e.dataTransfer.getData('text/plain')) || nodeIdArrastradoKanban;
+      nodeIdArrastradoKanban = null;
+      if (!nodeId) return;
+      if (esInvitado()) { mostrarAvisoModal('Eres un usuario Invitado: solo puedes consultar, no puedes realizar cambios.'); return; }
+
+      const nodo = mapaNodoPorId[nodeId];
+      if (!nodo) return;
+      if (calcularColumna(nodo) === columnaDestino) return; // soltada en su propia columna: no hay nada que cambiar
+
+      if (columnaDestino === 'rechazado') {
+        const comentario = await pedirTexto(`Motivo del rechazo de "${nodo.codigo}" (obligatorio):`, '');
+        if (!comentario || !comentario.trim()) return;
+        await accionEstadoKanban('revisar_nodo', nodeId, { p_aprobado: false, p_comentario: comentario.trim() });
+        return;
+      }
+
+      const RPC_POR_COLUMNA_DESTINO = {
+        sin_asignar: () => accionEstadoKanban('desasignar_trabajador', nodeId),
+        pendiente: () => accionEstadoKanban('reiniciar_tarea', nodeId),
+        en_proceso: () => accionEstadoKanban('marcar_en_trabajo', nodeId),
+        pendiente_revision: () => accionEstadoKanban('marcar_terminado', nodeId),
+        aprobado: () => accionEstadoKanban('revisar_nodo', nodeId, { p_aprobado: true })
+      };
+      const accion = RPC_POR_COLUMNA_DESTINO[columnaDestino];
+      if (accion) await accion();
     }
 
     let nodoMenuKanbanActual = null;

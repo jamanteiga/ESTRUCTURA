@@ -58,9 +58,10 @@
     <div class="card">
       <h2 style="margin-top:0; font-size:15px;">1. Descarga la plantilla</h2>
       <p style="font-size:13px; color:#555;">
-        La plantilla tiene 4 columnas: <strong>Nivel</strong> (1, 2, 3... según la profundidad respecto al nodo destino que elijas abajo),
-        <strong>Tipo</strong>, <strong>Codigo</strong> y <strong>Nombre</strong> (Descripcion y Orden son opcionales).
-        Cada fila de Nivel 1 cuelga del nodo destino; una fila de Nivel 2 cuelga de la última fila de Nivel 1 que hayas escrito antes, y así sucesivamente — igual que un esquema numerado.
+        La plantilla tiene estas columnas: <strong>Ruta</strong>, <strong>Tipo</strong> y <strong>Nombre</strong> (Descripcion y Orden son opcionales).
+        La Ruta es el camino completo desde el nodo destino hasta esta fila, separando cada nivel con "/" — el último tramo es el código de esta fila (p.ej. <code>SB2/UA2/1027</code>: cuelga de <code>SB2/UA2</code>, y su propio código es <code>1027</code>).
+        Si la ruta empieza por el código del nodo destino, ese primer tramo se ignora (para poder escribir rutas absolutas desde el Buque aunque hayas elegido un destino más abajo).
+        Cada tramo intermedio de la ruta (p.ej. <code>SB2/UA2</code>) tiene que existir ya, bien porque es una fila anterior de este mismo Excel, bien porque ya existe en el árbol.
       </p>
       <button class="secundario" onclick="descargarPlantilla()">⬇ Descargar plantilla de ejemplo</button>
     </div>
@@ -82,7 +83,7 @@
       <div class="contenedor-preview">
         <table>
           <thead>
-            <tr><th>Nivel</th><th>Tipo</th><th>Código</th><th>Nombre</th><th>Colgará de</th><th>Estado</th></tr>
+            <tr><th>Ruta</th><th>Tipo</th><th>Código propio</th><th>Nombre</th><th>Colgará de</th><th>Estado</th></tr>
           </thead>
           <tbody id="tabla-preview"></tbody>
         </table>
@@ -101,6 +102,66 @@
     const SUPABASE_URL = 'https://wuarkraddnndmgvfnkmm.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // -------------------- Registro de comunicaciones (log_comunicaciones.html) --------------------
+    // Envuelve fetch para dejar constancia de cada llamada de red que hace
+    // esta página (casi siempre a Supabase): a dónde, cuánto tarda y qué
+    // datos le pasa. Aparte del registro de actividad (audit_log), que es
+    // de acciones del usuario, no de tráfico de red.
+    function redactarCuerpoComunicacion(cuerpoTexto) {
+      if (!cuerpoTexto) return null;
+      try {
+        const limpiar = (o) => {
+          if (Array.isArray(o)) return o.map(limpiar);
+          if (o && typeof o === 'object') {
+            const copia = {};
+            Object.keys(o).forEach(k => { copia[k] = /password|contrase/i.test(k) ? '***' : limpiar(o[k]); });
+            return copia;
+          }
+          return o;
+        };
+        return JSON.stringify(limpiar(JSON.parse(cuerpoTexto))).slice(0, 4000);
+      } catch (e) {
+        return String(cuerpoTexto).slice(0, 4000);
+      }
+    }
+    (function () {
+      const _fetchOriginal = window.fetch.bind(window);
+      window.fetch = async function (input, init) {
+        const inicio = performance.now();
+        const url = typeof input === 'string' ? input : (input && input.url) || '';
+        const metodo = (init && init.method) || (typeof input === 'object' && input && input.method) || 'GET';
+        if (url.indexOf('/comunicaciones_log') !== -1) return _fetchOriginal(input, init);
+        let respuesta, errorMsg = null;
+        try {
+          respuesta = await _fetchOriginal(input, init);
+          return respuesta;
+        } catch (e) {
+          errorMsg = e.message;
+          throw e;
+        } finally {
+          const duracionMs = Math.round(performance.now() - inicio);
+          const cuerpo = init && init.body && typeof init.body === 'string' ? redactarCuerpoComunicacion(init.body) : null;
+          supabaseClient.from('comunicaciones_log').insert({
+            metodo, url, cuerpo, duracion_ms: duracionMs,
+            status_code: respuesta ? respuesta.status : null, error: errorMsg
+          }).then(() => {}, () => {});
+        }
+      };
+    })();
+
+    // -------------------- Modo mantenimiento --------------------
+    // Si está activo y quien entra no es ADMIN, lo manda a mantenimiento.html
+    // en vez de dejarle seguir. Se llama justo después de conocer el rol.
+    async function comprobarMantenimiento(rol) {
+      if (rol === 'ADMIN') return false;
+      try {
+        const { data } = await supabaseClient.from('app_mantenimiento').select('activo').eq('id', 1).single();
+        if (data && data.activo) { window.location.href = 'mantenimiento.html'; return true; }
+      } catch (e) { /* si falla la comprobación, no se bloquea la app por eso */ }
+      return false;
+    }
+
 
     let miPerfil = null;
     let filasImportar = [];
@@ -141,6 +202,7 @@
       }
 
       miPerfil = perfil;
+      if (await comprobarMantenimiento(perfil.rol)) return;
       document.getElementById('texto-usuario').textContent = `${perfil.nombre_completo} (${perfil.username}) — ADMIN`;
       document.getElementById('panel').style.display = 'block';
 
@@ -181,21 +243,34 @@
 
       const sel = document.getElementById('sel-destino');
       sel.innerHTML = '<option value="">— Elige un nodo destino —</option>' +
-        (data || []).map(n => `<option value="${n.id}" data-tipo="${n.tipo}">${ruta(n)}</option>`).join('');
+        (data || []).map(n => `<option value="${n.id}" data-tipo="${n.tipo}" data-codigo="${n.codigo}">${ruta(n)}</option>`).join('');
     }
 
     function descargarPlantilla() {
       const datos = [
-        { Nivel: 1, Tipo: 'SB', Codigo: 'SB9', Nombre: 'Subbloque 9', Descripcion: '', Orden: 0 },
-        { Nivel: 2, Tipo: 'PANELES', Codigo: 'PANELES', Nombre: 'Paneles', Descripcion: '', Orden: 0 },
-        { Nivel: 2, Tipo: 'UA', Codigo: 'UA1', Nombre: 'Unidad abierta 1', Descripcion: '', Orden: 1 },
-        { Nivel: 3, Tipo: 'UA', Codigo: 'UA1B', Nombre: 'Sub-unidad de UA1', Descripcion: '', Orden: 0 },
-        { Nivel: 1, Tipo: 'SB', Codigo: 'SB10', Nombre: 'Subbloque 10', Descripcion: '', Orden: 2 }
+        { Ruta: 'SB9', Tipo: 'SB', Nombre: 'Subbloque 9', Descripcion: '', Orden: 0 },
+        { Ruta: 'SB9/PANELES', Tipo: 'PANELES', Nombre: 'Paneles', Descripcion: '', Orden: 0 },
+        { Ruta: 'SB9/UA1', Tipo: 'UA', Nombre: 'Unidad abierta 1', Descripcion: '', Orden: 1 },
+        { Ruta: 'SB9/UA1/UA1B', Tipo: 'UA', Nombre: 'Sub-unidad de UA1', Descripcion: '', Orden: 0 },
+        { Ruta: 'SB10', Tipo: 'SB', Nombre: 'Subbloque 10', Descripcion: '', Orden: 2 }
       ];
       const hoja = XLSX.utils.json_to_sheet(datos);
       const libro = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(libro, hoja, 'Estructura');
       XLSX.writeFile(libro, 'plantilla-importar-estructura.xlsx');
+    }
+
+    // Quita segmentos vacíos (rutas con "//" o con "/" al principio/final,
+    // como el "B262/" que se usa a veces solo para señalar el Buque) y,
+    // si el primer tramo coincide con el código del nodo destino elegido,
+    // lo descarta -- así una ruta se puede escribir en absoluto desde el
+    // Buque aunque el destino elegido sea un nodo más profundo.
+    function segmentosDeRuta(ruta, codigoDestino) {
+      const partes = (ruta || '').toString().split('/').map(s => s.trim()).filter(Boolean);
+      if (codigoDestino && partes.length > 0 && partes[0].toUpperCase() === codigoDestino.toUpperCase()) {
+        return partes.slice(1);
+      }
+      return partes;
     }
 
     function manejarArchivoSubido(e) {
@@ -210,19 +285,49 @@
         const filas = XLSX.utils.sheet_to_json(hoja);
 
         filasImportar = filas.map(f => ({
-          nivel: parseInt(f.Nivel, 10),
+          ruta: (f.Ruta || '').toString().trim(),
           tipo: (f.Tipo || '').toString().trim().toUpperCase(),
-          codigo: (f.Codigo || '').toString().trim(),
           nombre: (f.Nombre || '').toString().trim(),
           descripcion: (f.Descripcion || '').toString().trim() || null,
           orden: f.Orden !== undefined && f.Orden !== '' ? parseInt(f.Orden, 10) : 0,
-          estado: 'pendiente', mensaje: '', parentIdReal: null, parentEtiqueta: ''
+          // Se recalculan en cada validarFilas() según el destino elegido:
+          codigoPropio: '', rutaPadre: '', rutaCompleta: '',
+          estado: 'pendiente', mensaje: '', parentEtiqueta: ''
         }));
 
         document.getElementById('card-preview').style.display = 'block';
         validarFilas();
       };
       lector.readAsArrayBuffer(archivo);
+    }
+
+    // Recorre todos los nodos activos y calcula, para cada uno que cuelgue
+    // del destino elegido, su ruta relativa a ese destino (p.ej. "SB2/UA2")
+    // -- así una fila del Excel puede colgar de una rama que ya existía de
+    // antes en el árbol, no solo de una fila anterior del mismo fichero.
+    async function calcularRutasExistentes(destinoId) {
+      const { data } = await supabaseClient.from('nodes').select('id, parent_id, tipo, codigo').eq('activo', true);
+      const mapa = {};
+      (data || []).forEach(n => { mapa[n.id] = n; });
+
+      const rutaPorId = {};
+      function calcularRuta(id) {
+        if (Object.prototype.hasOwnProperty.call(rutaPorId, id)) return rutaPorId[id];
+        if (id === destinoId) { rutaPorId[id] = ''; return ''; }
+        const n = mapa[id];
+        if (!n || !n.parent_id) { rutaPorId[id] = null; return null; }
+        const rutaPadre = calcularRuta(n.parent_id);
+        const ruta = rutaPadre === null ? null : (rutaPadre ? `${rutaPadre}/${n.codigo}` : n.codigo);
+        rutaPorId[id] = ruta;
+        return ruta;
+      }
+
+      const nodoPorRuta = {};
+      Object.keys(mapa).forEach(id => {
+        const ruta = calcularRuta(id);
+        if (ruta !== null) nodoPorRuta[ruta] = { id: mapa[id].id, tipo: mapa[id].tipo, etiqueta: `${mapa[id].tipo} ${mapa[id].codigo}` };
+      });
+      return nodoPorRuta;
     }
 
     async function validarFilas() {
@@ -236,6 +341,8 @@
         return;
       }
 
+      const codigoDestino = document.getElementById('sel-destino').selectedOptions[0]?.dataset.codigo || '';
+
       // Trae las reglas de jerarquía para poder validar tipo-padre antes de tocar la base de datos
       const { data: reglas } = await supabaseClient.from('node_type_rules').select('parent_type, child_type');
       const hijosValidosPorTipo = {};
@@ -244,22 +351,42 @@
         hijosValidosPorTipo[r.parent_type].add(r.child_type);
       });
 
-      const ultimoPorNivel = { 0: { tipo: nodoDestinoTipo, etiqueta: document.getElementById('sel-destino').selectedOptions[0]?.textContent || '' } };
+      // Arranca con lo que ya existe de verdad en el árbol bajo el destino,
+      // y se va completando con las filas del propio Excel según se validan
+      // (una fila puede colgar de otra fila anterior del mismo fichero).
+      const nodoPorRuta = await calcularRutasExistentes(destinoId);
+      nodoPorRuta[''] = { tipo: nodoDestinoTipo, etiqueta: document.getElementById('sel-destino').selectedOptions[0]?.textContent || '' };
 
       let huboError = false;
       filasImportar.forEach(f => {
-        if (!f.nivel || !f.tipo || !f.codigo || !f.nombre) {
-          f.estado = 'error'; f.mensaje = 'Faltan datos obligatorios (Nivel/Tipo/Codigo/Nombre)';
+        const segmentos = segmentosDeRuta(f.ruta, codigoDestino);
+        f.codigoPropio = segmentos[segmentos.length - 1] || '';
+        f.rutaPadre = segmentos.slice(0, -1).join('/');
+        f.rutaCompleta = segmentos.join('/');
+
+        if (segmentos.length === 0) {
+          // Fila usada solo para señalar el nodo raíz (p.ej. "B262/"), sin
+          // nada que crear -- se ignora sin marcarla como error.
+          f.estado = 'ignorada'; f.mensaje = 'Ruta vacía tras quitar el destino — no se crea nada';
+          return;
+        }
+        if (!f.tipo || !f.nombre) {
+          f.estado = 'error'; f.mensaje = 'Faltan datos obligatorios (Tipo/Nombre)';
           huboError = true;
           return;
         }
-        const padreInfo = ultimoPorNivel[f.nivel - 1];
+        const padreInfo = nodoPorRuta[f.rutaPadre];
         if (!padreInfo) {
-          f.estado = 'error'; f.mensaje = `No hay ningún nodo de Nivel ${f.nivel - 1} antes de esta fila`;
+          f.estado = 'error'; f.mensaje = `No existe todavía la ruta "${f.rutaPadre || '(destino)'}" antes de esta fila`;
           huboError = true;
           return;
         }
-        f.parentEtiqueta = padreInfo.etiqueta;
+        if (nodoPorRuta[f.rutaCompleta]) {
+          f.estado = 'error'; f.mensaje = `Ya existe algo en la ruta "${f.rutaCompleta}" (repetida o ya estaba en el árbol)`;
+          huboError = true;
+          return;
+        }
+        f.parentEtiqueta = padreInfo.etiqueta || '(destino)';
 
         const permitidos = hijosValidosPorTipo[padreInfo.tipo];
         if (!permitidos || !permitidos.has(f.tipo)) {
@@ -270,27 +397,27 @@
           f.estado = 'pendiente'; f.mensaje = '';
         }
 
-        ultimoPorNivel[f.nivel] = { tipo: f.tipo, etiqueta: `${f.tipo} ${f.codigo}` };
-        Object.keys(ultimoPorNivel).forEach(k => { if (parseInt(k, 10) > f.nivel) delete ultimoPorNivel[k]; });
+        nodoPorRuta[f.rutaCompleta] = { tipo: f.tipo, etiqueta: `${f.tipo} ${f.codigoPropio}` };
       });
 
       pintarPreview();
+      const aCrear = filasImportar.filter(f => f.estado === 'pendiente').length;
       estadoEl.textContent = huboError
         ? 'Hay filas con error — corrígelas en el Excel y vuelve a subirlo, o impórtalo igualmente y esas filas concretas se saltarán.'
-        : `Todo listo — se crearán ${filasImportar.length} nodos.`;
+        : `Todo listo — se crearán ${aCrear} nodos.`;
       estadoEl.className = huboError ? 'estado-msg error' : 'estado-msg ok';
     }
 
     function pintarPreview() {
       const tbody = document.getElementById('tabla-preview');
       tbody.innerHTML = filasImportar.map(f => `
-        <tr class="fila-${f.estado === 'error' ? 'error' : (f.estado === 'creado' ? 'ok' : 'pendiente')}">
-          <td>${'—'.repeat(Math.max(0,(f.nivel||1)-1))} ${f.nivel || '?'}</td>
+        <tr class="fila-${f.estado === 'error' ? 'error' : (f.estado === 'creado' ? 'ok' : (f.estado === 'ignorada' ? '' : 'pendiente'))}">
+          <td>${f.ruta || '?'}</td>
           <td>${f.tipo || '?'}</td>
-          <td>${f.codigo || '?'}</td>
+          <td>${f.codigoPropio || '?'}</td>
           <td>${f.nombre || '?'}</td>
           <td style="font-size:10px; color:#888;">${f.parentEtiqueta || '—'}</td>
-          <td>${f.estado === 'error' ? '✘ ' + f.mensaje : (f.estado === 'creado' ? '✔ Creado' : 'Pendiente')}</td>
+          <td>${f.estado === 'error' ? '✘ ' + f.mensaje : (f.estado === 'creado' ? '✔ Creado' : (f.estado === 'ignorada' ? '— ' + f.mensaje : 'Pendiente'))}</td>
         </tr>
       `).join('');
     }
@@ -302,33 +429,32 @@
       if (!destinoId) { alert('Elige un nodo destino.'); return; }
 
       btn.disabled = true;
-      const idRealPorNivel = { 0: destinoId };
+      const idPorRuta = await calcularRutasExistentesConId(destinoId);
+      idPorRuta[''] = destinoId;
       let creados = 0, fallados = 0, saltados = 0;
 
       for (const f of filasImportar) {
-        if (f.estado === 'error') { saltados++; continue; }
+        if (f.estado === 'error' || f.estado === 'ignorada') { if (f.estado === 'error') saltados++; continue; }
 
-        const parentIdReal = idRealPorNivel[f.nivel - 1];
+        const parentIdReal = idPorRuta[f.rutaPadre];
         if (!parentIdReal) {
           f.estado = 'error'; f.mensaje = 'Su nodo padre no llegó a crearse';
           saltados++; continue;
         }
 
-        estadoEl.textContent = `Creando ${f.codigo} (${creados + fallados + 1}/${filasImportar.length})...`;
+        estadoEl.textContent = `Creando ${f.codigoPropio} (${creados + fallados + 1}/${filasImportar.length})...`;
 
         const { data: nuevo, error } = await supabaseClient.from('nodes').insert({
-          parent_id: parentIdReal, tipo: f.tipo, codigo: f.codigo, nombre: f.nombre,
+          parent_id: parentIdReal, tipo: f.tipo, codigo: f.codigoPropio, nombre: f.nombre,
           descripcion: f.descripcion, orden: f.orden || 0
         }).select().single();
 
         if (error) {
           f.estado = 'error'; f.mensaje = error.message;
           fallados++;
-          Object.keys(idRealPorNivel).forEach(k => { if (parseInt(k, 10) >= f.nivel) delete idRealPorNivel[k]; });
         } else {
           f.estado = 'creado';
-          idRealPorNivel[f.nivel] = nuevo.id;
-          Object.keys(idRealPorNivel).forEach(k => { if (parseInt(k, 10) > f.nivel) delete idRealPorNivel[k]; });
+          idPorRuta[f.rutaCompleta] = nuevo.id;
           creados++;
         }
         pintarPreview();
@@ -339,6 +465,16 @@
       estadoEl.textContent = `Terminado: ${creados} creados, ${fallados} con error, ${saltados} saltados.`;
       estadoEl.className = fallados > 0 ? 'estado-msg error' : 'estado-msg ok';
       btn.disabled = false;
+    }
+
+    // Igual que calcularRutasExistentes, pero guardando el id real (no el
+    // tipo) -- lo usa ejecutarImportacion para saber bajo qué parent_id real
+    // crear cada fila cuando su ruta padre ya existía de antes en el árbol.
+    async function calcularRutasExistentesConId(destinoId) {
+      const nodoPorRuta = await calcularRutasExistentes(destinoId);
+      const idPorRuta = {};
+      Object.keys(nodoPorRuta).forEach(ruta => { idPorRuta[ruta] = nodoPorRuta[ruta].id; });
+      return idPorRuta;
     }
 
     iniciar();
