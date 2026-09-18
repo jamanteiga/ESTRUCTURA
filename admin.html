@@ -336,28 +336,28 @@
 
     // Misma definición de fábrica que lleva arbol.html -- se usa aquí solo
     // para el botón "Restaurar valores de fábrica" del editor.
+    // Subbloque (SB) ya NO va metido dentro de un "Producto intermedio"
+    // (PI): cuelga directamente del Bloque, al mismo nivel que Anidado --
+    // así viene la estructura correcta de un buque (ver
+    // estructura_eliminar_producto_intermedio.sql). Dentro de GR se genera
+    // tanto UL como UC (con NC dentro) -- ver
+    // estructura_gr_genera_uc.sql.
     const ESTRUCTURA_MINIMA_DEFECTO = {
       BLOQUE: [
         { tipo: 'ANIDADOS', hijos: [
             { tipo: 'PL', hijos: [ { tipo: 'PLANCHA_1000', codigo: 'PL1000' }, { tipo: 'PLANCHA_2000', codigo: 'PL2000' }, { tipo: 'PLANCHA_3000', codigo: 'PL3000' } ] },
             { tipo: 'PERF', hijos: [ { tipo: 'PERFIL_4000', codigo: 'PERF4000' }, { tipo: 'PERFIL_6000', codigo: 'PERF6000' } ] }
         ] },
-        { tipo: 'PI', hijos: [
-            { tipo: 'SB', hijos: [ { tipo: 'UA', hijos: [ { tipo: 'GR', hijos: [ { tipo: 'UL', hijos: [ { tipo: 'NL' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' } ] } ] }, { tipo: 'PS' }, { tipo: 'PM' } ] } ] },
-            { tipo: 'PM' }, { tipo: 'PS' }, { tipo: 'UC', hijos: [ { tipo: 'NC' } ] }
-        ] }
+        { tipo: 'SB', hijos: [ { tipo: 'UA', hijos: [ { tipo: 'GR', hijos: [ { tipo: 'UL', hijos: [ { tipo: 'NL' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' } ] }, { tipo: 'UC', hijos: [ { tipo: 'NC' } ] } ] }, { tipo: 'PS' }, { tipo: 'PM' } ] } ] },
+        { tipo: 'PM' }, { tipo: 'PS' }, { tipo: 'UC', hijos: [ { tipo: 'NC' } ] }
       ],
       ANIDADOS: [
         { tipo: 'PL', hijos: [ { tipo: 'PLANCHA_1000', codigo: 'PL1000' }, { tipo: 'PLANCHA_2000', codigo: 'PL2000' }, { tipo: 'PLANCHA_3000', codigo: 'PL3000' } ] },
         { tipo: 'PERF', hijos: [ { tipo: 'PERFIL_4000', codigo: 'PERF4000' }, { tipo: 'PERFIL_6000', codigo: 'PERF6000' } ] }
       ],
-      PI: [
-        { tipo: 'SB', hijos: [ { tipo: 'UA', hijos: [ { tipo: 'GR', hijos: [ { tipo: 'UL', hijos: [ { tipo: 'NL' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' } ] } ] }, { tipo: 'PS' }, { tipo: 'PM' } ] } ] },
-        { tipo: 'PM' }, { tipo: 'PS' }, { tipo: 'UC', hijos: [ { tipo: 'NC' } ] }
-      ],
-      SB: [ { tipo: 'UA', hijos: [ { tipo: 'GR', hijos: [ { tipo: 'UL', hijos: [ { tipo: 'NL' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' } ] } ] }, { tipo: 'PS' }, { tipo: 'PM' } ] } ],
-      UA: [ { tipo: 'GR', hijos: [ { tipo: 'UL', hijos: [ { tipo: 'NL' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' } ] } ] }, { tipo: 'PS' }, { tipo: 'PM' } ],
-      GR: [ { tipo: 'UL', hijos: [ { tipo: 'NL' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' } ] } ],
+      SB: [ { tipo: 'UA', hijos: [ { tipo: 'GR', hijos: [ { tipo: 'UL', hijos: [ { tipo: 'NL' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' } ] }, { tipo: 'UC', hijos: [ { tipo: 'NC' } ] } ] }, { tipo: 'PS' }, { tipo: 'PM' } ] } ],
+      UA: [ { tipo: 'GR', hijos: [ { tipo: 'UL', hijos: [ { tipo: 'NL' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' } ] }, { tipo: 'UC', hijos: [ { tipo: 'NC' } ] } ] }, { tipo: 'PS' }, { tipo: 'PM' } ],
+      GR: [ { tipo: 'UL', hijos: [ { tipo: 'NL' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' } ] }, { tipo: 'UC', hijos: [ { tipo: 'NC' } ] } ],
       UL: [ { tipo: 'NL' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' } ],
       UP: [ { tipo: 'NP' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' } ],
       PS: [], PT: [], PE: [],

@@ -4041,15 +4041,15 @@
     const RAMA_UP = { tipo: 'UP', hijos: [
         { tipo: 'NP' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' }
     ]};
-    // "Generar estructura mínima" en GR sigue creando solo la rama de UL,
-    // igual que antes -- UP se crea a mano (como UL) donde el usuario
-    // quiera, y una vez creado tiene su propia "Generar estructura mínima"
-    // (ver ESTRUCTURA_MINIMA_POR_TIPO.UP más abajo) para no generar de
-    // golpe una UL y una UP juntas sin que se haya pedido.
-    const RAMA_GR = { tipo: 'GR', hijos: [ RAMA_UL ] };
+    const RAMA_UC = { tipo: 'UC', hijos: [ { tipo: 'NC' } ] };
+    // "Generar estructura mínima" en GR crea tanto la rama de UL como la de
+    // UC (con NC dentro) -- UP se sigue creando a mano (como UL) donde el
+    // usuario quiera, y una vez creado tiene su propia "Generar estructura
+    // mínima" (ver ESTRUCTURA_MINIMA_POR_TIPO.UP más abajo) para no generar
+    // de golpe una UL y una UP juntas sin que se haya pedido.
+    const RAMA_GR = { tipo: 'GR', hijos: [ RAMA_UL, RAMA_UC ] };
     const RAMA_UA = { tipo: 'UA', hijos: [ RAMA_GR, { tipo: 'PS' }, { tipo: 'PM' } ] };
     const RAMA_SB = { tipo: 'SB', hijos: [ RAMA_UA ] };
-    const RAMA_UC = { tipo: 'UC', hijos: [ { tipo: 'NC' } ] };
     const RAMA_PL = { tipo: 'PL', hijos: [
         { tipo: 'PLANCHA_1000', codigo: 'PL1000' },
         { tipo: 'PLANCHA_2000', codigo: 'PL2000' },
