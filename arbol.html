@@ -487,8 +487,12 @@
         <label>Tipo</label>
         <select id="modal-nodo-tipo" onchange="actualizarCodigoSegunTipo()"></select>
       </div>
+      <div id="modal-nodo-familia-wrap" style="display:none;">
+        <label>Familia</label>
+        <select id="modal-nodo-familia"></select>
+      </div>
       <label>Código</label>
-      <input type="text" id="modal-nodo-codigo" placeholder="Ej: SB3, UA1, NL801...">
+      <input type="text" id="modal-nodo-codigo" placeholder="Ej: SB3, UA1, NL801..." oninput="autoseleccionarFamiliaPorCodigo()">
       <label>Nombre</label>
       <input type="text" id="modal-nodo-nombre">
       <label>Descripción (opcional)</label>
@@ -3147,6 +3151,35 @@
         ]
       });
 
+      // Enlaces de solo consulta entre una ubicación del Subbloque
+      // (PS/PT/PM/NL/NC/NP) y las Planchas/Perfiles que se generaron desde
+      // ahí -- viven en Anidados, no como hijos de este nodo, así que sin
+      // esto no habría forma de encontrarlas desde aquí.
+      if (TIPOS_UBICACION_PIEZAS.has(nodo.tipo)) {
+        const piezasAqui = todosLosNodos
+          .filter(n => n.ubicacion_id === nodeId)
+          .sort((a, b) => a.codigo.localeCompare(b.codigo, 'es'));
+        if (piezasAqui.length > 0) {
+          items.push({
+            submenu: true,
+            label: `📦 Piezas usadas aquí (${piezasAqui.length})`,
+            subitems: piezasAqui.map(p => ({
+              label: `${p.codigo}${p.nombre ? ' — ' + p.nombre : ''}`,
+              tip: 'Ir a esta pieza, dentro de Anidados.',
+              fn: () => irANodoEnArbol(p.id)
+            }))
+          });
+        }
+      }
+      if (esPiezaDocumentable && nodo.ubicacion_id && mapaNodoPorId[nodo.ubicacion_id]) {
+        const ubicacion = mapaNodoPorId[nodo.ubicacion_id];
+        items.push({
+          label: `📍 Ir a su ubicación (${ubicacion.codigo})`,
+          tip: 'Esta pieza se generó desde este nodo del Subbloque.',
+          fn: () => irANodoEnArbol(ubicacion.id)
+        });
+      }
+
       // Windchill (y sus hijos Publicar/Fichero subido) están bloqueados
       // mientras Modelo y Plano de corte de la pieza no estén Aprobados --
       // no tiene sentido publicar o subir nada a Windchill sin eso. El nodo
@@ -4040,13 +4073,88 @@
     // los propios tipos Plancha/Perfil: un hijo final documentable no
     // puede tener dentro otra Plancha o Perfil, solo Modelo/Plano de
     // corte/Windchill (que siguen permitidos, vienen de otras reglas).
-    async function obtenerTiposHijoValidos(parentTipo, parentCodigo) {
+    // excluirFamiliasPieza (opcional): quita también PLANCHA_*/PERFIL_* de
+    // la lista -- lo usa el modal de "Crear varios nodos" (+N), que no
+    // sabe generar la pieza dentro de su familia en Anidados.
+    async function obtenerTiposHijoValidos(parentTipo, parentCodigo, excluirFamiliasPieza) {
       const { data } = await supabaseClient.from('node_type_rules').select('child_type').eq('parent_type', parentTipo);
       let tipos = (data || []).map(r => r.child_type);
       if (TIPOS_DOCUMENTABLES.has(parentTipo) && esPiezaNumerada(parentCodigo)) {
         tipos = tipos.filter(t => !TIPOS_DOCUMENTABLES.has(t));
       }
+      if (excluirFamiliasPieza) {
+        tipos = tipos.filter(t => !FAMILIAS_TODAS_PIEZA.includes(t));
+      }
       return tipos;
+    }
+
+    // -------------------- Piezas (Plancha/Perfil) generadas desde PS/PT/PM/NL/NC/NP --------------------
+    //
+    // Desde estos 6 nodos del Subbloque, "+ Generar nodo hijo" no crea la
+    // pieza colgando de ahí: en el desplegable de Tipo aparecen "Plancha
+    // (PL)"/"Perfil (PERF)" en vez de cada familia por separado, y al
+    // elegir uno se calcula sola (según la 1ª cifra del número) o se elige
+    // a mano la familia (PLANCHA_1000/2000/3000 o PERFIL_4000/6000/7000)
+    // dentro de Anidados de ESTE Bloque, y ahí es donde se crea de verdad
+    // (mismo sitio de siempre para el seguimiento de trabajo, fechas y
+    // documentación). El nodo de origen (PS/PT/etc.) solo se queda con un
+    // enlace hacia ella (nodes.ubicacion_id), para poder localizarla luego.
+    const TIPOS_UBICACION_PIEZAS = new Set(['PS', 'PT', 'PM', 'NL', 'NC', 'NP']);
+    const FAMILIAS_PL_PIEZA = ['PLANCHA_1000', 'PLANCHA_2000', 'PLANCHA_3000'];
+    const FAMILIAS_PERF_PIEZA = ['PERFIL_4000', 'PERFIL_6000', 'PERFIL_7000'];
+    const FAMILIAS_TODAS_PIEZA = [...FAMILIAS_PL_PIEZA, ...FAMILIAS_PERF_PIEZA];
+    const FAMILIA_SEGUN_CIFRA = {
+      '1': 'PLANCHA_1000', '2': 'PLANCHA_2000', '3': 'PLANCHA_3000',
+      '4': 'PERFIL_4000', '6': 'PERFIL_6000', '7': 'PERFIL_7000'
+    };
+
+    // Familias (nodos "PL1000", "PERF4000"... -- código NO numérico, para
+    // distinguirlos de las piezas que cuelgan de ellos) ya creadas dentro
+    // del Bloque al que pertenece nodeId.
+    function familiasPiezaEnBloqueDe(nodeId, tiposFamilia) {
+      const nodo = mapaNodoPorId[nodeId];
+      const bloque = nodo ? bloqueDeNodo(nodo) : null;
+      if (!bloque) return [];
+      const idsBloque = new Set([bloque.id, ...obtenerDescendientesIds(bloque.id)]);
+      return todosLosNodos
+        .filter(n => idsBloque.has(n.id) && tiposFamilia.includes(n.tipo) && !esPiezaNumerada(n.codigo))
+        .sort((a, b) => a.codigo.localeCompare(b.codigo, 'es'));
+    }
+
+    function mostrarFamiliaPiezaModal(tipoSuper) {
+      const wrap = document.getElementById('modal-nodo-familia-wrap');
+      const select = document.getElementById('modal-nodo-familia');
+      if (!wrap || !select || !nodoCrearPadre) return;
+      const tiposFamilia = tipoSuper === '__PL__' ? FAMILIAS_PL_PIEZA : FAMILIAS_PERF_PIEZA;
+      const familias = familiasPiezaEnBloqueDe(nodoCrearPadre.id, tiposFamilia);
+      select.innerHTML = familias.length === 0
+        ? '<option value="">(no hay ninguna todavía en este Bloque)</option>'
+        : familias.map(f => `<option value="${f.id}">${f.codigo}${f.nombre ? ' — ' + f.nombre : ''}</option>`).join('');
+      select.dataset.familias = JSON.stringify(familias.map(f => ({ id: f.id, tipo: f.tipo })));
+      wrap.style.display = 'block';
+      autoseleccionarFamiliaPorCodigo();
+    }
+
+    function ocultarFamiliaPiezaModal() {
+      const wrap = document.getElementById('modal-nodo-familia-wrap');
+      if (wrap) wrap.style.display = 'none';
+    }
+
+    // Al escribir el número de la pieza, se autoselecciona la familia que
+    // le corresponde (1xxx->PL1000, 2xxx->PL2000, 3xxx->PL3000,
+    // 4xxx->PERF4000, 6xxx->PERF6000, 7xxx->PERF7000) -- se puede cambiar
+    // a mano si hiciera falta.
+    function autoseleccionarFamiliaPorCodigo() {
+      const tipo = document.getElementById('modal-nodo-tipo').value;
+      if (tipo !== '__PL__' && tipo !== '__PERF__') return;
+      const select = document.getElementById('modal-nodo-familia');
+      if (!select) return;
+      let familias = [];
+      try { familias = JSON.parse(select.dataset.familias || '[]'); } catch (e) {}
+      const codigo = document.getElementById('modal-nodo-codigo').value.trim();
+      const tipoEsperado = FAMILIA_SEGUN_CIFRA[codigo.charAt(0)];
+      const familia = familias.find(f => f.tipo === tipoEsperado);
+      if (familia) select.value = familia.id;
     }
 
     async function abrirModalCrear(parentId, parentTipo) {
@@ -4058,6 +4166,7 @@
       document.getElementById('modal-nodo-orden').value = '0';
       document.getElementById('modal-nodo-estado').textContent = '';
       document.getElementById('modal-nodo-guardar').onclick = () => guardarNodoNuevo();
+      ocultarFamiliaPiezaModal();
 
       const selectTipo = document.getElementById('modal-nodo-tipo');
       const wrapTipo = document.getElementById('modal-nodo-tipo-wrap');
@@ -4068,9 +4177,19 @@
       } else {
         wrapTipo.style.display = 'block';
         const tipos = await obtenerTiposHijoValidos(parentTipo, mapaNodoPorId[parentId]?.codigo);
-        selectTipo.innerHTML = tipos.length === 0
+        const esUbicacion = TIPOS_UBICACION_PIEZAS.has(parentTipo);
+        const tieneFamiliaPL = esUbicacion && tipos.some(t => FAMILIAS_PL_PIEZA.includes(t));
+        const tieneFamiliaPERF = esUbicacion && tipos.some(t => FAMILIAS_PERF_PIEZA.includes(t));
+        const otrosTipos = esUbicacion ? tipos.filter(t => !FAMILIAS_TODAS_PIEZA.includes(t)) : tipos;
+
+        const opciones = [];
+        if (tieneFamiliaPL) opciones.push('<option value="__PL__">Plancha (PL)</option>');
+        if (tieneFamiliaPERF) opciones.push('<option value="__PERF__">Perfil (PERF)</option>');
+        opciones.push(...otrosTipos.map(t => `<option value="${t}">${t}</option>`));
+
+        selectTipo.innerHTML = opciones.length === 0
           ? '<option value="">(este tipo no admite hijos)</option>'
-          : tipos.map(t => `<option value="${t}">${t}</option>`).join('');
+          : opciones.join('');
       }
       actualizarCodigoSegunTipo();
       document.getElementById('modal-nodo').style.display = 'flex';
@@ -4087,6 +4206,16 @@
       const tipo = document.getElementById('modal-nodo-tipo').value;
       const codigoInput = document.getElementById('modal-nodo-codigo');
       const docWrap = document.getElementById('modal-nodo-doc-wrap');
+
+      if (tipo === '__PL__' || tipo === '__PERF__') {
+        if (docWrap) docWrap.style.display = 'block';
+        codigoInput.value = '';
+        codigoInput.placeholder = tipo === '__PL__' ? 'Número de la plancha (ej. 1001)' : 'Número del perfil (ej. 4001)';
+        mostrarFamiliaPiezaModal(tipo);
+        return;
+      }
+      ocultarFamiliaPiezaModal();
+
       if (docWrap) docWrap.style.display = (tipo in BASE_NUMERO_TIPO) ? 'block' : 'none';
       if (tipo in BASE_NUMERO_TIPO) {
         codigoInput.value = BASE_NUMERO_TIPO[tipo];
@@ -4455,14 +4584,46 @@
 
     async function guardarNodoNuevo() {
       const estadoEl = document.getElementById('modal-nodo-estado');
-      const tipo = document.getElementById('modal-nodo-tipo').value;
+      const tipoSeleccionado = document.getElementById('modal-nodo-tipo').value;
       const codigo = document.getElementById('modal-nodo-codigo').value.trim();
       const nombre = document.getElementById('modal-nodo-nombre').value.trim();
       const descripcion = document.getElementById('modal-nodo-descripcion').value.trim();
       const orden = parseInt(document.getElementById('modal-nodo-orden').value, 10) || 0;
 
-      if (!tipo || !codigo || !nombre) {
+      if (!tipoSeleccionado || !codigo || !nombre) {
         estadoEl.textContent = 'Rellena tipo, código y nombre.'; estadoEl.className = 'estado-msg error'; return;
+      }
+
+      // Plancha/Perfil generada desde PS/PT/PM/NL/NC/NP: la pieza no cuelga
+      // de ahí, cuelga de la familia elegida (dentro de Anidados de este
+      // Bloque), y el nodo de origen se queda con un enlace (ubicacion_id).
+      const esPiezaDesdeUbicacion = tipoSeleccionado === '__PL__' || tipoSeleccionado === '__PERF__';
+      let tipo = tipoSeleccionado;
+      let parentIdReal = nodoCrearPadre ? nodoCrearPadre.id : null;
+      let ubicacionId = null;
+
+      if (esPiezaDesdeUbicacion) {
+        if (!esPiezaNumerada(codigo)) {
+          estadoEl.textContent = 'Aquí el código es solo el número de la pieza (ej. 1001).';
+          estadoEl.className = 'estado-msg error';
+          return;
+        }
+        const familiaId = document.getElementById('modal-nodo-familia').value;
+        const familia = familiaId ? mapaNodoPorId[familiaId] : null;
+        if (!familia) {
+          estadoEl.textContent = 'Elige a qué familia (Plancha o Perfil) pertenece esta pieza -- si no hay ninguna todavía, créala primero desde Anidados.';
+          estadoEl.className = 'estado-msg error';
+          return;
+        }
+        const yaExiste = (mapaHijosPorPadre[familia.id] || []).some(h => h.codigo === codigo);
+        if (yaExiste) {
+          estadoEl.textContent = `Ya existe una pieza con el código "${codigo}" dentro de ${familia.codigo}. Usa otro número.`;
+          estadoEl.className = 'estado-msg error';
+          return;
+        }
+        tipo = familia.tipo;
+        parentIdReal = familia.id;
+        ubicacionId = nodoCrearPadre.id;
       }
 
       const esBuqueNuevo = !nodoCrearPadre;
@@ -4473,17 +4634,25 @@
         return;
       }
 
-      const { data: nuevoNodo, error } = await supabaseClient.from('nodes').insert({
-        parent_id: nodoCrearPadre ? nodoCrearPadre.id : null, tipo, codigo, nombre, descripcion: descripcion || null, orden
-      }).select().single();
+      // ubicacion_id solo se manda cuando hace falta (pieza generada desde
+      // PS/PT/PM/NL/NC/NP): así una base sin la columna todavía (antes de
+      // ejecutar estructura_piezas_desde_ubicacion.sql) sigue pudiendo
+      // crear el resto de nodos con normalidad.
+      const nuevoPayload = { parent_id: parentIdReal, tipo, codigo, nombre, descripcion: descripcion || null, orden };
+      if (ubicacionId) nuevoPayload.ubicacion_id = ubicacionId;
+
+      const { data: nuevoNodo, error } = await supabaseClient.from('nodes').insert(nuevoPayload).select().single();
 
       if (error) {
         estadoEl.textContent = 'Error: ' + traducirError(error.message); estadoEl.className = 'estado-msg error';
-        registrarLog('INTENTO_FALLIDO', `Intento de crear ${tipo} "${codigo}" denegado: ${error.message}`, nodoCrearPadre ? nodoCrearPadre.id : null);
+        registrarLog('INTENTO_FALLIDO', `Intento de crear ${tipo} "${codigo}" denegado: ${error.message}`, parentIdReal);
         return;
       }
 
-      registrarLog('CREAR_NODO', `Creó ${tipo} "${codigo}"${nodoCrearPadre ? ` dentro de ${mapaNodoPorId[nodoCrearPadre.id]?.codigo || ''}` : ''}`, nuevoNodo?.id);
+      const origenTxt = esPiezaDesdeUbicacion
+        ? ` dentro de ${mapaNodoPorId[parentIdReal]?.codigo || ''} (usada en ${mapaNodoPorId[nodoCrearPadre.id]?.codigo || ''})`
+        : (nodoCrearPadre ? ` dentro de ${mapaNodoPorId[parentIdReal]?.codigo || ''}` : '');
+      registrarLog('CREAR_NODO', `Creó ${tipo} "${codigo}"${origenTxt}`, nuevoNodo?.id);
 
       const docWrapVisible = document.getElementById('modal-nodo-doc-wrap').style.display !== 'none';
       if (docWrapVisible && document.getElementById('modal-nodo-doc').checked && TIPOS_DOCUMENTABLES.has(tipo) && esPiezaNumerada(codigo)) {
@@ -4496,8 +4665,13 @@
       }
 
       cerrarModalNodo();
-      if (nodoCrearPadre) nodosAbiertos.add(nodoCrearPadre.id);
-      await cargarArbol();
+      if (esPiezaDesdeUbicacion) {
+        await cargarArbol();
+        irANodoEnArbol(nuevoNodo.id);
+      } else {
+        if (nodoCrearPadre) nodosAbiertos.add(nodoCrearPadre.id);
+        await cargarArbol();
+      }
 
       if (esBuqueNuevo && esGestor()) {
         mostrarAviso('pendiente', '🚢 Buque creado', 'Ahora puedes crear usuarios nuevos o asignar existentes desde Usuarios, y montar su estructura interna aquí.', null);
@@ -4741,7 +4915,11 @@
       document.getElementById('modal-lote-estado').textContent = '';
 
       const selectTipo = document.getElementById('modal-lote-tipo');
-      const tipos = await obtenerTiposHijoValidos(parentTipo, mapaNodoPorId[parentId]?.codigo);
+      // Las Planchas/Perfiles generados desde PS/PT/PM/NL/NC/NP tienen que
+      // pasar por el modal de un solo nodo (para elegir su familia en
+      // Anidados y guardar de dónde vienen) -- por eso aquí se quitan de
+      // la lista cuando se crea desde uno de esos 6 nodos.
+      const tipos = await obtenerTiposHijoValidos(parentTipo, mapaNodoPorId[parentId]?.codigo, TIPOS_UBICACION_PIEZAS.has(parentTipo));
       selectTipo.innerHTML = tipos.length === 0
         ? '<option value="">(este tipo no admite hijos)</option>'
         : tipos.map(t => `<option value="${t}">${t}</option>`).join('');
