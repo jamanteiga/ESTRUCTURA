@@ -178,6 +178,14 @@
       </div>
       <div id="estado-estructura-minima" class="estado"></div>
       <p id="meta-estructura-minima" style="font-size:11px; color:#888; margin-top:6px;"></p>
+      <p class="subtitulo-card" style="margin-top:14px;">Exportar lo que hay ahora mismo en el editor de arriba (con los cambios sin guardar incluidos):</p>
+      <div class="fila-accion">
+        <button class="secundario" onclick="exportarEstructuraMinimaTxt()">⬇ .txt</button>
+        <button class="secundario" onclick="exportarEstructuraMinimaTabla('xlsx')">⬇ .xlsx</button>
+        <button class="secundario" onclick="exportarEstructuraMinimaTabla('csv')">⬇ .csv</button>
+        <button class="secundario" onclick="exportarEstructuraMinimaTabla('ods')">⬇ .ods</button>
+        <button class="secundario" onclick="exportarEstructuraMinimaPdf()">🖨️ .pdf</button>
+      </div>
     </div>
 
     <!-- 8) Importación masiva de festivos -->
@@ -200,6 +208,33 @@
         <input type="file" id="input-ausencias" accept=".xlsx,.xls" style="max-width:260px;">
       </div>
       <div id="preview-ausencias"></div>
+    </div>
+
+    <!-- 10) Horas de trabajo por usuario -->
+    <div class="card">
+      <h2>⏱️ Horas de trabajo por usuario</h2>
+      <p class="subtitulo-card">
+        Para cada tarea, se cuenta el tiempo entre que se puso "en proceso" y se terminó (o el momento actual,
+        si sigue en proceso todavía), y se suma por usuario dentro del periodo elegido. No descuenta paradas
+        dentro de ese tiempo (una tarea abierta varios días sin tocarla cuenta esas horas igual).
+      </p>
+      <div class="fila-accion">
+        <button class="secundario" onclick="verHorasTrabajo('hoy')">Hoy</button>
+        <button class="secundario" onclick="verHorasTrabajo('semana')">Esta semana</button>
+        <button class="secundario" onclick="verHorasTrabajo('semana_anterior')">Semana anterior</button>
+        <button class="secundario" onclick="verHorasTrabajo('mes')">Este mes</button>
+      </div>
+      <div class="fila-accion">
+        <input type="month" id="horas-mes-elegido" style="max-width:160px;">
+        <button class="secundario" onclick="verHorasTrabajoMesElegido()">Ver ese mes</button>
+      </div>
+      <div class="fila-accion">
+        <input type="date" id="horas-desde" style="max-width:160px;">
+        <span>a</span>
+        <input type="date" id="horas-hasta" style="max-width:160px;">
+        <button class="secundario" onclick="verHorasTrabajoRango()">Ver rango</button>
+      </div>
+      <div id="horas-trabajo-contenido" style="margin-top:10px;"></div>
     </div>
 
   </div>
@@ -670,6 +705,114 @@
       cargarEstructuraMinima();
     }
 
+    // Exportar la estructura mínima -- siempre lo que hay AHORA en el
+    // textarea (incluidos cambios todavía sin guardar), para que "exportar"
+    // sirva también para revisar un borrador antes de guardarlo.
+    function estructuraMinimaActualDesdeEditor() {
+      const estadoEl = document.getElementById('estado-estructura-minima');
+      const texto = document.getElementById('txt-estructura-minima').value;
+      try {
+        return JSON.parse(texto);
+      } catch (e) {
+        estadoEl.textContent = 'El texto del editor no es JSON válido -- corrígelo antes de exportar: ' + e.message;
+        estadoEl.className = 'estado error';
+        return null;
+      }
+    }
+
+    function descargarTextoComoArchivo(nombre, contenido, tipoMime) {
+      const blob = new Blob([contenido], { type: tipoMime || 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = nombre;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    // Convierte el árbol { CLAVE: [ {tipo, codigo, nombre, hijos:[...]} ] }
+    // en filas planas (una por nodo del árbol), para las exportaciones en
+    // formato de tabla (.xlsx, .csv, .ods).
+    function aplanarEstructuraMinima(definicion) {
+      const filas = [];
+      function recorrer(raiz, lista, nivel, ruta) {
+        (lista || []).forEach(item => {
+          if (!item || typeof item !== 'object' || typeof item.tipo !== 'string') return;
+          const rutaActual = ruta ? `${ruta} > ${item.tipo}` : item.tipo;
+          filas.push({
+            Raiz: raiz,
+            Nivel: nivel,
+            Ruta: rutaActual,
+            Tipo: item.tipo,
+            Etiqueta: ETIQUETAS_TIPO[item.tipo] || item.tipo,
+            Codigo: item.codigo || '',
+            Nombre: item.nombre || ''
+          });
+          if (item.hijos) recorrer(raiz, item.hijos, nivel + 1, rutaActual);
+        });
+      }
+      Object.keys(definicion).forEach(clave => {
+        const lista = definicion[clave];
+        if (!Array.isArray(lista) || lista.length === 0) {
+          filas.push({ Raiz: clave, Nivel: 0, Ruta: '(sin hijos definidos)', Tipo: '', Etiqueta: '', Codigo: '', Nombre: '' });
+        } else {
+          recorrer(clave, lista, 0, '');
+        }
+      });
+      return filas;
+    }
+
+    function exportarEstructuraMinimaTxt() {
+      const definicion = estructuraMinimaActualDesdeEditor();
+      if (!definicion) return;
+      descargarTextoComoArchivo('estructura-minima.txt', JSON.stringify(definicion, null, 2), 'text/plain;charset=utf-8');
+      registrarLog('EXPORTAR_ESTRUCTURA_MINIMA', 'Exportó la estructura mínima a .txt');
+    }
+
+    function exportarEstructuraMinimaTabla(formato) {
+      const definicion = estructuraMinimaActualDesdeEditor();
+      if (!definicion) return;
+      const filas = aplanarEstructuraMinima(definicion);
+      const hoja = XLSX.utils.json_to_sheet(filas);
+      const libro = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(libro, hoja, 'Estructura minima');
+      const nombres = { xlsx: 'estructura-minima.xlsx', csv: 'estructura-minima.csv', ods: 'estructura-minima.ods' };
+      XLSX.writeFile(libro, nombres[formato] || `estructura-minima.${formato}`, { bookType: formato });
+      registrarLog('EXPORTAR_ESTRUCTURA_MINIMA', `Exportó la estructura mínima a .${formato}`);
+    }
+
+    function escaparHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    // No se genera el PDF directamente (evita meter una librería nueva solo
+    // para esto): se abre una vista imprimible y se lanza el diálogo de
+    // impresión del navegador, donde "Guardar como PDF" hace el resto --
+    // mismo patrón ya usado en gantt.html.
+    function exportarEstructuraMinimaPdf() {
+      const definicion = estructuraMinimaActualDesdeEditor();
+      if (!definicion) return;
+      const filas = aplanarEstructuraMinima(definicion);
+      const filasHtml = filas.map(f => `<tr><td>${escaparHtml(f.Raiz)}</td><td style="text-align:center;">${f.Nivel}</td><td>${escaparHtml(f.Ruta)}</td><td>${escaparHtml(f.Codigo)}</td><td>${escaparHtml(f.Nombre)}</td></tr>`).join('');
+      const ventana = window.open('', '_blank');
+      if (!ventana) { mostrarAvisoModal('El navegador ha bloqueado la ventana de impresión -- permite las ventanas emergentes para exportar a PDF.'); return; }
+      ventana.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Estructura mínima</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 20px; color: #222; }
+          h1 { font-size: 18px; }
+          table { width: 100%; border-collapse: collapse; font-size: 12px; }
+          th, td { border: 1px solid #999; padding: 4px 6px; text-align: left; }
+          th { background: #1c6e8c; color: white; }
+        </style></head><body>
+        <h1>Estructura mínima -- ${new Date().toLocaleString('es-ES')}</h1>
+        <table><thead><tr><th>Raíz</th><th>Nivel</th><th>Ruta</th><th>Código</th><th>Nombre</th></tr></thead>
+        <tbody>${filasHtml}</tbody></table>
+        </body></html>`);
+      ventana.document.close();
+      ventana.focus();
+      setTimeout(() => ventana.print(), 300);
+      registrarLog('EXPORTAR_ESTRUCTURA_MINIMA', 'Exportó la estructura mínima a PDF (impresión)');
+    }
+
     // -------------------- 8/9) Importación masiva de festivos y ausencias --------------------
 
     function descargarPlantillaFestivos() {
@@ -847,6 +990,103 @@
         : `✔️ ${ok} ausencia(s) importada(s) correctamente.`;
       estadoEl.className = fallos.length > 0 ? 'estado error' : 'estado ok';
       if (ok > 0) registrarLog('IMPORTAR_AUSENCIAS', `Importó ${ok} ausencia(s) desde Excel`);
+    }
+
+    // -------------------- 10) Horas de trabajo por usuario --------------------
+
+    // Lunes 00:00 de la semana que contiene "fecha" (semana de lunes a domingo).
+    function lunesDeSemana(fecha) {
+      const d = new Date(fecha);
+      d.setHours(0, 0, 0, 0);
+      const diaSemana = (d.getDay() + 6) % 7; // lunes=0 ... domingo=6
+      d.setDate(d.getDate() - diaSemana);
+      return d;
+    }
+
+    function formatearHoras(horas) {
+      if (horas === null || horas === undefined) return '—';
+      const totalMin = Math.round(Number(horas) * 60);
+      if (totalMin <= 0) return '—';
+      const h = Math.floor(totalMin / 60);
+      const m = totalMin % 60;
+      if (h > 0) return `${h}h ${m}min`;
+      return `${m}min`;
+    }
+
+    async function cargarHorasTrabajo(desde, hasta, etiquetaPeriodo) {
+      const cont = document.getElementById('horas-trabajo-contenido');
+      cont.innerHTML = '<span class="spinner-carga"></span>Calculando...';
+
+      const { data, error } = await supabaseClient.rpc('horas_trabajo_por_usuario', {
+        p_desde: desde.toISOString(),
+        p_hasta: hasta.toISOString()
+      });
+
+      if (error) {
+        cont.innerHTML = `<p class="error">${traducirError(error.message)}</p>`;
+        return;
+      }
+
+      const filas = (data || []).slice().sort((a, b) => b.horas - a.horas);
+      const totalHoras = filas.reduce((acc, f) => acc + Number(f.horas || 0), 0);
+
+      cont.innerHTML = `
+        <p style="font-size:12px; color:#888; margin:0 0 6px;">
+          ${etiquetaPeriodo} — del ${desde.toLocaleDateString('es-ES')} al ${new Date(hasta.getTime() - 1).toLocaleDateString('es-ES')}.
+          Total: ${formatearHoras(totalHoras)}.
+        </p>
+        ${filas.length > 0 ? `
+          <table><thead><tr><th>Usuario</th><th>Horas trabajadas</th></tr></thead><tbody>
+            ${filas.map(f => `<tr><td>${f.nombre_completo}</td><td>${formatearHoras(f.horas)}</td></tr>`).join('')}
+          </tbody></table>
+        ` : '<p style="font-size:13px; color:#888; margin-top:8px;">Ninguna tarea trabajada en este periodo.</p>'}
+      `;
+    }
+
+    function verHorasTrabajo(periodo) {
+      const ahora = new Date();
+      let desde, hasta, etiqueta;
+      if (periodo === 'hoy') {
+        desde = new Date(ahora); desde.setHours(0, 0, 0, 0);
+        hasta = new Date(desde); hasta.setDate(hasta.getDate() + 1);
+        etiqueta = 'Hoy';
+      } else if (periodo === 'semana') {
+        desde = lunesDeSemana(ahora);
+        hasta = new Date(desde); hasta.setDate(hasta.getDate() + 7);
+        etiqueta = 'Esta semana';
+      } else if (periodo === 'semana_anterior') {
+        const lunesActual = lunesDeSemana(ahora);
+        desde = new Date(lunesActual); desde.setDate(desde.getDate() - 7);
+        hasta = lunesActual;
+        etiqueta = 'Semana anterior';
+      } else if (periodo === 'mes') {
+        desde = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
+        hasta = new Date(ahora.getFullYear(), ahora.getMonth() + 1, 1);
+        etiqueta = 'Este mes';
+      } else {
+        return;
+      }
+      cargarHorasTrabajo(desde, hasta, etiqueta);
+    }
+
+    function verHorasTrabajoMesElegido() {
+      const valor = document.getElementById('horas-mes-elegido').value; // "YYYY-MM"
+      if (!valor) { mostrarAvisoModal('Elige primero un mes.'); return; }
+      const [anio, mes] = valor.split('-').map(Number);
+      const desde = new Date(anio, mes - 1, 1);
+      const hasta = new Date(anio, mes, 1);
+      cargarHorasTrabajo(desde, hasta, `Mes de ${desde.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}`);
+    }
+
+    function verHorasTrabajoRango() {
+      const strDesde = document.getElementById('horas-desde').value;
+      const strHasta = document.getElementById('horas-hasta').value;
+      if (!strDesde || !strHasta) { mostrarAvisoModal('Elige las dos fechas (desde y hasta).'); return; }
+      const desde = new Date(strDesde + 'T00:00:00');
+      const hasta = new Date(strHasta + 'T00:00:00');
+      hasta.setDate(hasta.getDate() + 1); // el día "hasta" se incluye entero
+      if (hasta <= desde) { mostrarAvisoModal('La fecha "hasta" no puede ser anterior a la fecha "desde".'); return; }
+      cargarHorasTrabajo(desde, hasta, 'Rango elegido');
     }
 
     document.addEventListener('keydown', (e) => {
