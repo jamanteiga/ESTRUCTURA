@@ -1078,7 +1078,7 @@
     // código "PL1000") como las piezas numeradas de verdad que cuelgan de él
     // (código "1001"...) — se distinguen por el código: la familia siempre
     // lleva letras delante, la pieza de verdad es solo números.
-    const TIPOS_DOCUMENTABLES = new Set(['PLANCHA_1000', 'PLANCHA_2000', 'PLANCHA_3000', 'PERFIL_4000', 'PERFIL_6000']);
+    const TIPOS_DOCUMENTABLES = new Set(['PLANCHA_1000', 'PLANCHA_2000', 'PLANCHA_3000', 'PERFIL_4000', 'PERFIL_6000', 'PERFIL_7000']);
     function esPiezaNumerada(codigo) { return /^\d+$/.test(String(codigo || '').trim()); }
 
     const ETIQUETAS_TIPO = {
@@ -1111,6 +1111,7 @@
       PLANCHA_3000: 'Plancha 3000',
       PERFIL_4000: 'Perfil 4000',
       PERFIL_6000: 'Perfil 6000',
+      PERFIL_7000: 'Perfil 7000',
       DOC_MODELO: 'Modelo',
       DOC_PLANO_CORTE: 'Plano de corte',
       DOC_WINDCHILL: 'Windchill',
@@ -1128,7 +1129,8 @@
       PLANCHA_2000: 'PL',
       PLANCHA_3000: 'PL',
       PERFIL_4000: 'PERF',
-      PERFIL_6000: 'PERF'
+      PERFIL_6000: 'PERF',
+      PERFIL_7000: 'PERF'
     };
     function etiquetaCortaTipo(tipo) { return TIPO_TAG_CORTO[tipo] || tipo; }
 
@@ -3987,7 +3989,7 @@
     // ninguna letra delante — el código empieza directamente por el número base.
     const BASE_NUMERO_TIPO = {
       PLANCHA_1000: '1000', PLANCHA_2000: '2000', PLANCHA_3000: '3000',
-      PERFIL_4000: '4000', PERFIL_6000: '6000'
+      PERFIL_4000: '4000', PERFIL_6000: '6000', PERFIL_7000: '7000'
     };
     function actualizarCodigoSegunTipo() {
       const tipo = document.getElementById('modal-nodo-tipo').value;
@@ -4057,7 +4059,8 @@
     ]};
     const RAMA_PERF = { tipo: 'PERF', hijos: [
         { tipo: 'PERFIL_4000', codigo: 'PERF4000' },
-        { tipo: 'PERFIL_6000', codigo: 'PERF6000' }
+        { tipo: 'PERFIL_6000', codigo: 'PERF6000' },
+        { tipo: 'PERFIL_7000', codigo: 'PERF7000' }
     ]};
     const RAMA_ANIDADOS = { tipo: 'ANIDADOS', hijos: [ RAMA_PL, RAMA_PERF ] };
 
