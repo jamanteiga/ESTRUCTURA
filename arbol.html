@@ -877,6 +877,22 @@
     </div>
   </div>
 
+  <!-- Motivo de rechazo: lista de motivos frecuentes + "Otro" con detalle libre. -->
+  <div class="overlay" id="modal-motivo-rechazo" style="z-index:5000;">
+    <div class="overlay-caja" style="max-width:420px;">
+      <h3 style="margin-top:0; font-size:15px;">Motivo del rechazo</h3>
+      <label>Motivo</label>
+      <select id="mr-motivo" style="width:100%; padding:7px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box; font-size:16px;"></select>
+      <label id="mr-detalle-label">Detalle (opcional)</label>
+      <textarea id="mr-detalle" rows="3" style="width:100%; box-sizing:border-box; padding:8px; border:1px solid #ccc; border-radius:4px; font-family:inherit; font-size:13px;"></textarea>
+      <div class="estado-msg error" id="mr-estado" style="min-height:16px;"></div>
+      <div class="overlay-botones">
+        <button class="secundario" id="mr-cancel">Cancelar</button>
+        <button id="mr-ok">Rechazar</button>
+      </div>
+    </div>
+  </div>
+
   <input type="file" id="input-importar-backup" accept="application/json" style="display:none">
 
   <div class="overlay" id="modal-eliminar" style="z-index:5000;">
@@ -4765,6 +4781,51 @@
       });
     }
 
+    // Motivos de rechazo más frecuentes -- una lista corta de motivos
+    // habituales (mejora "Motivos de rechazo predefinidos") más "Otro" para lo
+    // que no encaje, en vez de escribir el texto entero cada vez. Se guarda
+    // igual que antes en node_workflow.comentario_revision (RPC revisar_nodo).
+    const MOTIVOS_RECHAZO_PREDEFINIDOS = [
+      'No cumple el plano o modelo 3D',
+      'Medidas o cotas incorrectas',
+      'Falta documentación o fichero',
+      'Material o especificación incorrecta',
+      'Acabado o soldadura defectuosos',
+      'Falta marcaje / identificación',
+      'Otro (especificar abajo)'
+    ];
+
+    // Devuelve el texto final del motivo de rechazo (motivo elegido +, si lo
+    // hay, el detalle) o null si se cancela. "Otro" obliga a escribir el
+    // detalle; los demás motivos lo dejan opcional.
+    function pedirMotivoRechazo(etiquetaTarea) {
+      return new Promise((resolve) => {
+        const sel = document.getElementById('mr-motivo');
+        const detalle = document.getElementById('mr-detalle');
+        const estadoEl = document.getElementById('mr-estado');
+        sel.innerHTML = MOTIVOS_RECHAZO_PREDEFINIDOS.map(m => `<option value="${m}">${m}</option>`).join('');
+        sel.value = MOTIVOS_RECHAZO_PREDEFINIDOS[0];
+        detalle.value = '';
+        estadoEl.textContent = '';
+        document.querySelector('#modal-motivo-rechazo h3').textContent = etiquetaTarea ? `Motivo del rechazo de "${etiquetaTarea}"` : 'Motivo del rechazo';
+        document.getElementById('modal-motivo-rechazo').style.display = 'flex';
+        setTimeout(() => sel.focus(), 50);
+
+        const btnOk = document.getElementById('mr-ok');
+        const btnCancel = document.getElementById('mr-cancel');
+        const limpiar = () => { btnOk.onclick = null; btnCancel.onclick = null; document.getElementById('modal-motivo-rechazo').style.display = 'none'; };
+        btnOk.onclick = () => {
+          const esOtro = sel.value === MOTIVOS_RECHAZO_PREDEFINIDOS[MOTIVOS_RECHAZO_PREDEFINIDOS.length - 1];
+          const texto = detalle.value.trim();
+          if (esOtro && !texto) { estadoEl.textContent = 'Escribe el motivo en el detalle.'; return; }
+          const motivoFinal = esOtro ? texto : (texto ? `${sel.value} — ${texto}` : sel.value);
+          limpiar();
+          resolve(motivoFinal);
+        };
+        btnCancel.onclick = () => { limpiar(); resolve(null); };
+      });
+    }
+
     function traducirError(mensaje) {
       if (!mensaje) return 'Ha ocurrido un error inesperado.';
       const m = mensaje.toLowerCase();
@@ -5201,8 +5262,8 @@
 
       let comentarioRechazoMasivo = null;
       if (estadoElegido === 'rechazado') {
-        comentarioRechazoMasivo = await pedirTexto('Motivo del rechazo para todas las seleccionadas (obligatorio):');
-        if (!comentarioRechazoMasivo || !comentarioRechazoMasivo.trim()) return;
+        comentarioRechazoMasivo = await pedirMotivoRechazo(`${ids.length} tareas seleccionadas`);
+        if (!comentarioRechazoMasivo) return;
       }
 
       btn.disabled = true;
@@ -5289,8 +5350,8 @@
 
       let comentarioRechazo = null;
       if (estadoElegido === 'rechazado') {
-        comentarioRechazo = await pedirTexto('Motivo del rechazo para todas las seleccionadas (obligatorio):');
-        if (!comentarioRechazo || !comentarioRechazo.trim()) return;
+        comentarioRechazo = await pedirMotivoRechazo(`${nodosSeleccionados.size} tareas seleccionadas`);
+        if (!comentarioRechazo) return;
       }
 
       const accionesEstado = {
@@ -5667,8 +5728,8 @@
     async function accionRevisar(nodeId, aprobado) {
       let comentario = null;
       if (!aprobado) {
-        comentario = await pedirTexto('Motivo del rechazo (obligatorio):');
-        if (!comentario || !comentario.trim()) return;
+        comentario = await pedirMotivoRechazo(mapaNodoPorId[nodeId]?.codigo);
+        if (!comentario) return;
       } else {
         comentario = await pedirTexto('Comentario opcional (déjalo en blanco si no quieres añadir nada):');
         if (comentario === null) return;

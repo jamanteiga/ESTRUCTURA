@@ -71,6 +71,7 @@
       <button class="secundario" onclick="location.href='arbol.html'">🌳 Árbol</button>
       <button class="secundario" onclick="location.href='kanban.html'">🗂️ Kanban</button>
       <button class="secundario" id="btn-informe" onclick="location.href='informe.html'" style="display:none;">🖨️ Informe</button>
+      <button class="secundario" id="btn-avisos" onclick="alternarAvisosColaRevision()" style="display:none;">🔔 Avisarme de nuevas</button>
       <button class="secundario" onclick="cerrarSesion()">Cerrar sesión</button>
       <button style="background:#dc3545; color:white; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:13px;" onclick="cerrarPagina()">❌ Cerrar</button>
     </div>
@@ -107,6 +108,22 @@
       <div class="overlay-botones">
         <button class="secundario" id="pedirtexto-resumen-cancel">Cancelar</button>
         <button id="pedirtexto-resumen-ok">Aceptar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Motivo de rechazo: lista de motivos frecuentes + "Otro" con detalle libre. -->
+  <div class="overlay" id="modal-motivo-rechazo" style="z-index:5000;">
+    <div class="overlay-caja" style="max-width:420px;">
+      <h3 style="margin-top:0; font-size:15px;">Motivo del rechazo</h3>
+      <label>Motivo</label>
+      <select id="mr-motivo"></select>
+      <label id="mr-detalle-label">Detalle (opcional)</label>
+      <textarea id="mr-detalle" rows="3" style="width:100%; box-sizing:border-box; padding:8px; border:1px solid #ccc; border-radius:4px; font-family:inherit; font-size:13px;"></textarea>
+      <div class="estado-msg error" id="mr-estado" style="min-height:16px;"></div>
+      <div class="overlay-botones">
+        <button class="secundario" id="mr-cancel">Cancelar</button>
+        <button id="mr-ok">Rechazar</button>
       </div>
     </div>
   </div>
@@ -212,6 +229,76 @@
     let nodosGestorActual = [];
     let filtroUsuarioId = null;
     let filtroRevisorId = null;
+    let dependenciasCache = [];
+    let nodosEnRutaCritica = new Set();
+    let holguraPorNodo = new Map();
+
+    // -------------------- Aviso al entrar algo nuevo a la cola --------------------
+    const CLAVE_AVISOS_COLA = 'estructura_avisos_cola_revision';
+    let idsColaPropiaAnterior = null; // null = primera carga: no avisa de "nuevas" retroactivamente
+    let avisosNuevos = [];
+
+    function avisosColaActivados() { return localStorage.getItem(CLAVE_AVISOS_COLA) === '1'; }
+
+    async function alternarAvisosColaRevision() {
+      if (avisosColaActivados()) {
+        localStorage.setItem(CLAVE_AVISOS_COLA, '0');
+        actualizarBotonAvisos();
+        return;
+      }
+      if (!('Notification' in window)) { mostrarAvisoModal('Este navegador no admite avisos de escritorio.'); return; }
+      const permiso = await Notification.requestPermission();
+      if (permiso !== 'granted') { mostrarAvisoModal('No se concedió permiso para mostrar avisos.'); return; }
+      localStorage.setItem(CLAVE_AVISOS_COLA, '1');
+      actualizarBotonAvisos();
+    }
+
+    function actualizarBotonAvisos() {
+      const btn = document.getElementById('btn-avisos');
+      if (!btn) return;
+      const activo = avisosColaActivados();
+      btn.textContent = activo ? '🔕 Avisos activados' : '🔔 Avisarme de nuevas';
+      btn.title = activo ? 'Pulsa para desactivar los avisos de escritorio cuando entre algo nuevo a tu cola' : 'Recibir un aviso de escritorio (mientras esta pestaña esté abierta) cuando te entre una tarea nueva a revisar';
+    }
+
+    // Compara la cola propia (revisor_id === yo, pendiente/en revisión) con la
+    // de la carga anterior -- si hay ids nuevos, los guarda para resaltarlos
+    // en pintar() y, si están activados, lanza un aviso de escritorio.
+    function detectarNuevasEnCola() {
+      if (!esGestor()) return;
+      const propiaAhora = Object.values(mapaNodoPorId).filter(n =>
+        n.revisor_id === miPerfil.id && (n.revision_estado === 'PENDIENTE' || n.revision_estado === 'EN_REVISION')
+      );
+      const idsAhora = new Set(propiaAhora.map(n => n.id));
+
+      if (idsColaPropiaAnterior !== null) {
+        const nuevas = propiaAhora.filter(n => !idsColaPropiaAnterior.has(n.id));
+        if (nuevas.length > 0) {
+          avisosNuevos = [...new Set([...avisosNuevos, ...nuevas.map(n => n.id)])];
+          if (avisosColaActivados() && Notification.permission === 'granted') {
+            const texto = nuevas.length === 1
+              ? `${nuevas[0].codigo} — ${nuevas[0].nombre}`
+              : `${nuevas.length} tareas nuevas`;
+            new Notification('⏳ Nueva entrada en tu cola de revisión', { body: texto });
+          }
+        }
+      }
+      idsColaPropiaAnterior = idsAhora;
+    }
+
+    // Motivos de rechazo más frecuentes -- una lista corta para no escribir el
+    // texto entero cada vez, con "Otro" para lo que no encaje aquí. Se guarda
+    // igual que antes en node_workflow.comentario_revision (RPC revisar_nodo),
+    // así que no hace falta ningún cambio de base de datos para esto.
+    const MOTIVOS_RECHAZO_PREDEFINIDOS = [
+      'No cumple el plano o modelo 3D',
+      'Medidas o cotas incorrectas',
+      'Falta documentación o fichero',
+      'Material o especificación incorrecta',
+      'Acabado o soldadura defectuosos',
+      'Falta marcaje / identificación',
+      'Otro (especificar abajo)'
+    ];
 
     function esGestor() { return miPerfil.rol === 'ADMIN' || miPerfil.rol === 'REVISOR'; }
     function esInvitado() { return miPerfil.rol === 'INVITADO'; }
@@ -272,6 +359,72 @@
       const hijos = mapaHijosPorPadre[nodeId] || [];
       hijos.forEach(h => { resultado.push(h.id); resultado.push(...obtenerDescendientesIds(h.id)); });
       return resultado;
+    }
+
+    // Ruta crítica (CPM), igual que en gantt.html: solo entra en el cálculo lo
+    // que tiene fecha_inicio_prevista y fecha_fin_prevista fijadas y
+    // dependencias entre sí. Se usa aquí para priorizar la cola de revisión
+    // (mejora "Cola de revisión priorizada") y para pedir comentario al
+    // aprobar piezas críticas.
+    function calcularRutaCritica() {
+      const rango = {};
+      Object.values(mapaNodoPorId).forEach(n => {
+        if (n.fecha_inicio_prevista && n.fecha_fin_prevista) {
+          rango[n.id] = { inicio: new Date(n.fecha_inicio_prevista), fin: new Date(n.fecha_fin_prevista) };
+        }
+      });
+      const ids = Object.keys(rango);
+      if (ids.length === 0) return { criticos: new Set(), holguras: new Map() };
+
+      const sucesoresDe = {}, predecesoresDe = {};
+      ids.forEach(id => { sucesoresDe[id] = []; predecesoresDe[id] = []; });
+      dependenciasCache.forEach(d => {
+        if (rango[d.predecesor_id] && rango[d.sucesor_id]) {
+          sucesoresDe[d.predecesor_id].push(d.sucesor_id);
+          predecesoresDe[d.sucesor_id].push(d.predecesor_id);
+        }
+      });
+
+      const duracionMs = id => rango[id].fin - rango[id].inicio;
+      const EF = {};
+      function calcularEF(id, pila) {
+        if (EF[id] !== undefined) return EF[id];
+        if (pila.has(id)) return EF[id] = rango[id].fin;
+        pila.add(id);
+        let inicioReal = rango[id].inicio;
+        predecesoresDe[id].forEach(pid => {
+          const ef = calcularEF(pid, pila);
+          if (ef > inicioReal) inicioReal = ef;
+        });
+        return EF[id] = new Date(inicioReal.getTime() + duracionMs(id));
+      }
+      ids.forEach(id => calcularEF(id, new Set()));
+
+      const finProyecto = new Date(Math.max(...ids.map(id => EF[id].getTime())));
+      const LS = {};
+      function calcularLS(id, pila) {
+        if (LS[id] !== undefined) return LS[id];
+        if (pila.has(id)) return LS[id] = finProyecto;
+        pila.add(id);
+        const sucs = sucesoresDe[id];
+        const finTardio = sucs.length === 0 ? finProyecto : new Date(Math.min(...sucs.map(sid => calcularLS(sid, pila).getTime())));
+        return LS[id] = new Date(finTardio.getTime() - duracionMs(id));
+      }
+      ids.forEach(id => calcularLS(id, new Set()));
+
+      const ES = {};
+      ids.forEach(id => { ES[id] = new Date(EF[id].getTime() - duracionMs(id)); });
+
+      const criticos = new Set();
+      const holguras = new Map();
+      const UNA_HORA_MS = 3600000;
+      const UN_DIA_MS = 86400000;
+      ids.forEach(id => {
+        const holguraMs = LS[id].getTime() - ES[id].getTime();
+        holguras.set(id, Math.round(holguraMs / UN_DIA_MS));
+        if (Math.abs(holguraMs) < UNA_HORA_MS) criticos.add(id);
+      });
+      return { criticos, holguras };
     }
 
     const AVANCE_POR_ESTADO = {
@@ -427,9 +580,41 @@
       });
     }
 
+    // Devuelve el texto final del motivo de rechazo (motivo elegido +, si lo
+    // hay, el detalle) o null si se cancela. "Otro" obliga a escribir el
+    // detalle; los demás motivos lo dejan opcional.
+    function pedirMotivoRechazo(etiquetaTarea) {
+      return new Promise((resolve) => {
+        const sel = document.getElementById('mr-motivo');
+        const detalle = document.getElementById('mr-detalle');
+        const estadoEl = document.getElementById('mr-estado');
+        sel.innerHTML = MOTIVOS_RECHAZO_PREDEFINIDOS.map(m => `<option value="${m}">${m}</option>`).join('');
+        sel.value = MOTIVOS_RECHAZO_PREDEFINIDOS[0];
+        detalle.value = '';
+        estadoEl.textContent = '';
+        document.querySelector('#modal-motivo-rechazo h3').textContent = etiquetaTarea ? `Motivo del rechazo de "${etiquetaTarea}"` : 'Motivo del rechazo';
+        document.getElementById('modal-motivo-rechazo').style.display = 'flex';
+        setTimeout(() => sel.focus(), 50);
+
+        const btnOk = document.getElementById('mr-ok');
+        const btnCancel = document.getElementById('mr-cancel');
+        const limpiar = () => { btnOk.onclick = null; btnCancel.onclick = null; document.getElementById('modal-motivo-rechazo').style.display = 'none'; };
+        btnOk.onclick = () => {
+          const esOtro = sel.value === MOTIVOS_RECHAZO_PREDEFINIDOS[MOTIVOS_RECHAZO_PREDEFINIDOS.length - 1];
+          const texto = detalle.value.trim();
+          if (esOtro && !texto) { estadoEl.textContent = 'Escribe el motivo en el detalle.'; return; }
+          const motivoFinal = esOtro ? texto : (texto ? `${sel.value} — ${texto}` : sel.value);
+          limpiar();
+          resolve(motivoFinal);
+        };
+        btnCancel.onclick = () => { limpiar(); resolve(null); };
+      });
+    }
+
     // -------------------- Asignar / cambiar estado (clic derecho) --------------------
 
     let perfilesCache = [];
+    let ausenciasActivasCache = [];
     let nodoAsignarResumenActual = null;
 
     async function cargarPerfilesResumen() {
@@ -437,6 +622,38 @@
       perfilesCache = (data || []).sort((a, b) =>
         (a.nombre_completo || '').localeCompare(b.nombre_completo || '', 'es', { sensitivity: 'base' })
       );
+    }
+
+    // Para "Sustituto temporal": ausencias que cubren hoy, de cualquier
+    // usuario -- se cruza con profiles.sustituto_id en sustitucionesActivasParaMi().
+    // Si la tabla "ausencias" o la columna "sustituto_id" no existen todavía
+    // (falta ejecutar el SQL), esto simplemente no devuelve nada, sin romper
+    // el resto de la página.
+    async function cargarAusenciasActivas() {
+      try {
+        const hoy = new Date().toISOString().slice(0, 10);
+        const { data } = await supabaseClient.from('ausencias').select('*').lte('fecha_inicio', hoy).gte('fecha_fin', hoy);
+        ausenciasActivasCache = data || [];
+      } catch (e) {
+        ausenciasActivasCache = [];
+      }
+    }
+
+    // Tiempo medio de revisión propio: desde que la tarea llegó a la cola
+    // (trabajo_terminado_en) hasta que se revisó (revisado_en), para las
+    // últimas tareas que he revisado yo -- ya están cargadas en memoria
+    // (nodosGestorActual/mapaNodoPorId), no hace falta otra consulta.
+    function calcularTiempoMedioRevisionPropio() {
+      if (!miPerfil || !esGestor()) return null;
+      const revisadas = Object.values(mapaNodoPorId)
+        .filter(n => n.revisor_id === miPerfil.id && n.revisado_en && n.trabajo_terminado_en)
+        .sort((a, b) => new Date(b.revisado_en) - new Date(a.revisado_en))
+        .slice(0, 50);
+      if (revisadas.length === 0) return null;
+      const totalHoras = revisadas.reduce((acc, n) => acc + (new Date(n.revisado_en) - new Date(n.trabajo_terminado_en)) / 3600000, 0);
+      const media = totalHoras / revisadas.length;
+      const texto = media >= 24 ? `${(media / 24).toFixed(1)} días` : `${media.toFixed(1)} horas`;
+      return { horas: texto, n: revisadas.length };
     }
 
     function mostrarMenuAsignarResumen(evento, nodeId) {
@@ -479,10 +696,20 @@
 
     function mostrarSubmenuEstadoResumen(elementoPadre, nodeId) {
       const opciones = [
-        { label: '✔ Aprobado', fn: () => accionEstadoResumen('revisar_nodo', nodeId, { p_aprobado: true }) },
+        { label: '✔ Aprobado', fn: async () => {
+            let comentario = null;
+            // Piezas en la ruta crítica: se ofrece dejar constancia de qué
+            // se ha revisado al aprobar (opcional), no solo al rechazar --
+            // aquí es donde más importa la trazabilidad.
+            if (nodosEnRutaCritica.has(nodeId)) {
+              comentario = await pedirTexto(`🔺 "${mapaNodoPorId[nodeId]?.codigo}" está en la ruta crítica.\n¿Qué se ha revisado? (opcional, deja en blanco para omitir):`);
+              if (comentario === null) return; // canceló, no se aprueba
+            }
+            accionEstadoResumen('revisar_nodo', nodeId, { p_aprobado: true, p_comentario: comentario && comentario.trim() ? comentario.trim() : null });
+          } },
         { label: '✘ Rechazado', fn: async () => {
-            const comentario = await pedirTexto('Motivo del rechazo (obligatorio):');
-            if (!comentario || !comentario.trim()) return;
+            const comentario = await pedirMotivoRechazo(mapaNodoPorId[nodeId]?.codigo);
+            if (!comentario) return;
             accionEstadoResumen('revisar_nodo', nodeId, { p_aprobado: false, p_comentario: comentario });
           } },
         { label: 'Sin asignar', fn: async () => { if (await mostrarConfirmacion('¿Quitar el usuario asignado?')) accionEstadoResumen('desasignar_trabajador', nodeId); } },
@@ -589,6 +816,33 @@
       return `${horas}h ${String(minutos % 60).padStart(2, '0')}min esperando`;
     }
 
+    // Carga abierta por trabajador (cualquier tarea asignada que no esté ya
+    // aprobada) -- para la mejora "alertas de sobrecarga": se avisa de quien
+    // tiene bastantes más tareas abiertas que la media del equipo.
+    function calcularSobrecargas() {
+      const carga = calcularCargaAbiertaPorUsuario();
+      const valores = Object.values(carga);
+      if (valores.length === 0) return [];
+      const media = valores.reduce((a, b) => a + b, 0) / valores.length;
+      const umbral = Math.max(3, Math.ceil(media * 1.5));
+      return Object.entries(carga)
+        .filter(([, n]) => n >= umbral)
+        .map(([id, n]) => ({ id, n, nombre: perfilesCache.find(p => p.id === id)?.nombre_completo || '?' }))
+        .sort((a, b) => b.n - a.n);
+    }
+
+    // Sustituto temporal: si algún Supervisor de baja/vacaciones (tabla
+    // ausencias) me tiene marcado como su sustituto (profiles.sustituto_id),
+    // se muestra un aviso con acceso directo a su cola.
+    function sustitucionesActivasParaMi() {
+      if (!miPerfil || !esGestor()) return [];
+      const hoy = new Date().toISOString().slice(0, 10);
+      return perfilesCache.filter(p =>
+        p.rol === 'REVISOR' && p.sustituto_id === miPerfil.id &&
+        (ausenciasActivasCache || []).some(a => a.usuario_id === p.id && a.fecha_inicio <= hoy && hoy <= a.fecha_fin)
+      );
+    }
+
     function renderColaRevision() {
       const usuarios = usuariosConTareasAsignadas(nodosGestorActual);
       const revisores = revisoresConTareasAsignadas(nodosGestorActual);
@@ -596,27 +850,73 @@
         .filter(n => !filtroUsuarioId || n.trabajador_id === filtroUsuarioId)
         .filter(n => !filtroRevisorId || n.revisor_id === filtroRevisorId);
 
+      // Prioridad: primero lo que está en la ruta crítica, luego lo que tiene
+      // menos holgura (más urgente), y a igualdad de eso, lo que más tiempo
+      // lleva esperando revisión -- así no hace falta juzgarlo a ojo.
       const colaRevision = base
         .filter(n => n.revision_estado === 'PENDIENTE' || n.revision_estado === 'EN_REVISION')
         .filter(n => n.trabajo_terminado_en)
-        .sort((a, b) => new Date(a.trabajo_terminado_en) - new Date(b.trabajo_terminado_en));
+        .sort((a, b) => {
+          const criticaA = nodosEnRutaCritica.has(a.id) ? 1 : 0;
+          const criticaB = nodosEnRutaCritica.has(b.id) ? 1 : 0;
+          if (criticaA !== criticaB) return criticaB - criticaA;
+          const holguraA = holguraPorNodo.has(a.id) ? holguraPorNodo.get(a.id) : Infinity;
+          const holguraB = holguraPorNodo.has(b.id) ? holguraPorNodo.get(b.id) : Infinity;
+          if (holguraA !== holguraB) return holguraA - holguraB;
+          return new Date(a.trabajo_terminado_en) - new Date(b.trabajo_terminado_en);
+        });
 
       const filas = colaRevision.length === 0
         ? '<li>Nada pendiente de revisión ahora mismo.</li>'
-        : colaRevision.map(n => `
-            <li oncontextmenu="mostrarMenuAsignarResumen(event, '${n.id}'); return false;" style="cursor:context-menu;">
+        : colaRevision.map(n => {
+            const enCritica = nodosEnRutaCritica.has(n.id);
+            const holgura = holguraPorNodo.get(n.id);
+            const esNueva = avisosNuevos.includes(n.id);
+            return `
+            <li oncontextmenu="mostrarMenuAsignarResumen(event, '${n.id}'); return false;" style="cursor:context-menu; ${esNueva ? 'background:#fff8e1;' : ''}">
               <span class="flecha f-pendiente_revision">▶</span>
               <div>
-                <div><strong>${n.codigo}</strong> ${n.nombre} ${n.trabajador_nombre ? `— 👷 ${n.trabajador_nombre}` : ''}</div>
+                <div>
+                  ${esNueva ? '<span title="Ha entrado a tu cola desde la última vez que la miraste">🆕</span> ' : ''}
+                  ${enCritica ? '<span title="En la ruta crítica" style="color:#6f42c1;">🔺</span> ' : ''}
+                  <strong>${n.codigo}</strong> ${n.nombre} ${n.trabajador_nombre ? `— 👷 ${n.trabajador_nombre}` : ''}
+                  ${holgura !== undefined ? `<span style="font-size:10px; color:${holgura <= 0 ? '#dc3545' : '#888'};" title="Holgura restante hasta que se convierta en la nueva ruta crítica">⏳${holgura}d</span>` : ''}
+                </div>
                 <div class="ruta-nodo">${rutaCompleta(n)} · <strong style="color:#b36b00;">${formatearEspera(n.trabajo_terminado_en)}</strong></div>
               </div>
             </li>
-          `).join('');
+          `;
+          }).join('');
+
+      const sobrecargas = calcularSobrecargas();
+      const sustituciones = sustitucionesActivasParaMi();
+      const promedioRevision = calcularTiempoMedioRevisionPropio();
 
       return `
+        ${sustituciones.length > 0 ? `
+          <div class="card" style="background:#fff8e1; border-color:#ffe082;">
+            <h2>🌴 Sustituto temporal</h2>
+            ${sustituciones.map(p => `
+              <p style="font-size:13px; margin:4px 0;">
+                <strong>${p.nombre_completo}</strong> está de baja/vacaciones y te ha marcado como su sustituto.
+                <button class="secundario" onclick="filtroRevisorId='${p.id}'; pintar();" style="margin-left:8px;">Ver su cola</button>
+              </p>
+            `).join('')}
+          </div>
+        ` : ''}
         <div class="card">
-          <h2>⏳ Cola de revisión, por antigüedad (${colaRevision.length})</h2>
-          <p style="font-size:11px; color:#888; margin:-4px 0 8px;">La que más tiempo lleva esperando, arriba del todo. Clic derecho sobre una tarea para asignarla o cambiar su estado.</p>
+          <h2>⏳ Cola de revisión, priorizada (${colaRevision.length})</h2>
+          <p style="font-size:11px; color:#888; margin:-4px 0 8px;">
+            Orden automático: primero la ruta crítica 🔺, luego menos holgura ⏳, y a igualdad de eso la que más tiempo lleva esperando.
+            Clic derecho sobre una tarea para asignarla o cambiar su estado.
+            ${avisosNuevos.length > 0 ? ` · <a href="#" onclick="avisosNuevos=[]; pintar(); return false;">🆕 ${avisosNuevos.length} nueva(s) — marcar vistas</a>` : ''}
+          </p>
+          ${promedioRevision !== null ? `<p style="font-size:11px; color:#888; margin:-2px 0 8px;">🕐 Tu tiempo medio de revisión: <strong>${promedioRevision.horas}</strong> (últimas ${promedioRevision.n})</p>` : ''}
+          ${sobrecargas.length > 0 ? `
+            <p style="font-size:12px; color:#b36b00; margin:0 0 8px; background:#fff8e1; border:1px solid #ffe082; border-radius:4px; padding:6px 8px;">
+              ⚠️ Carga alta: ${sobrecargas.map(s => `${s.nombre} (${s.n} abiertas)`).join(', ')}
+            </p>
+          ` : ''}
           <label style="display:inline-block; font-size:12px; font-weight:bold; margin-bottom:8px;">Usuario:
             <select onchange="filtroUsuarioId = this.value || null; pintar();" style="padding:4px; border-radius:4px; border:1px solid #ccc; margin-left:6px;">
               <option value="" ${!filtroUsuarioId ? 'selected' : ''}>Todos</option>
@@ -641,8 +941,12 @@
     }
 
     async function cargarYPintar() {
-      const { data: nodos, error } = await supabaseClient.from('v_nodes_with_workflow').select('*').eq('activo', true);
+      const [{ data: nodos, error }, { data: deps }] = await Promise.all([
+        supabaseClient.from('v_nodes_with_workflow').select('*').eq('activo', true),
+        supabaseClient.from('node_dependencias').select('*')
+      ]);
       if (error) { document.getElementById('contenido').innerHTML = `<p style="color:red;">Error: ${error.message}</p>`; return; }
+      dependenciasCache = deps || [];
       mapaNodoPorId = {};
       mapaHijosPorPadre = {};
       nodos.forEach(n => {
@@ -651,8 +955,12 @@
         if (!mapaHijosPorPadre[clave]) mapaHijosPorPadre[clave] = [];
         mapaHijosPorPadre[clave].push(n);
       });
+      const resultadoRuta = calcularRutaCritica();
+      nodosEnRutaCritica = resultadoRuta.criticos;
+      holguraPorNodo = resultadoRuta.holguras;
       nodosGestorActual = nodos.filter(n => !TIPOS_SIN_ASIGNACION.has(n.tipo));
       if (miPerfil.rol === 'TRABAJADOR') nodosGestorActual = nodosGestorActual.filter(n => n.trabajador_id === miPerfil.id);
+      detectarNuevasEnCola();
       pintar();
     }
 
@@ -680,13 +988,17 @@
       document.getElementById('texto-usuario').textContent =
         `${perfil.nombre_completo} (${perfil.username}) — ${{TRABAJADOR:'Usuario',REVISOR:'Supervisor',ADMIN:'Admin',INVITADO:'Invitado',WINDCHILL:'Windchill'}[perfil.rol] || perfil.rol}`;
       if (perfil.rol === 'ADMIN' || perfil.rol === 'REVISOR') document.getElementById('btn-informe').style.display = 'inline-block';
+      if (perfil.rol === 'ADMIN' || perfil.rol === 'REVISOR') {
+        document.getElementById('btn-avisos').style.display = 'inline-block';
+        actualizarBotonAvisos();
+      }
 
       if (!pareceGestor() && miPerfil.rol !== 'TRABAJADOR') {
         document.getElementById('contenido').innerHTML = '<div class="card"><p>Esta página es para gestores. Ve a <a href="resumen.html">Resumen</a> para ver tus tareas.</p></div>';
         return;
       }
 
-      await cargarPerfilesResumen();
+      await Promise.all([cargarPerfilesResumen(), cargarAusenciasActivas()]);
       await cargarYPintar();
       suscribirseARealtime();
     }

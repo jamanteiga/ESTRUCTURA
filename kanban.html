@@ -158,6 +158,22 @@
     </div>
   </div>
 
+  <!-- Motivo de rechazo: lista de motivos frecuentes + "Otro" con detalle libre. -->
+  <div class="overlay" id="modal-motivo-rechazo">
+    <div class="overlay-caja" style="max-width:420px;">
+      <h3 style="margin-top:0; font-size:15px;">Motivo del rechazo</h3>
+      <label>Motivo</label>
+      <select id="mr-motivo"></select>
+      <label id="mr-detalle-label">Detalle (opcional)</label>
+      <textarea id="mr-detalle" rows="3" style="width:100%; box-sizing:border-box; padding:8px; border:1px solid #ccc; border-radius:4px; font-family:inherit; font-size:13px;"></textarea>
+      <div class="estado-msg error" id="mr-estado" style="min-height:16px;"></div>
+      <div class="overlay-botones">
+        <button class="secundario" id="mr-cancel">Cancelar</button>
+        <button id="mr-ok">Rechazar</button>
+      </div>
+    </div>
+  </div>
+
   <div class="overlay" id="modal-asignar-kanban">
     <div class="overlay-caja">
       <h3 id="ak-titulo">Asignar usuario / supervisor</h3>
@@ -258,6 +274,80 @@
     // golpe a un mismo usuario/supervisor (solo admin/supervisor).
     let seleccionadosKanban = new Set();
     let modoBulkAsignacion = false;
+    let dependenciasCache = [];
+    let nodosEnRutaCritica = new Set();
+
+    // Motivos de rechazo más frecuentes -- misma lista que revision.html, para
+    // no escribir el texto entero cada vez. Se guarda igual que antes en
+    // node_workflow.comentario_revision (RPC revisar_nodo).
+    const MOTIVOS_RECHAZO_PREDEFINIDOS = [
+      'No cumple el plano o modelo 3D',
+      'Medidas o cotas incorrectas',
+      'Falta documentación o fichero',
+      'Material o especificación incorrecta',
+      'Acabado o soldadura defectuosos',
+      'Falta marcaje / identificación',
+      'Otro (especificar abajo)'
+    ];
+
+    // Ruta crítica (CPM), igual que en gantt.html/revision.html: se usa aquí
+    // solo para pedir comentario al aprobar piezas críticas.
+    function calcularRutaCritica() {
+      const rango = {};
+      Object.values(mapaNodoPorId).forEach(n => {
+        if (n.fecha_inicio_prevista && n.fecha_fin_prevista) {
+          rango[n.id] = { inicio: new Date(n.fecha_inicio_prevista), fin: new Date(n.fecha_fin_prevista) };
+        }
+      });
+      const ids = Object.keys(rango);
+      if (ids.length === 0) return new Set();
+
+      const sucesoresDe = {}, predecesoresDe = {};
+      ids.forEach(id => { sucesoresDe[id] = []; predecesoresDe[id] = []; });
+      dependenciasCache.forEach(d => {
+        if (rango[d.predecesor_id] && rango[d.sucesor_id]) {
+          sucesoresDe[d.predecesor_id].push(d.sucesor_id);
+          predecesoresDe[d.sucesor_id].push(d.predecesor_id);
+        }
+      });
+
+      const duracionMs = id => rango[id].fin - rango[id].inicio;
+      const EF = {};
+      function calcularEF(id, pila) {
+        if (EF[id] !== undefined) return EF[id];
+        if (pila.has(id)) return EF[id] = rango[id].fin;
+        pila.add(id);
+        let inicioReal = rango[id].inicio;
+        predecesoresDe[id].forEach(pid => {
+          const ef = calcularEF(pid, pila);
+          if (ef > inicioReal) inicioReal = ef;
+        });
+        return EF[id] = new Date(inicioReal.getTime() + duracionMs(id));
+      }
+      ids.forEach(id => calcularEF(id, new Set()));
+
+      const finProyecto = new Date(Math.max(...ids.map(id => EF[id].getTime())));
+      const LS = {};
+      function calcularLS(id, pila) {
+        if (LS[id] !== undefined) return LS[id];
+        if (pila.has(id)) return LS[id] = finProyecto;
+        pila.add(id);
+        const sucs = sucesoresDe[id];
+        const finTardio = sucs.length === 0 ? finProyecto : new Date(Math.min(...sucs.map(sid => calcularLS(sid, pila).getTime())));
+        return LS[id] = new Date(finTardio.getTime() - duracionMs(id));
+      }
+      ids.forEach(id => calcularLS(id, new Set()));
+
+      const ES = {};
+      ids.forEach(id => { ES[id] = new Date(EF[id].getTime() - duracionMs(id)); });
+
+      const criticos = new Set();
+      const UNA_HORA_MS = 3600000;
+      ids.forEach(id => {
+        if (Math.abs(LS[id].getTime() - ES[id].getTime()) < UNA_HORA_MS) criticos.add(id);
+      });
+      return criticos;
+    }
 
     function rutaCompleta(nodo) {
       const partes = [];
@@ -378,6 +468,38 @@
         btnCancel.onclick = () => { limpiar(); resolve(null); };
       });
     }
+
+    // Devuelve el texto final del motivo de rechazo (motivo elegido +, si lo
+    // hay, el detalle) o null si se cancela. "Otro" obliga a escribir el
+    // detalle; los demás motivos lo dejan opcional.
+    function pedirMotivoRechazo(etiquetaTarea) {
+      return new Promise((resolve) => {
+        const sel = document.getElementById('mr-motivo');
+        const detalle = document.getElementById('mr-detalle');
+        const estadoEl = document.getElementById('mr-estado');
+        sel.innerHTML = MOTIVOS_RECHAZO_PREDEFINIDOS.map(m => `<option value="${m}">${m}</option>`).join('');
+        sel.value = MOTIVOS_RECHAZO_PREDEFINIDOS[0];
+        detalle.value = '';
+        estadoEl.textContent = '';
+        document.querySelector('#modal-motivo-rechazo h3').textContent = etiquetaTarea ? `Motivo del rechazo de "${etiquetaTarea}"` : 'Motivo del rechazo';
+        document.getElementById('modal-motivo-rechazo').style.display = 'flex';
+        setTimeout(() => sel.focus(), 50);
+
+        const btnOk = document.getElementById('mr-ok');
+        const btnCancel = document.getElementById('mr-cancel');
+        const limpiar = () => { btnOk.onclick = null; btnCancel.onclick = null; document.getElementById('modal-motivo-rechazo').style.display = 'none'; };
+        btnOk.onclick = () => {
+          const esOtro = sel.value === MOTIVOS_RECHAZO_PREDEFINIDOS[MOTIVOS_RECHAZO_PREDEFINIDOS.length - 1];
+          const texto = detalle.value.trim();
+          if (esOtro && !texto) { estadoEl.textContent = 'Escribe el motivo en el detalle.'; return; }
+          const motivoFinal = esOtro ? texto : (texto ? `${sel.value} — ${texto}` : sel.value);
+          limpiar();
+          resolve(motivoFinal);
+        };
+        btnCancel.onclick = () => { limpiar(); resolve(null); };
+      });
+    }
+
     function traducirError(mensaje) {
       if (!mensaje) return 'Ha ocurrido un error inesperado.';
       const m = mensaje.toLowerCase();
@@ -430,14 +552,18 @@
     }
 
     async function cargarKanban() {
-      const { data: nodos, error } = await supabaseClient
-        .from('v_nodes_with_workflow').select('*').eq('activo', true);
+      const [{ data: nodos, error }, { data: deps }] = await Promise.all([
+        supabaseClient.from('v_nodes_with_workflow').select('*').eq('activo', true),
+        supabaseClient.from('node_dependencias').select('*')
+      ]);
       if (error) {
         document.getElementById('tablero-contenido').innerHTML = `<p style="color:red;">Error: ${error.message}</p>`;
         return;
       }
+      dependenciasCache = deps || [];
       mapaNodoPorId = {};
       nodos.forEach(n => { mapaNodoPorId[n.id] = n; });
+      nodosEnRutaCritica = calcularRutaCritica();
       todosLosNodosKanban = nodos.filter(n => !TIPOS_SIN_ASIGNACION.has(n.tipo));
 
       // Si algo seleccionado ya no existe (desactivado, borrado...) se quita
@@ -594,9 +720,19 @@
       if (calcularColumna(nodo) === columnaDestino) return; // soltada en su propia columna: no hay nada que cambiar
 
       if (columnaDestino === 'rechazado') {
-        const comentario = await pedirTexto(`Motivo del rechazo de "${nodo.codigo}" (obligatorio):`, '');
-        if (!comentario || !comentario.trim()) return;
-        await accionEstadoKanban('revisar_nodo', nodeId, { p_aprobado: false, p_comentario: comentario.trim() });
+        const comentario = await pedirMotivoRechazo(nodo.codigo);
+        if (!comentario) return;
+        await accionEstadoKanban('revisar_nodo', nodeId, { p_aprobado: false, p_comentario: comentario });
+        return;
+      }
+
+      if (columnaDestino === 'aprobado') {
+        let comentario = null;
+        if (nodosEnRutaCritica.has(nodeId)) {
+          comentario = await pedirTexto(`🔺 "${nodo.codigo}" está en la ruta crítica.\n¿Qué se ha revisado? (opcional, deja en blanco para omitir):`);
+          if (comentario === null) return;
+        }
+        await accionEstadoKanban('revisar_nodo', nodeId, { p_aprobado: true, p_comentario: comentario && comentario.trim() ? comentario.trim() : null });
         return;
       }
 
@@ -604,8 +740,7 @@
         sin_asignar: () => accionEstadoKanban('desasignar_trabajador', nodeId),
         pendiente: () => accionEstadoKanban('reiniciar_tarea', nodeId),
         en_proceso: () => accionEstadoKanban('marcar_en_trabajo', nodeId),
-        pendiente_revision: () => accionEstadoKanban('marcar_terminado', nodeId),
-        aprobado: () => accionEstadoKanban('revisar_nodo', nodeId, { p_aprobado: true })
+        pendiente_revision: () => accionEstadoKanban('marcar_terminado', nodeId)
       };
       const accion = RPC_POR_COLUMNA_DESTINO[columnaDestino];
       if (accion) await accion();
@@ -645,10 +780,18 @@
 
     function mostrarSubmenuEstadoKanban(elementoPadre, nodeId) {
       const opciones = [
-        { label: '✔ Aprobado', fn: () => accionEstadoKanban('revisar_nodo', nodeId, { p_aprobado: true }) },
+        { label: '✔ Aprobado', fn: async () => {
+            const nodo = mapaNodoPorId[nodeId];
+            let comentario = null;
+            if (nodosEnRutaCritica.has(nodeId)) {
+              comentario = await pedirTexto(`🔺 "${nodo?.codigo}" está en la ruta crítica.\n¿Qué se ha revisado? (opcional, deja en blanco para omitir):`);
+              if (comentario === null) return;
+            }
+            accionEstadoKanban('revisar_nodo', nodeId, { p_aprobado: true, p_comentario: comentario && comentario.trim() ? comentario.trim() : null });
+          } },
         { label: '✘ Rechazado', fn: async () => {
-            const comentario = await pedirTexto('Motivo del rechazo (obligatorio):');
-            if (!comentario || !comentario.trim()) return;
+            const comentario = await pedirMotivoRechazo(mapaNodoPorId[nodeId]?.codigo);
+            if (!comentario) return;
             accionEstadoKanban('revisar_nodo', nodeId, { p_aprobado: false, p_comentario: comentario });
           } },
         { label: 'Sin asignar', fn: async () => { if (await mostrarConfirmacion('¿Quitar el usuario asignado?')) accionEstadoKanban('desasignar_trabajador', nodeId); } },

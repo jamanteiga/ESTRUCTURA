@@ -221,6 +221,10 @@
         <label>Buques que puede ver y revisar (déjalo sin marcar ninguno para que vea todos, como hasta ahora)</label>
         <div id="lista-buques-asignados-editar" style="border:1px solid #ccc; border-radius:4px; padding:8px; max-height:140px; overflow-y:auto; font-size:13px; font-weight:normal;"></div>
       </div>
+      <div id="wrap-sustituto-editar" style="display:none;">
+        <label>Sustituto temporal (mientras esté de baja o de vacaciones, según Ausencias)</label>
+        <select id="editar-sustituto"><option value="">— Sin sustituto —</option></select>
+      </div>
       <label>Email de contacto</label>
       <input type="text" id="editar-email">
       <label>Móvil</label>
@@ -432,6 +436,23 @@
         rol === 'TRABAJADOR' ? 'block' : 'none';
       document.getElementById(cual === 'nuevo' ? 'wrap-buques-asignados-nuevo' : 'wrap-buques-asignados-editar').style.display =
         rol === 'REVISOR' ? 'block' : 'none';
+      // El sustituto temporal solo existe en el formulario de edición (no
+      // tiene sentido asignarlo al crear el usuario, todavía sin historial).
+      if (cual !== 'nuevo') {
+        document.getElementById('wrap-sustituto-editar').style.display = rol === 'REVISOR' ? 'block' : 'none';
+      }
+    }
+
+    // Rellena el desplegable de sustituto con el resto de Supervisores/Admin
+    // activos (un sustituto revisa en lugar de otro, así que no tiene sentido
+    // ofrecer roles que no revisan, ni al propio usuario que se está editando).
+    function poblarSelectSustituto(idExcluir) {
+      const sel = document.getElementById('editar-sustituto');
+      const candidatos = perfilesCache.filter(p =>
+        p.id !== idExcluir && p.activo && (p.rol === 'REVISOR' || p.rol === 'ADMIN')
+      );
+      sel.innerHTML = '<option value="">— Sin sustituto —</option>' +
+        candidatos.map(p => `<option value="${p.id}">${p.nombre_completo || p.username}</option>`).join('');
     }
 
     // Ids de buque marcados en la lista de checkboxes "Buques que puede
@@ -755,6 +776,8 @@
       document.getElementById('editar-ubicacion').value = p.ubicacion || '';
       document.getElementById('editar-buque').value = p.buque_id || '';
       marcarBuquesAsignados('editar', p.buques_asignados || []);
+      poblarSelectSustituto(p.id);
+      document.getElementById('editar-sustituto').value = p.sustituto_id || '';
       actualizarVisibilidadBuque('editar');
       document.getElementById('editar-email').value = p.email_contacto || '';
       document.getElementById('editar-movil').value = p.movil || '';
@@ -781,6 +804,7 @@
       const activo = document.getElementById('editar-activo').checked;
       const buque_id = rol === 'TRABAJADOR' ? (document.getElementById('editar-buque').value || null) : null;
       const buques_asignados = rol === 'REVISOR' ? leerBuquesAsignadosMarcados('editar') : [];
+      const sustituto_id = rol === 'REVISOR' ? (document.getElementById('editar-sustituto').value || null) : null;
       const anterior = perfilesCache.find(p => p.id === idEditando);
 
       if (!nombre_completo) { estadoEl.textContent = 'El nombre no puede quedar vacío'; estadoEl.className = 'estado error'; return; }
@@ -790,7 +814,7 @@
       }
 
       const { error } = await supabaseClient.from('profiles').update({
-        nombre_completo, rol, ubicacion, email_contacto, movil, linkedin, activo, buque_id, buques_asignados
+        nombre_completo, rol, ubicacion, email_contacto, movil, linkedin, activo, buque_id, buques_asignados, sustituto_id
       }).eq('id', idEditando);
 
       if (error) {
@@ -810,17 +834,24 @@
       const anteriorBuquesAsignados = JSON.stringify((anterior && anterior.buques_asignados) || []);
       const cambioBuquesAsignados = anteriorBuquesAsignados !== JSON.stringify(buques_asignados || []);
       if (cambioBuquesAsignados) cambios.push('buques que puede ver como supervisor');
+      const cambioSustituto = anterior && (anterior.sustituto_id || null) !== sustituto_id;
+      if (cambioSustituto) cambios.push('sustituto temporal');
       registrarLog('EDITAR_USUARIO', `Editó a "${nombre_completo}"${cambios.length ? ' — cambios: ' + cambios.join(', ') : ' — sin cambios de datos'}`);
 
       // Además del registro general de arriba, se deja un registro aparte y
       // fácil de filtrar para "Historial de cambios de rol y permisos" del
-      // Panel de administración (acción CAMBIO_ROL / CAMBIO_BUQUE_ASIGNADO).
+      // Panel de administración (acción CAMBIO_ROL / CAMBIO_BUQUE_ASIGNADO /
+      // CAMBIO_SUSTITUTO).
       if (anterior && anterior.rol !== rol) {
         registrarLog('CAMBIO_ROL', `"${nombre_completo}": rol ${ETIQUETAS_ROL[anterior.rol] || anterior.rol} → ${ETIQUETAS_ROL[rol] || rol}`);
       }
       if (cambioBuquesAsignados) {
         const nombresBuques = buques_asignados.map(id => buquesCache.find(b => b.id === id)?.codigo || id);
         registrarLog('CAMBIO_BUQUE_ASIGNADO', `"${nombre_completo}" (${ETIQUETAS_ROL[rol] || rol}): ahora ve ${nombresBuques.length ? nombresBuques.join(', ') : 'todos los buques'}`);
+      }
+      if (cambioSustituto) {
+        const nombreSustituto = sustituto_id ? (perfilesCache.find(p => p.id === sustituto_id)?.nombre_completo || sustituto_id) : null;
+        registrarLog('CAMBIO_SUSTITUTO', `"${nombre_completo}": sustituto temporal ahora ${nombreSustituto || '(ninguno)'}`);
       }
 
       cerrarModalEditar();
