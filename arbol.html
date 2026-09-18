@@ -623,9 +623,9 @@
       <h3>📅 Fechas previstas</h3>
       <p id="fp-nodo-info" style="font-size:12px; color:#666; margin-top:-8px;"></p>
       <label>Inicio previsto</label>
-      <input type="datetime-local" id="fp-inicio">
+      <input type="datetime-local" id="fp-inicio" oninput="alCambiarFpInicio()">
       <label>Fin previsto</label>
-      <input type="datetime-local" id="fp-fin" oninput="actualizarVisibilidadMotivoRetraso()">
+      <input type="datetime-local" id="fp-fin" oninput="alCambiarFpFin()">
       <p id="fp-sugerencia" style="font-size:12px; color:#0069d9; margin:6px 0; display:none;"></p>
       <p id="fp-base" style="font-size:12px; color:#888; margin:6px 0;"></p>
       <div id="fp-motivo-caja" style="display:none; background:#fff8e6; border:1px solid #ffe6a3; border-radius:6px; padding:8px; margin:6px 0;">
@@ -3244,6 +3244,9 @@
           });
 
           items.push({ label: '📅 Fechas previstas', tip: 'Fija cuándo debería empezar y terminar esta tarea, para comparar plan vs. real.', fn: () => abrirModalFechasPrevistas(nodeId) });
+          if (nodo.fecha_inicio_prevista || nodo.fecha_fin_prevista) {
+            items.push({ label: '🗑️ Quitar fecha prevista', tip: 'Elimina la fecha prevista de esta tarea (el nodo superior recalculará solo la suya).', fn: () => accionEliminarFechaPrevista(nodeId) });
+          }
           items.push({ label: '🔗 Dependencias', tip: 'Marca qué tareas tienen que estar Aprobadas antes de poder empezar esta.', fn: () => abrirModalDependencias(nodeId) });
 
           items.push({
@@ -3294,6 +3297,9 @@
               : 'Bloquea esta tarea y, si tiene, todos los nodos que cuelgan de ella.',
             fn: () => accionAlternarBloqueo(nodeId, !nodo.bloqueado)
           });
+          if (nodo.fecha_inicio_prevista || nodo.fecha_fin_prevista) {
+            items.push({ label: '🗑️ Quitar fecha prevista', tip: 'Elimina la fecha prevista de esta tarea (el nodo superior recalculará solo la suya).', fn: () => accionEliminarFechaPrevista(nodeId) });
+          }
           items.push({
             submenu: true,
             label: 'Estado tarea',
@@ -3624,6 +3630,11 @@
     // Fin previsto tal y como estaba al abrir el modal — para saber si lo que
     // se va a guardar es un retraso (fin nuevo posterior) y pedir motivo.
     let fpFinOriginal = null;
+    // Mientras esto sea false, cambiar "Inicio previsto" copia automáticamente
+    // el mismo valor en "Fin previsto" (para que sea más rápido rellenar una
+    // tarea nueva) -- en cuanto el usuario toca "Fin previsto" a mano, o si la
+    // tarea ya traía un fin previsto guardado, se deja de tocar.
+    let fpFinTocadoManualmente = false;
 
     async function abrirModalFechasPrevistas(nodeId) {
       nodoFechasPrevistasActual = nodeId;
@@ -3633,6 +3644,7 @@
       document.getElementById('fp-fin').value = nodo.fecha_fin_prevista ? nodo.fecha_fin_prevista.slice(0, 16) : '';
       document.getElementById('fp-estado').textContent = '';
       fpFinOriginal = nodo.fecha_fin_prevista ? nodo.fecha_fin_prevista.slice(0, 16) : null;
+      fpFinTocadoManualmente = !!nodo.fecha_fin_prevista;
       document.getElementById('fp-motivo-categoria').value = '';
       document.getElementById('fp-motivo-detalle').value = '';
       document.getElementById('fp-motivo-caja').style.display = 'none';
@@ -3766,6 +3778,38 @@
 
     function actualizarVisibilidadMotivoRetraso() {
       document.getElementById('fp-motivo-caja').style.display = esRetrasoFechaFin() ? 'block' : 'none';
+    }
+
+    // Por defecto, "Fin previsto" copia lo que se ponga en "Inicio previsto"
+    // -- así solo hace falta tocar la hora de fin. En cuanto el usuario edita
+    // "Fin previsto" a mano, se deja de copiar (para no pisarle el valor).
+    function alCambiarFpInicio() {
+      if (!fpFinTocadoManualmente) {
+        document.getElementById('fp-fin').value = document.getElementById('fp-inicio').value;
+      }
+      actualizarVisibilidadMotivoRetraso();
+    }
+
+    function alCambiarFpFin() {
+      fpFinTocadoManualmente = true;
+      actualizarVisibilidadMotivoRetraso();
+    }
+
+    // Quitar la fecha prevista de una tarea desde el menú contextual (sin
+    // pasar por el modal completo). Lo puede hacer un ADMIN/Supervisor, o el
+    // propio usuario asignado a la tarea sobre su propia tarea -- el nodo
+    // superior recalculará solo su rango de fechas (trigger en cascada).
+    async function accionEliminarFechaPrevista(nodeId) {
+      const nodo = mapaNodoPorId[nodeId];
+      if (!await mostrarConfirmacion(`¿Quitar la fecha prevista de "${nodo?.codigo}"? Los nodos superiores recalcularán solos su propia fecha prevista.`)) return;
+      const { error } = await supabaseClient.rpc('eliminar_fecha_prevista_nodo', { p_node_id: nodeId });
+      if (error) {
+        mostrarAvisoModal('Error: ' + traducirError(error.message));
+        registrarLog('INTENTO_FALLIDO', `Intento de quitar la fecha prevista de "${nodo?.codigo}" denegado: ${error.message}`, nodeId);
+        return;
+      }
+      registrarLog('FECHAS_PREVISTAS', `Quitó la fecha prevista de "${nodo?.codigo}"`, nodeId);
+      await cargarArbol();
     }
 
     async function guardarFechasPrevistas() {
