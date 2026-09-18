@@ -121,6 +121,8 @@
     </div>
   </div>
 
+  <div id="barra-paneles-gestion" class="card" style="display:none; text-align:center; padding:10px 14px; margin-bottom:16px;"></div>
+
   <div id="contenido">
     <p>Cargando...</p>
   </div>
@@ -163,6 +165,14 @@
       <select id="ar-trabajador"><option value="">— Sin asignar —</option></select>
       <label>Supervisor</label>
       <select id="ar-revisor"><option value="">— Sin asignar —</option></select>
+      <label>Estado de la tarea</label>
+      <select id="ar-estado-tarea">
+        <option value="">Sin cambiar</option>
+        <option value="en_proceso">En proceso</option>
+        <option value="pendiente_revision">Pendiente de revisión</option>
+        <option value="pendiente_dudas">Pendiente de dudas</option>
+        <option value="pendiente_cambios_modelo">Pendiente cambios en modelo</option>
+      </select>
       <div class="estado-msg" id="ar-estado"></div>
       <div class="overlay-botones">
         <button class="secundario" onclick="cerrarModalAsignarResumen()">Cancelar</button>
@@ -291,6 +301,32 @@
       aprobado: 'Aprobado',
       rechazado: 'Rechazado'
     };
+
+    // -------------------- Navegación entre paneles de gestión --------------------
+    // Misma lista y misma función en todas las páginas de gestión
+    // (resumen.html, kpi.html, avances.html, revision.html, previsioncarga.html,
+    // cargatrabajo.html, pendientedudas.html, cambiosmodelo.html, rechazados.html,
+    // sinasignar.html) para poder saltar de una a otra sin pasar por el árbol.
+    const PANELES_GESTION = [
+      { href: 'resumen.html', label: '📊 Resumen' },
+      { href: 'kpi.html', label: '📈 KPIs' },
+      { href: 'avances.html', label: '📉 Avances' },
+      { href: 'revision.html', label: '⏳ Cola de revisión' },
+      { href: 'previsioncarga.html', label: '📅 Previsión de carga' },
+      { href: 'cargatrabajo.html', label: '👷 Carga de trabajo' },
+      { href: 'pendientedudas.html', label: '❓ Pendiente de dudas' },
+      { href: 'cambiosmodelo.html', label: '🔧 Cambios de modelo' },
+      { href: 'rechazados.html', label: '✘ Rechazados' },
+      { href: 'sinasignar.html', label: '🚫 Sin asignar' }
+    ];
+    function renderBarraPaneles(paginaActual) {
+      const enlaces = PANELES_GESTION.filter(p => p.href !== paginaActual)
+        .map(p => `<a href="${p.href}">${p.label}</a>`).join(' &nbsp;·&nbsp; ');
+      return `
+        <p style="font-size:12px; color:#888; margin:0 0 4px;">Paneles de gestión:</p>
+        <p style="font-size:12px; margin:0; line-height:1.8;">${enlaces}</p>
+      `;
+    }
 
     let miPerfil = null;
     let filtroDetalleEstado = null;
@@ -607,6 +643,7 @@
       selRev.innerHTML = '<option value="">— Sin asignar —</option>' +
         revisores.map(p => `<option value="${p.id}" ${p.id === nodo.revisor_id ? 'selected' : ''}>${p.nombre_completo}</option>`).join('');
 
+      document.getElementById('ar-estado-tarea').value = '';
       document.getElementById('ar-estado').textContent = '';
       document.getElementById('modal-asignar-resumen').style.display = 'flex';
     }
@@ -614,16 +651,32 @@
       document.getElementById('modal-asignar-resumen').style.display = 'none';
     }
 
+    // Qué RPC llamar para dejar la tarea en el estado elegido en el propio
+    // modal de asignación, sin tener que abrir aparte el submenú "Estado
+    // tarea" justo después de asignar usuario/supervisor.
+    const RPC_POR_ESTADO_TAREA = {
+      en_proceso: 'marcar_en_trabajo',
+      pendiente_revision: 'marcar_terminado',
+      pendiente_dudas: 'marcar_pendiente_dudas',
+      pendiente_cambios_modelo: 'marcar_pendiente_cambios_modelo'
+    };
+
     async function guardarAsignacionResumen() {
       const estadoEl = document.getElementById('ar-estado');
       const trabajadorId = document.getElementById('ar-trabajador').value || null;
       const revisorId = document.getElementById('ar-revisor').value || null;
+      const estadoTarea = document.getElementById('ar-estado-tarea').value || null;
 
       const { error } = await supabaseClient.rpc('asignar_trabajo', {
         p_node_id: nodoAsignarResumenActual, p_trabajador_id: trabajadorId, p_revisor_id: revisorId
       });
 
       if (error) { estadoEl.textContent = 'Error: ' + traducirError(error.message); estadoEl.className = 'estado-msg error'; return; }
+
+      if (estadoTarea && trabajadorId && RPC_POR_ESTADO_TAREA[estadoTarea]) {
+        const { error: errorEstado } = await supabaseClient.rpc(RPC_POR_ESTADO_TAREA[estadoTarea], { p_node_id: nodoAsignarResumenActual });
+        if (errorEstado) { estadoEl.textContent = 'Asignado, pero no se pudo cambiar el estado: ' + traducirError(errorEstado.message); estadoEl.className = 'estado-msg error'; await recargarDatos(); return; }
+      }
 
       cerrarModalAsignarResumen();
       await recargarDatos();
@@ -662,7 +715,12 @@
         document.getElementById('sel-pref-inicio-resumen').value = localStorage.getItem('estructura_inicio_' + perfil.id) || '';
       }
 
-      if (pareceGestor()) await cargarPerfilesResumen();
+      if (pareceGestor()) {
+        await cargarPerfilesResumen();
+        const barra = document.getElementById('barra-paneles-gestion');
+        barra.innerHTML = renderBarraPaneles('resumen.html');
+        barra.style.display = 'block';
+      }
 
       await recargarDatos();
       suscribirseARealtime();
@@ -1003,13 +1061,11 @@
     async function renderVistaGestor(nodos) {
       nodosGestorActual = nodos;
 
-      const idsConTarea = [...new Set(nodos.filter(n => n.trabajador_id).map(n => n.trabajador_id))];
-      idsUsuariosGestor = new Set();
-      if (idsConTarea.length > 0) {
-        const { data: perfiles } = await supabaseClient
-          .from('profiles').select('id, rol').in('id', idsConTarea);
-        idsUsuariosGestor = new Set((perfiles || []).filter(p => p.rol === 'TRABAJADOR').map(p => p.id));
-      }
+      // Cualquiera con una tarea asignada puede salir en el selector de
+      // "Tareas por tipo" -- no solo los TRABAJADOR. Desde que cualquier
+      // usuario (incluido ADMIN/REVISOR) puede tomar una tarea sin asignar,
+      // filtrar por rol dejaba fuera a quien se hubiera autoasignado algo.
+      idsUsuariosGestor = new Set(nodos.filter(n => n.trabajador_id).map(n => n.trabajador_id));
 
       pintarVistaGestor();
     }
@@ -1049,21 +1105,6 @@
         ` : ''}
 
         ${renderTareasPorTipoCard()}
-
-        <div class="card" style="text-align:center; padding:14px;">
-          <p style="font-size:12px; color:#888; margin:0;">Más paneles de gestión, cada uno en su propia página:</p>
-          <p style="font-size:12px; margin:8px 0 0; line-height:2;">
-            <a href="kpi.html">📈 KPIs</a> &nbsp;·&nbsp;
-            <a href="avances.html">📉 Avances</a> &nbsp;·&nbsp;
-            <a href="revision.html">⏳ Cola de revisión</a> &nbsp;·&nbsp;
-            <a href="previsioncarga.html">📅 Previsión de carga</a> &nbsp;·&nbsp;
-            <a href="cargatrabajo.html">👷 Carga de trabajo</a> &nbsp;·&nbsp;
-            <a href="pendientedudas.html">❓ Pendiente de dudas</a> &nbsp;·&nbsp;
-            <a href="cambiosmodelo.html">🔧 Cambios de modelo</a> &nbsp;·&nbsp;
-            <a href="rechazados.html">✘ Rechazados</a> &nbsp;·&nbsp;
-            <a href="sinasignar.html">🚫 Sin asignar</a>
-          </p>
-        </div>
       `;
 
       pintarMotivosRetraso();

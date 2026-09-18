@@ -43,6 +43,8 @@
     </div>
   </div>
 
+  <div id="barra-paneles-gestion" class="card" style="display:none; text-align:center; padding:10px 14px; margin-bottom:16px;"></div>
+
   <div id="contenido">
     <p>Cargando...</p>
   </div>
@@ -171,17 +173,38 @@
     }
 
     function cerrarPagina() {
-      // Si se llegó aquí navegando desde árbol.html (lo normal, por el menú
-      // lateral), volvemos atrás en el historial para recuperar esa misma
-      // pestaña tal cual estaba -- con su estado y scroll -- en vez de
-      // cargar un árbol.html nuevo desde cero (lo que dejaba efectivamente
-      // una "segunda instancia" en la misma pestaña). Si no se llegó desde
-      // árbol.html (p.ej. enlace directo, favorito), se navega igual que antes.
-      if (document.referrer && document.referrer.indexOf('arbol.html') !== -1 && window.history.length > 1) {
+      // Si se llegó aquí navegando desde resumen.html o árbol.html, volvemos
+      // atrás en el historial para recuperar esa misma pestaña tal cual
+      // estaba -- con su estado y scroll -- en vez de cargar una página
+      // nueva desde cero. Si no, se va directo a resumen.html (el panel
+      // principal de gestión).
+      if (document.referrer && (document.referrer.indexOf('resumen.html') !== -1 || document.referrer.indexOf('arbol.html') !== -1) && window.history.length > 1) {
         window.history.back();
       } else {
-        window.location.href = 'arbol.html';
+        window.location.href = 'resumen.html';
       }
+    }
+
+    // -------------------- Navegación entre paneles de gestión --------------------
+    const PANELES_GESTION = [
+      { href: 'resumen.html', label: '📊 Resumen' },
+      { href: 'kpi.html', label: '📈 KPIs' },
+      { href: 'avances.html', label: '📉 Avances' },
+      { href: 'revision.html', label: '⏳ Cola de revisión' },
+      { href: 'previsioncarga.html', label: '📅 Previsión de carga' },
+      { href: 'cargatrabajo.html', label: '👷 Carga de trabajo' },
+      { href: 'pendientedudas.html', label: '❓ Pendiente de dudas' },
+      { href: 'cambiosmodelo.html', label: '🔧 Cambios de modelo' },
+      { href: 'rechazados.html', label: '✘ Rechazados' },
+      { href: 'sinasignar.html', label: '🚫 Sin asignar' }
+    ];
+    function renderBarraPaneles(paginaActual) {
+      const enlaces = PANELES_GESTION.filter(p => p.href !== paginaActual)
+        .map(p => `<a href="${p.href}">${p.label}</a>`).join(' &nbsp;·&nbsp; ');
+      return `
+        <p style="font-size:12px; color:#888; margin:0 0 4px;">Paneles de gestión:</p>
+        <p style="font-size:12px; margin:0; line-height:1.8;">${enlaces}</p>
+      `;
     }
 
     function aplicarTema(tema) {
@@ -632,6 +655,10 @@
         document.getElementById('contenido').innerHTML = '<div class="card"><p>Esta página es para gestores. Ve a <a href="resumen.html">Resumen</a> para ver tus tareas.</p></div>';
         return;
       }
+
+      const barra = document.getElementById('barra-paneles-gestion');
+      barra.innerHTML = renderBarraPaneles('avances.html');
+      barra.style.display = 'block';
 
       await cargarYPintar();
       suscribirseARealtime();
