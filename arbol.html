@@ -857,8 +857,8 @@
         <option value="pendiente_revision">Pendiente de revisión</option>
         <option value="pendiente_dudas">Pendiente de dudas</option>
         <option value="pendiente_cambios_modelo">Pendiente cambios en modelo</option>
-        <option value="aprobado">Aprobado</option>
-        <option value="rechazado">Rechazado</option>
+        <option value="aprobado" id="estadomasivo-opt-aprobado">Aprobado</option>
+        <option value="rechazado" id="estadomasivo-opt-rechazado">Rechazado</option>
       </select>
       <div class="estado-msg" id="estadomasivo-estado"></div>
       <div class="overlay-botones">
@@ -1349,7 +1349,7 @@
         document.getElementById('menu-link-duplicados').style.display = 'flex';
         document.getElementById('menu-item-exportar-excel').style.display = 'flex';
       }
-      if (puedeSeleccionar()) {
+      if (puedeSeleccionarBasico()) {
         document.getElementById('wrap-modo-seleccion').style.display = 'flex';
       }
       if (!esInvitado()) {
@@ -1444,9 +1444,15 @@
     // corte/Windchill) de piezas finales — no ve ni toca nada más del árbol.
     function esWindchill() { return miPerfil.rol === 'WINDCHILL'; }
     function pareceGestor() { return esGestor() || esInvitado(); }
-    // Un usuario cualquiera NO puede tomar la tarea de otro — reasignar tareas
-    // (incluido "Tomar tarea") sigue siendo cosa exclusiva de ADMIN/REVISOR.
+    // La selección múltiple "completa" (asignar a cualquiera, desactivar,
+    // bloquear/desbloquear, aprobar documentación, publicar en Windchill...)
+    // sigue siendo cosa exclusiva de ADMIN/REVISOR.
     function puedeSeleccionar() { return esGestor(); }
+    // Selección múltiple "básica": cualquier usuario normal (ni Invitado ni
+    // Windchill, que tienen sus propios flujos aparte) puede activarla para
+    // tomar de golpe varias tareas sin asignar, o cambiar de golpe el estado
+    // de varias de sus propias tareas -- nunca las de otro.
+    function puedeSeleccionarBasico() { return puedeSeleccionar() || (!esInvitado() && !esWindchill()); }
 
     async function registrarLog(accion, descripcion, nodeId) {
       try {
@@ -2647,7 +2653,11 @@
         }
       }
 
-      const checkboxSeleccion = (modoSeleccion && puedeSeleccionar() && !sinAsignacion)
+      // Un gestor puede seleccionar cualquier tarea; un usuario normal solo
+      // las que están sin asignar (para tomarlas de golpe) o las suyas
+      // propias (para cambiarles de golpe el estado) -- nunca las de otro.
+      const puedeMarcarEstaCasilla = puedeSeleccionar() || (puedeSeleccionarBasico() && (!nodo.trabajador_id || nodo.trabajador_id === miPerfil.id));
+      const checkboxSeleccion = (modoSeleccion && puedeMarcarEstaCasilla && !sinAsignacion)
         ? `<input type="checkbox" class="chk-seleccion" ${nodosSeleccionados.has(nodo.id) ? 'checked' : ''} onclick="toggleSeleccionNodo('${nodo.id}', event)">`
         : '';
 
@@ -2716,6 +2726,30 @@
       // se cierra, así los Bloques aparecen pero sin desplegar su interior.
       todosLosNodos.forEach(n => {
         if (n.tipo === 'BUQUE') nodosAbiertos.add(n.id); else nodosAbiertos.delete(n.id);
+      });
+      cargarArbol();
+    }
+
+    // Despliega TODOS los Bloques de todos los Buques, enteros (con todo lo
+    // que cuelga de cada uno) -- disponible desde el menú contextual.
+    function expandirTodosLosBloques() {
+      todosLosNodos.forEach(n => {
+        if (n.tipo === 'BUQUE') {
+          nodosAbiertos.add(n.id);
+        } else if (n.tipo === 'BLOQUE') {
+          nodosAbiertos.add(n.id);
+          obtenerDescendientesIds(n.id).forEach(id => nodosAbiertos.add(id));
+        }
+      });
+      cargarArbol();
+    }
+
+    // Despliega todos los Bloques mostrando solo su primer nivel (Anidados,
+    // Subbloque, PM, PS, UC...), sin entrar más adentro de cada uno.
+    function expandirBloquesPrimerNivel() {
+      todosLosNodos.forEach(n => {
+        if (n.tipo === 'BUQUE' || n.tipo === 'BLOQUE') nodosAbiertos.add(n.id);
+        else nodosAbiertos.delete(n.id);
       });
       cargarArbol();
     }
@@ -3098,6 +3132,20 @@
       const items = [];
       const tieneHijos = (mapaHijosPorPadre[nodeId] || []).length > 0;
       const esPiezaDocumentable = TIPOS_DOCUMENTABLES.has(nodo.tipo) && esPiezaNumerada(nodo.codigo);
+
+      // Comandos de despliegue a nivel de todo el árbol -- se ofrecen desde
+      // cualquier nodo, para cualquier rol (son de solo consulta, no cambian
+      // nada). "Expandir bloque seleccionado..." reutiliza el mismo modal
+      // que ya existía en el menú lateral (⏬ Expandir por bloque).
+      items.push({
+        submenu: true,
+        label: '⏬ Expandir bloques',
+        subitems: [
+          { label: 'Expandir todos los bloques', tip: 'Despliega totalmente todos los Bloques del buque, con todo lo que cuelga de cada uno.', fn: () => expandirTodosLosBloques() },
+          { label: 'Expandir bloques (primeros nodos)', tip: 'Despliega todos los Bloques mostrando solo su primer nivel (Anidados, Subbloque, PM, PS, UC...), sin entrar más adentro.', fn: () => expandirBloquesPrimerNivel() },
+          { label: 'Expandir bloque seleccionado...', tip: 'Elige un Bloque concreto para desplegarlo entero (el resto del árbol se contrae).', fn: () => abrirModalExpandirPorBloque() }
+        ]
+      });
 
       // Windchill (y sus hijos Publicar/Fichero subido) están bloqueados
       // mientras Modelo y Plano de corte de la pieza no estén Aprobados --
@@ -4101,10 +4149,12 @@
         { tipo: 'PLANCHA_2000', codigo: 'PL2000' },
         { tipo: 'PLANCHA_3000', codigo: 'PL3000' }
     ]};
+    // PERFIL_7000 (perfil curvo) NO se genera aquí a propósito: no todos los
+    // Bloques del buque lo llevan, así que es opcional -- se añade a mano
+    // con "+ Generar nodo hijo" desde un nodo PERF cuando sí haga falta.
     const RAMA_PERF = { tipo: 'PERF', hijos: [
         { tipo: 'PERFIL_4000', codigo: 'PERF4000' },
-        { tipo: 'PERFIL_6000', codigo: 'PERF6000' },
-        { tipo: 'PERFIL_7000', codigo: 'PERF7000' }
+        { tipo: 'PERFIL_6000', codigo: 'PERF6000' }
     ]};
     const RAMA_ANIDADOS = { tipo: 'ANIDADOS', hijos: [ RAMA_PL, RAMA_PERF ] };
 
@@ -5402,12 +5452,12 @@
       if (!modoSeleccion || nodosSeleccionados.size === 0) { barra.classList.remove('visible'); return; }
       document.getElementById('texto-seleccion').textContent = `${nodosSeleccionados.size} tarea(s) seleccionada(s)`;
       document.getElementById('btn-asignar-masivo').style.display = esGestor() ? 'inline-block' : 'none';
-      document.getElementById('btn-estado-masivo').style.display = esGestor() ? 'inline-block' : 'none';
+      document.getElementById('btn-estado-masivo').style.display = puedeSeleccionarBasico() ? 'inline-block' : 'none';
       document.getElementById('btn-anadir-masivo').style.display = esGestor() ? 'inline-block' : 'none';
       document.getElementById('btn-desactivar-masivo').style.display = esGestor() ? 'inline-block' : 'none';
       document.getElementById('btn-bloquear-masivo').style.display = esGestor() ? 'inline-block' : 'none';
       document.getElementById('btn-desbloquear-masivo').style.display = esGestor() ? 'inline-block' : 'none';
-      document.getElementById('btn-tomar-tarea').style.display = puedeSeleccionar() ? 'inline-block' : 'none';
+      document.getElementById('btn-tomar-tarea').style.display = puedeSeleccionarBasico() ? 'inline-block' : 'none';
       document.getElementById('btn-aprobar-doc-masivo').style.display = esGestor() ? 'inline-block' : 'none';
       document.getElementById('btn-publicar-win-masivo').style.display = (esAdmin() || esWindchill()) ? 'inline-block' : 'none';
       barra.classList.add('visible');
@@ -5780,6 +5830,10 @@
       document.getElementById('estadomasivo-contador').textContent = `Se aplicará a ${nodosSeleccionados.size} tarea(s) seleccionada(s).`;
       document.getElementById('estadomasivo-select').value = '';
       document.getElementById('estadomasivo-estado').textContent = '';
+      // Aprobar/Rechazar sigue siendo solo de ADMIN/REVISOR -- un usuario
+      // normal ni siquiera ve esas dos opciones en el desplegable.
+      document.getElementById('estadomasivo-opt-aprobado').style.display = esGestor() ? '' : 'none';
+      document.getElementById('estadomasivo-opt-rechazado').style.display = esGestor() ? '' : 'none';
       document.getElementById('modal-estado-masivo').style.display = 'flex';
     }
 

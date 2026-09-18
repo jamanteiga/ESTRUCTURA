@@ -208,6 +208,47 @@
     function esGestor() { return miPerfil.rol === 'ADMIN' || miPerfil.rol === 'REVISOR'; }
     function esInvitado() { return miPerfil.rol === 'INVITADO'; }
     function pareceGestor() { return esGestor() || esInvitado(); }
+    function puedeTomarTareas() { return !esInvitado(); }
+
+    // -------------------- Selección múltiple (tomar varias tareas sin asignar) --------------------
+    let modoSeleccionSinAsignar = false;
+    let nodosSeleccionadosSinAsignar = new Set();
+
+    function toggleModoSeleccionSinAsignar() {
+      modoSeleccionSinAsignar = !modoSeleccionSinAsignar;
+      if (!modoSeleccionSinAsignar) nodosSeleccionadosSinAsignar.clear();
+      pintar();
+    }
+
+    function toggleSeleccionNodoSinAsignar(nodeId, evento) {
+      evento.stopPropagation();
+      if (nodosSeleccionadosSinAsignar.has(nodeId)) nodosSeleccionadosSinAsignar.delete(nodeId);
+      else nodosSeleccionadosSinAsignar.add(nodeId);
+      actualizarBarraSeleccionSinAsignar();
+    }
+
+    function actualizarBarraSeleccionSinAsignar() {
+      const btn = document.getElementById('btn-tomar-sinasignar');
+      if (!btn) return;
+      const n = nodosSeleccionadosSinAsignar.size;
+      btn.textContent = `🖐 Tomar ${n} tarea(s) seleccionada(s)`;
+      btn.disabled = n === 0;
+    }
+
+    async function confirmarTomarTareasSinAsignar() {
+      const ids = Array.from(nodosSeleccionadosSinAsignar);
+      if (ids.length === 0) return;
+      if (!(await mostrarConfirmacion(`¿Tomar ${ids.length} tarea(s) sin asignar? Se te asignarán a ti.`))) return;
+      let errores = 0;
+      for (const id of ids) {
+        const { error } = await supabaseClient.rpc('tomar_tarea', { p_node_id: id });
+        if (error) errores++;
+      }
+      nodosSeleccionadosSinAsignar.clear();
+      modoSeleccionSinAsignar = false;
+      await cargarYPintar();
+      if (errores > 0) mostrarAvisoModal(`Se tomaron las tareas disponibles, pero ${errores} no se pudieron tomar (puede que otro usuario se adelantara).`);
+    }
 
     function calcularEstadoPropio(nodo) {
       if (nodo.revision_estado === 'APROBADO') return 'aprobado';
@@ -445,8 +486,12 @@
       if (nodos.length === 0) return `<li>${vacio}</li>`;
       return nodos.map(n => {
         const estado = calcularEstadoPropio(n);
+        const checkbox = modoSeleccionSinAsignar
+          ? `<input type="checkbox" class="chk-sinasignar" ${nodosSeleccionadosSinAsignar.has(n.id) ? 'checked' : ''} onclick="toggleSeleccionNodoSinAsignar('${n.id}', event)">`
+          : '';
         return `
           <li oncontextmenu="mostrarMenuAsignarResumen(event, '${n.id}'); return false;" style="cursor:context-menu;">
+            ${checkbox}
             <span class="flecha f-${estado}">▶</span>
             <div>
               <div><strong>${n.codigo}</strong> ${n.nombre}</div>
@@ -460,10 +505,23 @@
     function renderSinAsignar() {
       const sinAsignar = nodosGestorActual.filter(n => calcularEstadoPropio(n) === 'sin_asignar');
 
+      const botonSeleccion = puedeTomarTareas()
+        ? `<button class="secundario" onclick="toggleModoSeleccionSinAsignar()" style="font-size:11px; padding:4px 10px;">${modoSeleccionSinAsignar ? '✖ Cancelar selección' : '☑ Selección múltiple'}</button>`
+        : '';
+      const barraAccion = (modoSeleccionSinAsignar && puedeTomarTareas())
+        ? `<div id="barra-seleccion-sinasignar" style="margin:8px 0; display:flex; align-items:center; gap:8px;">
+             <button id="btn-tomar-sinasignar" onclick="confirmarTomarTareasSinAsignar()" disabled>🖐 Tomar 0 tarea(s) seleccionada(s)</button>
+           </div>`
+        : '';
+
       return `
         <div class="card">
-          <h2>🚫 Sin asignar (${sinAsignar.length})</h2>
-          <p style="font-size:11px; color:#888; margin:-4px 0 8px;">Clic derecho sobre una tarea para asignarla o cambiar su estado.</p>
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+            <h2 style="margin:0;">🚫 Sin asignar (${sinAsignar.length})</h2>
+            ${botonSeleccion}
+          </div>
+          <p style="font-size:11px; color:#888; margin:4px 0 8px;">Clic derecho sobre una tarea para asignarla o cambiar su estado.${puedeTomarTareas() ? ' Activa la selección múltiple para tomar varias tareas a la vez.' : ''}</p>
+          ${barraAccion}
           <ul class="lista-nodos" style="max-height:600px; overflow-y:auto;">
             ${renderListaNodos(sinAsignar, 'Ninguna ahora mismo.')}
           </ul>
@@ -473,6 +531,7 @@
 
     function pintar() {
       document.getElementById('contenido').innerHTML = renderSinAsignar();
+      actualizarBarraSeleccionSinAsignar();
     }
 
     async function cargarYPintar() {

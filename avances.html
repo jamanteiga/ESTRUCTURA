@@ -126,6 +126,7 @@
     let miPerfil = null;
     let mapaNodoPorId = {};
     let nodosGestorActual = [];
+    let perfilesCacheAvances = [];
 
     function esGestor() { return miPerfil.rol === 'ADMIN' || miPerfil.rol === 'REVISOR'; }
     function esInvitado() { return miPerfil.rol === 'INVITADO'; }
@@ -365,21 +366,240 @@
       });
     }
 
+    // -------------------- Avances por usuario/supervisor (Gantt) --------------------
+    // Qué tareas ha trabajado cada usuario (o supervisado cada Supervisor) en
+    // un periodo elegido -- se apoya en trabajo_iniciado_en/trabajo_terminado_en
+    // (lo mismo que ya usa "Horas de trabajo por usuario" del Panel de
+    // administración), pero aquí mostrado como barras de Gantt, una por tarea.
+
+    let ganttRolSeleccionado = 'trabajador'; // 'trabajador' | 'revisor'
+    let ganttPersonaSeleccionada = null;
+    let ganttPeriodo = null; // { desde: Date, hasta: Date, etiqueta }
+    let chartGanttAvance = null;
+
+    function periodoMesActualGantt() {
+      const ahora = new Date();
+      return {
+        desde: new Date(ahora.getFullYear(), ahora.getMonth(), 1),
+        hasta: new Date(ahora.getFullYear(), ahora.getMonth() + 1, 1),
+        etiqueta: 'Este mes'
+      };
+    }
+
+    function personasParaGantt() {
+      const rol = ganttRolSeleccionado === 'revisor' ? 'REVISOR' : 'TRABAJADOR';
+      return perfilesCacheAvances.filter(p => p.rol === rol && p.activo)
+        .sort((a, b) => (a.nombre_completo || '').localeCompare(b.nombre_completo || '', 'es'));
+    }
+
+    function alCambiarGanttRol() {
+      ganttRolSeleccionado = document.getElementById('gantt-rol').value;
+      ganttPersonaSeleccionada = null;
+      pintar();
+    }
+
+    function lunesDeSemanaGantt(fecha) {
+      const d = new Date(fecha); d.setHours(0, 0, 0, 0);
+      const diaSemana = (d.getDay() + 6) % 7; // lunes=0 ... domingo=6
+      d.setDate(d.getDate() - diaSemana);
+      return d;
+    }
+
+    function actualizarEtiquetaPeriodoGantt() {
+      const el = document.getElementById('gantt-periodo-etiqueta');
+      if (el && ganttPeriodo) el.textContent = ganttPeriodo.etiqueta;
+    }
+
+    function elegirPeriodoGantt(tipo) {
+      const ahora = new Date();
+      let desde, hasta, etiqueta;
+      if (tipo === 'hoy') {
+        desde = new Date(ahora); desde.setHours(0, 0, 0, 0);
+        hasta = new Date(desde); hasta.setDate(hasta.getDate() + 1);
+        etiqueta = 'Hoy';
+      } else if (tipo === 'semana') {
+        desde = lunesDeSemanaGantt(ahora);
+        hasta = new Date(desde); hasta.setDate(hasta.getDate() + 7);
+        etiqueta = 'Esta semana';
+      } else if (tipo === 'semana_anterior') {
+        const lunesActual = lunesDeSemanaGantt(ahora);
+        desde = new Date(lunesActual); desde.setDate(desde.getDate() - 7);
+        hasta = lunesActual;
+        etiqueta = 'Semana anterior';
+      } else if (tipo === 'mes') {
+        ({ desde, hasta, etiqueta } = periodoMesActualGantt());
+      } else {
+        return;
+      }
+      ganttPeriodo = { desde, hasta, etiqueta };
+      actualizarEtiquetaPeriodoGantt();
+      pintarGanttAvance();
+    }
+
+    function elegirPeriodoGanttMes() {
+      const valor = document.getElementById('gantt-mes-elegido').value; // "YYYY-MM"
+      if (!valor) return;
+      const [anio, mes] = valor.split('-').map(Number);
+      const desde = new Date(anio, mes - 1, 1);
+      const hasta = new Date(anio, mes, 1);
+      ganttPeriodo = { desde, hasta, etiqueta: `Mes de ${desde.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}` };
+      actualizarEtiquetaPeriodoGantt();
+      pintarGanttAvance();
+    }
+
+    function elegirPeriodoGanttRango() {
+      const strDesde = document.getElementById('gantt-desde').value;
+      const strHasta = document.getElementById('gantt-hasta').value;
+      if (!strDesde || !strHasta) return;
+      const desde = new Date(strDesde + 'T00:00:00');
+      const hasta = new Date(strHasta + 'T00:00:00');
+      hasta.setDate(hasta.getDate() + 1); // el día "hasta" se incluye entero
+      if (hasta <= desde) return;
+      ganttPeriodo = { desde, hasta, etiqueta: 'Rango elegido' };
+      actualizarEtiquetaPeriodoGantt();
+      pintarGanttAvance();
+    }
+
+    function tareasGanttPeriodo() {
+      if (!ganttPeriodo || !ganttPersonaSeleccionada) return [];
+      const campoPersona = ganttRolSeleccionado === 'revisor' ? 'revisor_id' : 'trabajador_id';
+      const desdeMs = ganttPeriodo.desde.getTime();
+      const hastaMs = ganttPeriodo.hasta.getTime();
+      const ahoraMs = Date.now();
+      return nodosGestorActual.filter(n => {
+        if (n[campoPersona] !== ganttPersonaSeleccionada) return false;
+        if (!n.trabajo_iniciado_en) return false;
+        const inicioMs = new Date(n.trabajo_iniciado_en).getTime();
+        const finMs = n.trabajo_terminado_en ? new Date(n.trabajo_terminado_en).getTime() : ahoraMs;
+        return inicioMs < hastaMs && finMs > desdeMs;
+      }).sort((a, b) => new Date(a.trabajo_iniciado_en) - new Date(b.trabajo_iniciado_en));
+    }
+
+    function renderGanttAvanceCard() {
+      const personas = personasParaGantt();
+      if (!ganttPeriodo) ganttPeriodo = periodoMesActualGantt();
+      if (!ganttPersonaSeleccionada || !personas.some(p => p.id === ganttPersonaSeleccionada)) {
+        ganttPersonaSeleccionada = personas[0]?.id || null;
+      }
+      if (personas.length === 0) {
+        return `<div class="card"><h2>📊 Avances por usuario/supervisor — diagrama de Gantt</h2><p style="font-size:12px; color:#888;">No hay ${ganttRolSeleccionado === 'revisor' ? 'supervisores' : 'usuarios'} dados de alta.</p></div>`;
+      }
+      return `
+        <div class="card">
+          <h2>📊 Avances por usuario/supervisor — diagrama de Gantt</h2>
+          <p style="font-size:11px; color:#888; margin:-4px 0 8px;">
+            Tareas trabajadas en el periodo elegido, según cuándo se pusieron "en proceso" y se terminaron (o el momento actual, si siguen abiertas). Verde = Aprobada, azul = Pendiente de revisión, naranja = todavía en proceso.
+          </p>
+          <div class="fila-accion" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:8px;">
+            <select id="gantt-rol" onchange="alCambiarGanttRol()" style="padding:5px; border-radius:4px; border:1px solid #ccc;">
+              <option value="trabajador" ${ganttRolSeleccionado === 'trabajador' ? 'selected' : ''}>Usuario</option>
+              <option value="revisor" ${ganttRolSeleccionado === 'revisor' ? 'selected' : ''}>Supervisor</option>
+            </select>
+            <select id="gantt-persona" onchange="ganttPersonaSeleccionada = this.value; pintarGanttAvance();" style="padding:5px; border-radius:4px; border:1px solid #ccc; min-width:180px;">
+              ${personas.map(p => `<option value="${p.id}" ${p.id === ganttPersonaSeleccionada ? 'selected' : ''}>${p.nombre_completo}</option>`).join('')}
+            </select>
+          </div>
+          <div class="fila-accion" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:8px;">
+            <button class="secundario" onclick="elegirPeriodoGantt('hoy')">Hoy</button>
+            <button class="secundario" onclick="elegirPeriodoGantt('semana')">Esta semana</button>
+            <button class="secundario" onclick="elegirPeriodoGantt('semana_anterior')">Semana anterior</button>
+            <button class="secundario" onclick="elegirPeriodoGantt('mes')">Este mes</button>
+            <input type="month" id="gantt-mes-elegido" style="max-width:150px;">
+            <button class="secundario" onclick="elegirPeriodoGanttMes()">Ver mes</button>
+            <input type="date" id="gantt-desde" style="max-width:150px;">
+            <span>a</span>
+            <input type="date" id="gantt-hasta" style="max-width:150px;">
+            <button class="secundario" onclick="elegirPeriodoGanttRango()">Ver rango</button>
+          </div>
+          <p style="font-size:12px; color:#666; margin:4px 0;">Periodo: <strong id="gantt-periodo-etiqueta">${ganttPeriodo.etiqueta}</strong></p>
+          <div id="gantt-avance-vacio" style="display:none; font-size:12px; color:#888;">Sin tareas trabajadas en este periodo.</div>
+          <div id="gantt-avance-wrap" style="max-height:420px; overflow-y:auto;"><canvas id="chart-gantt-avance"></canvas></div>
+        </div>
+      `;
+    }
+
+    function pintarGanttAvance() {
+      const canvas = document.getElementById('chart-gantt-avance');
+      if (!canvas || typeof Chart === 'undefined') return;
+      const tareas = tareasGanttPeriodo();
+      const vacioEl = document.getElementById('gantt-avance-vacio');
+      const wrap = document.getElementById('gantt-avance-wrap');
+
+      if (chartGanttAvance) { chartGanttAvance.destroy(); chartGanttAvance = null; }
+
+      if (tareas.length === 0) {
+        canvas.style.display = 'none';
+        if (vacioEl) vacioEl.style.display = 'block';
+        if (wrap) wrap.style.height = '';
+        return;
+      }
+      canvas.style.display = 'block';
+      if (vacioEl) vacioEl.style.display = 'none';
+
+      const desdeMs = ganttPeriodo.desde.getTime();
+      const hastaMs = ganttPeriodo.hasta.getTime();
+      const ahoraMs = Date.now();
+
+      const etiquetas = tareas.map(n => `${n.codigo}${n.nombre ? ' — ' + n.nombre : ''}`);
+      const datos = tareas.map(n => {
+        const inicioMs = Math.max(new Date(n.trabajo_iniciado_en).getTime(), desdeMs);
+        const finRealMs = n.trabajo_terminado_en ? new Date(n.trabajo_terminado_en).getTime() : ahoraMs;
+        const finMs = Math.min(finRealMs, hastaMs);
+        return [inicioMs, Math.max(finMs, inicioMs)];
+      });
+      const colores = tareas.map(n => n.revision_estado === 'APROBADO' ? '#28a745' : (n.trabajo_terminado_en ? '#007bff' : '#f0ad4e'));
+
+      if (wrap) wrap.style.height = Math.max(160, tareas.length * 26) + 'px';
+
+      chartGanttAvance = new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: { labels: etiquetas, datasets: [{ data: datos, backgroundColor: colores, borderRadius: 3, barPercentage: 0.7 }] },
+        options: {
+          indexAxis: 'y',
+          responsive: true, maintainAspectRatio: false,
+          scales: {
+            x: {
+              min: desdeMs, max: hastaMs,
+              ticks: { callback: v => new Date(v).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' }) }
+            },
+            y: { ticks: { font: { size: 10 } } }
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: ctx => {
+                  const [ini, fin] = ctx.raw;
+                  return `${new Date(ini).toLocaleString('es-ES')} → ${new Date(fin).toLocaleString('es-ES')}`;
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+
     function pintar() {
       document.getElementById('contenido').innerHTML = `
+        ${renderGanttAvanceCard()}
         ${renderCurvaAvanceCard()}
         ${renderCurvaAvanceBloqueCard()}
       `;
+      pintarGanttAvance();
       pintarCurvaAvance();
       pintarCurvaAvanceBloque();
     }
 
     async function cargarYPintar() {
-      const { data: nodos, error } = await supabaseClient.from('v_nodes_with_workflow').select('*').eq('activo', true);
+      const [{ data: nodos, error }, { data: perfiles }] = await Promise.all([
+        supabaseClient.from('v_nodes_with_workflow').select('*').eq('activo', true),
+        supabaseClient.from('profiles').select('*')
+      ]);
       if (error) { document.getElementById('contenido').innerHTML = `<p style="color:red;">Error: ${error.message}</p>`; return; }
       mapaNodoPorId = {};
       nodos.forEach(n => { mapaNodoPorId[n.id] = n; });
       nodosGestorActual = nodos.filter(n => !TIPOS_SIN_ASIGNACION.has(n.tipo));
+      perfilesCacheAvances = perfiles || [];
       pintar();
     }
 
