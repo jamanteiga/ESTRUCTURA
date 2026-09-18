@@ -44,6 +44,8 @@
       flex-shrink: 0; margin: 0 1px;
     }
     .icono-retraso { font-size: 14px; color: #dc3545; flex-shrink: 0; cursor: default; }
+    .favorito-estrella { font-size: 16px; display: inline-block; width: 20px; text-align: center; line-height: 1; cursor: pointer; flex-shrink: 0; }
+    .fila-nodo.resaltado-temporal, .resaltado-temporal { background: #fff3b0 !important; transition: background 1.6s ease; }
     .fila-dependencia { display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid #eee; font-size:13px; }
     .fila-dependencia .ruta { color:#666; flex:1; min-width:0; overflow-wrap:break-word; }
     .fila-dependencia .estado-dep { font-size:11px; font-weight:bold; padding:1px 7px; border-radius:8px; flex-shrink:0; }
@@ -379,6 +381,22 @@
         <span class="menu-item" onclick="cerrarSesion()">🚪 Cerrar sesión</span>
       </div>
 
+      <!-- Mejoras para el Usuario (Trabajador): solo visible para ese rol. -->
+      <div id="grupo-menu-mi-trabajo" style="display:none;">
+        <div class="menu-seccion-titulo" data-menu-seccion="mi-trabajo" onclick="toggleSeccionMenu(this)">Mi trabajo <span class="flecha-menu">›</span></div>
+        <div class="menu-seccion-contenido">
+          <span class="menu-item" onclick="abrirMiListaHoy()">📋 Mi lista de hoy</span>
+          <span class="menu-item" onclick="abrirMiHistorial()">📊 Mi historial</span>
+          <span class="menu-item" onclick="abrirPanelFavoritos()">⭐ Favoritas y recientes</span>
+          <label class="menu-item">
+            <input type="checkbox" id="chk-avisos-rechazo" onchange="alternarAvisosRechazo()"> 🔔 Avisarme si me rechazan una tarea
+          </label>
+          <label class="menu-item">
+            <input type="checkbox" id="chk-modo-ligero" onchange="toggleModoLigero()"> 🪶 Modo ligero para el taller
+          </label>
+        </div>
+      </div>
+
       <div class="menu-seccion-titulo" data-menu-seccion="bloques" onclick="toggleSeccionMenu(this)">Bloques <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
         <span class="menu-item" onclick="encogerTodo()">⏫ Contraer todo</span>
@@ -456,6 +474,7 @@
   </div>
 
   <div class="card" id="card-arbol">
+    <div id="banner-modo-ligero" style="display:none; background:#fff3cd; color:#664d03; border:1px solid #ffe69c; border-radius:6px; padding:8px 12px; margin-bottom:10px; font-size:13px;"></div>
     <ul class="arbol raiz" id="arbol-raiz">
       <li><span class="spinner-carga"></span>Cargando...</li>
     </ul>
@@ -907,6 +926,59 @@
     </div>
   </div>
 
+  <!-- Comentario y foto opcionales al marcar "Pendiente de dudas" (mejora Usuario). -->
+  <div class="overlay" id="modal-nota-dudas" style="z-index:5000;">
+    <div class="overlay-caja" style="max-width:420px;">
+      <h3 style="margin-top:0; font-size:15px;" id="nd-titulo">Pendiente de dudas</h3>
+      <label>Explica la duda (opcional)</label>
+      <textarea id="nd-texto" rows="3" style="width:100%; box-sizing:border-box; padding:8px; border:1px solid #ccc; border-radius:4px; font-family:inherit; font-size:13px;"></textarea>
+      <label>Foto (opcional)</label>
+      <input type="file" id="nd-foto" accept="image/*">
+      <div class="estado-msg error" id="nd-estado" style="min-height:16px;"></div>
+      <div class="overlay-botones">
+        <button class="secundario" id="nd-cancel">Cancelar</button>
+        <button id="nd-ok">Marcar pendiente de dudas</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- "Mi lista de hoy" con orden manual (mejora Usuario). -->
+  <div class="overlay" id="modal-mi-lista" style="z-index:5000;">
+    <div class="overlay-caja" style="max-width:480px; max-height:80vh; overflow-y:auto;">
+      <h3 style="margin-top:0; font-size:15px;">📋 Mi lista de hoy</h3>
+      <p style="font-size:12px; color:#666; margin-top:-6px;">Usa ▲▼ para poner primero lo que quieras hacer antes. El orden se guarda solo en este dispositivo.</p>
+      <div id="ml-lista"></div>
+      <div class="overlay-botones">
+        <button class="secundario" onclick="cerrarMiListaHoy()">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- "Mi historial" personal (mejora Usuario). -->
+  <div class="overlay" id="modal-mi-historial" style="z-index:5000;">
+    <div class="overlay-caja" style="max-width:420px;">
+      <h3 style="margin-top:0; font-size:15px;">📊 Mi historial</h3>
+      <div id="mh-contenido"></div>
+      <div class="overlay-botones">
+        <button class="secundario" onclick="cerrarMiHistorial()">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Favoritas y recientes (mejora Usuario). -->
+  <div class="overlay" id="modal-favoritos" style="z-index:5000;">
+    <div class="overlay-caja" style="max-width:480px; max-height:80vh; overflow-y:auto;">
+      <h3 style="margin-top:0; font-size:15px;">⭐ Favoritas y recientes</h3>
+      <label>Favoritas</label>
+      <div id="pf-favoritas"></div>
+      <label style="margin-top:10px; display:block;">Recientes</label>
+      <div id="pf-recientes"></div>
+      <div class="overlay-botones">
+        <button class="secundario" onclick="cerrarPanelFavoritos()">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
   <div id="menu-contextual"></div>
   <div id="menu-submenu-flotante"></div>
   <div id="menu-submenu-flotante-2"></div>
@@ -1078,6 +1150,88 @@
     // Solo true cuando hay al menos un comentario de ese origen y todos están hechos.
     let estadoComentariosPorNodo = {};
 
+    // -------------------- Mejoras para Usuario (Trabajador) --------------------
+    // Notas/fotos opcionales dejadas al marcar "Pendiente de dudas": la más
+    // reciente por nodo, cargada aparte (tabla notas_pendiente_dudas) igual
+    // que los comentarios de modelo.
+    let notasDudasPorNodo = {};
+    // Favoritas y recientes: solo tienen sentido por dispositivo (no hay
+    // pantalla de "mis ajustes" en el servidor para esto), así que se
+    // guardan en localStorage por usuario.
+    let favoritosIds = new Set();
+    let recientesIds = [];
+    // Modo ligero: cuando está activo, cargarArbol() da un margen de tiempo
+    // a la respuesta y, si no llega (mala cobertura en el taller), usa la
+    // última copia guardada en este dispositivo en vez de dejar la pantalla
+    // colgada.
+    let modoLigero = false;
+
+    function claveFavoritos() { return 'estructura_favoritos_' + miPerfil.id; }
+    function claveRecientes() { return 'estructura_recientes_' + miPerfil.id; }
+    function claveOrdenMisTareas() { return 'estructura_orden_mis_tareas_' + miPerfil.id; }
+    function claveCacheLigero() { return 'estructura_cache_ligero_' + miPerfil.id; }
+
+    function cargarFavoritosYRecientes() {
+      try { favoritosIds = new Set(JSON.parse(localStorage.getItem(claveFavoritos()) || '[]')); } catch (e) { favoritosIds = new Set(); }
+      try { recientesIds = JSON.parse(localStorage.getItem(claveRecientes()) || '[]'); } catch (e) { recientesIds = []; }
+    }
+    function guardarFavoritosLS() { try { localStorage.setItem(claveFavoritos(), JSON.stringify([...favoritosIds])); } catch (e) {} }
+    function guardarRecientesLS() { try { localStorage.setItem(claveRecientes(), JSON.stringify(recientesIds)); } catch (e) {} }
+    function esFavorito(nodeId) { return favoritosIds.has(nodeId); }
+
+    function alternarFavorito(nodeId) {
+      if (favoritosIds.has(nodeId)) favoritosIds.delete(nodeId); else favoritosIds.add(nodeId);
+      guardarFavoritosLS();
+      renderizarArbolCompleto();
+    }
+
+    // Se llama cada vez que se abre el menú contextual de un nodo (clic
+    // derecho, pulsación larga o el botón "⋯"): es la señal más fiable de
+    // que el usuario "ha estado" en esa pieza, sin añadir clics de más.
+    function registrarNodoReciente(nodeId) {
+      if (miPerfil.rol !== 'TRABAJADOR') return;
+      recientesIds = [nodeId, ...recientesIds.filter(id => id !== nodeId)].slice(0, 8);
+      guardarRecientesLS();
+    }
+
+    function cargarPreferenciaModoLigero() {
+      modoLigero = localStorage.getItem('estructura_modo_ligero') === '1';
+      const chk = document.getElementById('chk-modo-ligero');
+      if (chk) chk.checked = modoLigero;
+    }
+    function toggleModoLigero() {
+      modoLigero = document.getElementById('chk-modo-ligero').checked;
+      try { localStorage.setItem('estructura_modo_ligero', modoLigero ? '1' : '0'); } catch (e) {}
+      if (!modoLigero) document.getElementById('banner-modo-ligero').style.display = 'none';
+    }
+
+    // Aviso de "me han rechazado una tarea" con notificación del navegador,
+    // además del aviso en pantalla que ya existía (mostrarAviso/mostrarAvisoModal
+    // en procesarEventoRealtime) — para cuando la pestaña está en segundo
+    // plano. Sigue haciendo falta que el navegador siga abierto: no es un
+    // aviso push del servidor.
+    function avisosRechazoActivados() {
+      return localStorage.getItem('estructura_avisos_rechazo_trabajador') === '1' &&
+        typeof Notification !== 'undefined' && Notification.permission === 'granted';
+    }
+    async function alternarAvisosRechazo() {
+      const chk = document.getElementById('chk-avisos-rechazo');
+      if (chk.checked) {
+        if (typeof Notification === 'undefined') { mostrarAvisoModal('Tu navegador no admite notificaciones.'); chk.checked = false; return; }
+        let permiso = Notification.permission;
+        if (permiso === 'default') permiso = await Notification.requestPermission();
+        if (permiso !== 'granted') { mostrarAvisoModal('No se han concedido permisos de notificación.'); chk.checked = false; return; }
+        localStorage.setItem('estructura_avisos_rechazo_trabajador', '1');
+      } else {
+        localStorage.setItem('estructura_avisos_rechazo_trabajador', '0');
+      }
+    }
+    function inicializarAvisosRechazo() {
+      const chk = document.getElementById('chk-avisos-rechazo');
+      if (!chk) return;
+      chk.checked = avisosRechazoActivados();
+    }
+
     function guardarEstadoAbiertos() {
       if (!miPerfil) return;
       try {
@@ -1207,6 +1361,10 @@
 
       if (miPerfil.rol === 'TRABAJADOR') {
         document.getElementById('wrap-mis-tareas').style.display = 'flex';
+        document.getElementById('grupo-menu-mi-trabajo').style.display = 'block';
+        cargarFavoritosYRecientes();
+        cargarPreferenciaModoLigero();
+        inicializarAvisosRechazo();
       }
       if (pareceGestor()) {
         document.getElementById('wrap-desactivados').style.display = 'flex';
@@ -1525,12 +1683,61 @@
       return nodos.filter(n => n.tipo === 'BUQUE' ? idsRaizSet.has(n.id) : permitidos.has(n.id));
     }
 
+    // Carga los últimos comentarios de "Pendiente de dudas" (nota y/o foto
+    // opcionales, mejora Usuario) y se queda con el más reciente por nodo.
+    async function cargarNotasDudas() {
+      try {
+        const { data, error } = await supabaseClient.from('notas_pendiente_dudas').select('*').order('creado_en', { ascending: false });
+        if (error) { console.warn('No se pudieron cargar las notas de dudas:', error.message); return; }
+        notasDudasPorNodo = {};
+        (data || []).forEach(n => { if (!notasDudasPorNodo[n.node_id]) notasDudasPorNodo[n.node_id] = n; });
+      } catch (e) {
+        console.warn('No se pudieron cargar las notas de dudas:', e);
+      }
+    }
+
     async function cargarArbol() {
       let query = supabaseClient.from('v_nodes_with_workflow').select('*').order('orden', { ascending: true });
       if (!mostrarDesactivados) query = query.eq('activo', true);
-      const [{ data, error }] = await Promise.all([query, cargarEstadoComentariosModelo()]);
 
       const raiz = document.getElementById('arbol-raiz');
+      const banner = document.getElementById('banner-modo-ligero');
+      let data, error;
+
+      // Modo ligero (mejora Usuario, "sin que se quede colgado" con mal
+      // wifi de taller): da 10s de margen y, si no llega respuesta, cae a
+      // la última copia guardada en este dispositivo en vez de dejar la
+      // pantalla cargando indefinidamente.
+      if (modoLigero) {
+        try {
+          const [resultado] = await Promise.race([
+            Promise.all([query, cargarEstadoComentariosModelo(), cargarNotasDudas()]),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout_modo_ligero')), 10000))
+          ]);
+          ({ data, error } = resultado);
+          if (!error) { try { localStorage.setItem(claveCacheLigero(), JSON.stringify({ data, guardadoEn: Date.now() })); } catch (e2) {} }
+          if (banner) banner.style.display = 'none';
+        } catch (e) {
+          let cache = null;
+          try { cache = JSON.parse(localStorage.getItem(claveCacheLigero()) || 'null'); } catch (e2) {}
+          if (cache && cache.data) {
+            data = cache.data; error = null;
+            if (banner) {
+              const minutos = Math.round((Date.now() - cache.guardadoEn) / 60000);
+              banner.textContent = `🪶 Modo ligero: sin respuesta del servidor — mostrando la última copia guardada en este dispositivo (hace ${minutos < 1 ? 'menos de 1 minuto' : minutos + ' min'}). Los cambios no se guardarán hasta que vuelva la conexión.`;
+              banner.style.display = 'block';
+            }
+          } else {
+            raiz.innerHTML = '<li style="color:red;">No se pudo cargar (sin respuesta y sin copia guardada todavía). Vuelve a intentarlo cuando tengas mejor cobertura.</li>';
+            return;
+          }
+        }
+      } else {
+        const [resultado] = await Promise.all([query, cargarEstadoComentariosModelo(), cargarNotasDudas()]);
+        ({ data, error } = resultado);
+        if (banner) banner.style.display = 'none';
+      }
+
       if (error) { raiz.innerHTML = `<li style="color:red;">Error al cargar: ${error.message}</li>`; return; }
 
       todosLosNodos = filtrarPorBuqueAsignado(data || []);
@@ -2403,8 +2610,9 @@
         acciones += `<button class="pequeno secundario" onclick="encogerRama('${nodo.id}')" title="Encoger esta rama">⏫</button>`;
       }
 
+      const notaDudasExtra = notasDudasPorNodo[nodo.id];
       const notaDudas = (!sinAsignacion && !vistaSimplificada && nodo.trabajo_estado === 'PENDIENTE_DUDAS')
-        ? `<div class="motivo-rechazo" style="color:rgb(0,176,240);">❓ Pendiente de dudas</div>` : '';
+        ? `<div class="motivo-rechazo" style="color:rgb(0,176,240);">❓ Pendiente de dudas${notaDudasExtra?.nota ? ' — ' + notaDudasExtra.nota : ''}${notaDudasExtra?.foto_url ? ` · <a href="${notaDudasExtra.foto_url}" target="_blank" rel="noopener">📷 Ver foto</a>` : ''}</div>` : '';
 
       const notaCambiosModelo = (!sinAsignacion && !vistaSimplificada && nodo.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO')
         ? (() => {
@@ -2459,6 +2667,7 @@
             ${checkboxSeleccion}
             <span class="toggle ${tieneHijos ? '' : 'vacio'}" onclick="toggleNodo('${nodo.id}')">${abierto ? '▼' : '▶'}</span>
             ${!sinAsignacion ? `<span class="candado" title="${nodo.bloqueado ? 'Bloqueado — clic para desbloquear' : 'Desbloqueado — clic para bloquear'}" onclick="event.stopPropagation(); accionAlternarBloqueoDesdeIcono('${nodo.id}')">${nodo.bloqueado ? '🔒' : '🔓'}</span>` : ''}
+            ${(!sinAsignacion && miPerfil.rol === 'TRABAJADOR') ? `<span class="favorito-estrella" title="${esFavorito(nodo.id) ? 'Quitar de favoritas' : 'Marcar como favorita'}" onclick="event.stopPropagation(); alternarFavorito('${nodo.id}')">${esFavorito(nodo.id) ? '⭐' : '☆'}</span>` : ''}
             ${(!sinAsignacion && nodo.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO') ? '<span class="cuadro-cambios-modelo" title="Pendiente de cambios en modelo"></span>' : ''}
             ${(!sinAsignacion && nodoRetrasado(nodo)) ? `<span class="icono-retraso" title="Retrasada — prevista para ${formatearFechaHora(nodo.fecha_fin_prevista)}">⏰</span>` : ''}
             ${nodo.tipo === 'BLOQUE' && nodo.congelado ? '<span title="Bloque congelado por un Supervisor/Admin — nadie puede cambiar el estado de lo que cuelga de él" style="cursor:help;">🧊</span>' : (nodo.tipo !== 'BLOQUE' && estaBajoBloqueCongelado(nodo) ? '<span title="Dentro de un Bloque congelado — no se puede cambiar el estado hasta que lo descongelen" style="cursor:help; opacity:0.7;">🧊</span>' : '')}
@@ -2879,6 +3088,7 @@
     function mostrarMenuContextual(evento, nodeId) {
       evento.preventDefault();
       evento.stopPropagation();
+      registrarNodoReciente(nodeId);
       const nodo = mapaNodoPorId[nodeId];
       const sinAsignacion = TIPOS_SIN_ASIGNACION.has(nodo.tipo);
       const esMio = nodo.trabajador_id === miPerfil.id;
@@ -4826,6 +5036,195 @@
       });
     }
 
+    // Comentario y foto opcionales al marcar "Pendiente de dudas" (mejora
+    // Usuario). Devuelve { nota, archivo } o null si se cancela — nota y
+    // archivo pueden ir vacíos, dejarlos en blanco no cancela la acción.
+    function pedirNotaDudas(etiquetaTarea) {
+      return new Promise((resolve) => {
+        const texto = document.getElementById('nd-texto');
+        const foto = document.getElementById('nd-foto');
+        const estadoEl = document.getElementById('nd-estado');
+        texto.value = ''; foto.value = ''; estadoEl.textContent = '';
+        document.getElementById('nd-titulo').textContent = etiquetaTarea ? `Pendiente de dudas — "${etiquetaTarea}"` : 'Pendiente de dudas';
+        document.getElementById('modal-nota-dudas').style.display = 'flex';
+        setTimeout(() => texto.focus(), 50);
+
+        const btnOk = document.getElementById('nd-ok');
+        const btnCancel = document.getElementById('nd-cancel');
+        const limpiar = () => { btnOk.onclick = null; btnCancel.onclick = null; document.getElementById('modal-nota-dudas').style.display = 'none'; };
+        btnOk.onclick = () => {
+          const archivo = foto.files && foto.files[0] ? foto.files[0] : null;
+          if (archivo && archivo.size > 8 * 1024 * 1024) { estadoEl.textContent = 'La foto no puede superar 8 MB.'; return; }
+          limpiar();
+          resolve({ nota: texto.value.trim() || null, archivo });
+        };
+        btnCancel.onclick = () => { limpiar(); resolve(null); };
+      });
+    }
+
+    // -------------------- "Mi lista de hoy" con orden manual (mejora Usuario) --------------------
+    // El orden es una preferencia personal de cada uno y solo tiene sentido
+    // en este dispositivo -- no hay ninguna pantalla de ajustes en el
+    // servidor para esto, así que se guarda en localStorage.
+    function leerOrdenMisTareas() {
+      try { return JSON.parse(localStorage.getItem(claveOrdenMisTareas()) || '[]'); } catch (e) { return []; }
+    }
+    function guardarOrdenMisTareas(orden) {
+      try { localStorage.setItem(claveOrdenMisTareas(), JSON.stringify(orden)); } catch (e) {}
+    }
+    function calcularMisTareasAbiertas() {
+      return todosLosNodos.filter(n => n.trabajador_id === miPerfil.id && !TIPOS_SIN_ASIGNACION.has(n.tipo) && calcularEstadoPropio(n) !== 'aprobado');
+    }
+    // Las que ya tienen posición guardada van primero, en ese orden; las
+    // que no (tareas nuevas desde la última vez) se añaden al final.
+    function ordenarSegunPreferencia(tareas) {
+      const orden = leerOrdenMisTareas();
+      const posicion = {};
+      orden.forEach((id, i) => { posicion[id] = i; });
+      return tareas.slice().sort((a, b) => {
+        const pa = posicion[a.id], pb = posicion[b.id];
+        if (pa === undefined && pb === undefined) return 0;
+        if (pa === undefined) return 1;
+        if (pb === undefined) return -1;
+        return pa - pb;
+      });
+    }
+    function abrirMiListaHoy() {
+      renderizarMiListaHoy();
+      document.getElementById('modal-mi-lista').style.display = 'flex';
+    }
+    function cerrarMiListaHoy() { document.getElementById('modal-mi-lista').style.display = 'none'; }
+    function renderizarMiListaHoy() {
+      const tareas = ordenarSegunPreferencia(calcularMisTareasAbiertas());
+      const cont = document.getElementById('ml-lista');
+      if (tareas.length === 0) {
+        cont.innerHTML = '<p style="font-size:13px; color:#888;">No tienes tareas abiertas ahora mismo.</p>';
+        return;
+      }
+      cont.innerHTML = tareas.map((n, i) => `
+        <div style="display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid #eee;">
+          <div style="display:flex; flex-direction:column; gap:2px;">
+            <button class="pequeno secundario" ${i === 0 ? 'disabled' : ''} onclick="moverEnMiLista('${n.id}', -1)" title="Subir">▲</button>
+            <button class="pequeno secundario" ${i === tareas.length - 1 ? 'disabled' : ''} onclick="moverEnMiLista('${n.id}', 1)" title="Bajar">▼</button>
+          </div>
+          <div style="flex:1; min-width:0; cursor:pointer;" onclick="irANodoEnArbol('${n.id}'); cerrarMiListaHoy();">
+            <strong>${etiquetaCodigoVisible(n)}</strong>${nombreEsRedundante(n.codigo, n.nombre) ? '' : ' — ' + n.nombre}
+            <div style="font-size:11px; color:#888;">${ETIQUETAS_TIPO[n.tipo] || n.tipo}${n.fecha_fin_prevista ? ' · previsto ' + formatearFechaCorta(new Date(n.fecha_fin_prevista)) : ''}</div>
+          </div>
+        </div>
+      `).join('');
+    }
+    function moverEnMiLista(nodeId, delta) {
+      const ids = ordenarSegunPreferencia(calcularMisTareasAbiertas()).map(n => n.id);
+      const idx = ids.indexOf(nodeId);
+      const nuevoIdx = idx + delta;
+      if (idx === -1 || nuevoIdx < 0 || nuevoIdx >= ids.length) return;
+      [ids[idx], ids[nuevoIdx]] = [ids[nuevoIdx], ids[idx]];
+      guardarOrdenMisTareas(ids);
+      renderizarMiListaHoy();
+    }
+
+    // -------------------- "Mi historial" (mejora Usuario) --------------------
+    // Todo calculado en el navegador a partir de lo ya cargado (todosLosNodos
+    // no se filtra por estado, así que las piezas ya aprobadas siguen ahí).
+    function calcularMiHistorial() {
+      const ahora = new Date();
+      const inicioSemana = new Date(ahora); inicioSemana.setDate(ahora.getDate() - 7);
+      const inicioMes = new Date(ahora); inicioMes.setDate(ahora.getDate() - 30);
+      const mias = todosLosNodos.filter(n => n.trabajador_id === miPerfil.id && n.trabajo_terminado_en && !TIPOS_SIN_ASIGNACION.has(n.tipo));
+      const terminadasSemana = mias.filter(n => new Date(n.trabajo_terminado_en) >= inicioSemana);
+      const terminadasMes = mias.filter(n => new Date(n.trabajo_terminado_en) >= inicioMes);
+      const aprobadasSemana = terminadasSemana.filter(n => n.revision_estado === 'APROBADO').length;
+      const aprobadasMes = terminadasMes.filter(n => n.revision_estado === 'APROBADO').length;
+
+      const ultimasTerminadas = mias.slice().sort((a, b) => new Date(b.trabajo_terminado_en) - new Date(a.trabajo_terminado_en)).slice(0, 20);
+      const duraciones = ultimasTerminadas
+        .filter(n => n.trabajo_iniciado_en)
+        .map(n => (new Date(n.trabajo_terminado_en) - new Date(n.trabajo_iniciado_en)) / 3600000)
+        .filter(h => h >= 0);
+      let tiempoMedioTexto = '—';
+      if (duraciones.length > 0) {
+        const media = duraciones.reduce((a, b) => a + b, 0) / duraciones.length;
+        tiempoMedioTexto = media < 24 ? `${media.toFixed(1)} h` : `${(media / 24).toFixed(1)} días`;
+      }
+      return {
+        terminadasSemana: terminadasSemana.length, terminadasMes: terminadasMes.length,
+        aprobadasSemana, aprobadasMes, tiempoMedioTexto, muestraTiempo: duraciones.length
+      };
+    }
+    function abrirMiHistorial() {
+      const h = calcularMiHistorial();
+      document.getElementById('mh-contenido').innerHTML = `
+        <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
+          <div style="flex:1; min-width:120px; background:#f3f6fb; border-radius:8px; padding:12px; text-align:center;">
+            <div style="font-size:26px; font-weight:bold;">${h.terminadasSemana}</div>
+            <div style="font-size:12px; color:#666;">Terminadas esta semana</div>
+          </div>
+          <div style="flex:1; min-width:120px; background:#f3f6fb; border-radius:8px; padding:12px; text-align:center;">
+            <div style="font-size:26px; font-weight:bold;">${h.terminadasMes}</div>
+            <div style="font-size:12px; color:#666;">Terminadas este mes</div>
+          </div>
+        </div>
+        <p style="font-size:13px;">De ellas, ya aprobadas: <strong>${h.aprobadasSemana}</strong> esta semana, <strong>${h.aprobadasMes}</strong> este mes.</p>
+        <p style="font-size:13px;">Tiempo medio de trabajo (últimas ${h.muestraTiempo} piezas terminadas): <strong>${h.tiempoMedioTexto}</strong></p>
+      `;
+      document.getElementById('modal-mi-historial').style.display = 'flex';
+    }
+    function cerrarMiHistorial() { document.getElementById('modal-mi-historial').style.display = 'none'; }
+
+    // -------------------- Favoritas y recientes (mejora Usuario) --------------------
+    function abrirPanelFavoritos() {
+      renderizarPanelFavoritos();
+      document.getElementById('modal-favoritos').style.display = 'flex';
+    }
+    function cerrarPanelFavoritos() { document.getElementById('modal-favoritos').style.display = 'none'; }
+    function filaFavoritoOReciente(nodeId) {
+      const n = mapaNodoPorId[nodeId];
+      if (!n) return '';
+      const favorito = esFavorito(nodeId);
+      return `
+        <div style="display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid #eee;">
+          <span class="favorito-estrella" onclick="alternarFavorito('${nodeId}'); renderizarPanelFavoritos();" title="${favorito ? 'Quitar de favoritas' : 'Marcar como favorita'}">${favorito ? '⭐' : '☆'}</span>
+          <div style="flex:1; min-width:0; cursor:pointer;" onclick="irANodoEnArbol('${nodeId}'); cerrarPanelFavoritos();">
+            <strong>${etiquetaCodigoVisible(n)}</strong>${nombreEsRedundante(n.codigo, n.nombre) ? '' : ' — ' + n.nombre}
+            <div style="font-size:11px; color:#888;">${ETIQUETAS_TIPO[n.tipo] || n.tipo}</div>
+          </div>
+        </div>
+      `;
+    }
+    function renderizarPanelFavoritos() {
+      const favHtml = [...favoritosIds].map(id => filaFavoritoOReciente(id)).filter(Boolean).join('');
+      const recHtml = recientesIds.filter(id => !favoritosIds.has(id)).map(id => filaFavoritoOReciente(id)).filter(Boolean).join('');
+      document.getElementById('pf-favoritas').innerHTML = favHtml || '<p style="font-size:13px; color:#888;">Todavía no tienes ninguna marcada — pulsa la estrella ☆ junto a una pieza en el árbol.</p>';
+      document.getElementById('pf-recientes').innerHTML = recHtml || '<p style="font-size:13px; color:#888;">Todavía no has abierto ninguna pieza en esta sesión.</p>';
+    }
+
+    // Acceso directo a una pieza desde "Mi lista de hoy" o "Favoritas y
+    // recientes": limpia los filtros que pudieran ocultarla, expande sus
+    // ramas y la resalta un momento para que se note dónde ha ido a parar.
+    function irANodoEnArbol(nodeId) {
+      const nodo = mapaNodoPorId[nodeId];
+      if (!nodo) { mostrarAvisoModal('Esa pieza ya no existe o no está visible con los filtros actuales.'); return; }
+      filtroTexto = ''; document.getElementById('buscador').value = '';
+      filtroUsuarioId = ''; document.getElementById('sel-filtro-usuario').value = '';
+      filtroEstado = ''; document.getElementById('sel-filtro-estado').value = '';
+      const chkMios = document.getElementById('chk-mis-tareas');
+      if (chkMios) chkMios.checked = false;
+
+      let actual = nodo.parent_id ? mapaNodoPorId[nodo.parent_id] : null;
+      while (actual) { nodosAbiertos.add(actual.id); actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null; }
+
+      renderizarArbolCompleto();
+      cerrarMenu();
+      setTimeout(() => {
+        const li = document.getElementById('li-' + nodeId);
+        if (!li) return;
+        li.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const fila = li.querySelector('.fila-nodo');
+        if (fila) { fila.classList.add('resaltado-temporal'); setTimeout(() => fila.classList.remove('resaltado-temporal'), 2000); }
+      }, 80);
+    }
+
     function traducirError(mensaje) {
       if (!mensaje) return 'Ha ocurrido un error inesperado.';
       const m = mensaje.toLowerCase();
@@ -5455,13 +5854,42 @@
 
     async function accionMarcarPendienteDudas(nodeId) {
       const nodo = mapaNodoPorId[nodeId];
+
+      // Comentario y/o foto opcionales explicando la duda (mejora Usuario):
+      // se puede dejar todo en blanco (no cancela la acción), solo Cancelar
+      // aborta marcar la tarea como pendiente de dudas.
+      const resultadoNota = await pedirNotaDudas(nodo?.codigo);
+      if (resultadoNota === null) return;
+
       const { error } = await supabaseClient.rpc('marcar_pendiente_dudas', { p_node_id: nodeId });
       if (error) {
         mostrarAvisoModal('Error: ' + traducirError(error.message));
         registrarLog('INTENTO_FALLIDO', `Intento de marcar dudas en "${nodo?.codigo}" denegado: ${error.message}`, nodeId);
         return;
       }
-      registrarLog('PENDIENTE_DUDAS', `Marcó "${nodo?.codigo}" como Pendiente de dudas`, nodeId);
+
+      if (resultadoNota.nota || resultadoNota.archivo) {
+        let foto_url = null;
+        if (resultadoNota.archivo) {
+          try {
+            const ruta = `${nodeId}/${Date.now()}_${resultadoNota.archivo.name}`;
+            const { error: errorSubida } = await supabaseClient.storage.from('dudas').upload(ruta, resultadoNota.archivo);
+            if (!errorSubida) {
+              const { data: publica } = supabaseClient.storage.from('dudas').getPublicUrl(ruta);
+              foto_url = publica?.publicUrl || null;
+            } else {
+              console.warn('No se pudo subir la foto de la duda:', errorSubida);
+            }
+          } catch (e) { console.warn('No se pudo subir la foto de la duda:', e); }
+        }
+        try {
+          await supabaseClient.from('notas_pendiente_dudas').insert({
+            node_id: nodeId, autor_id: miPerfil.id, nota: resultadoNota.nota, foto_url
+          });
+        } catch (e) { console.warn('No se pudo guardar la nota de dudas:', e); }
+      }
+
+      registrarLog('PENDIENTE_DUDAS', `Marcó "${nodo?.codigo}" como Pendiente de dudas${resultadoNota.nota ? ' — ' + resultadoNota.nota : ''}`, nodeId);
       await cargarArbol();
     }
 
@@ -5713,8 +6141,21 @@
     }
 
     async function accionMarcarTerminado(nodeId) {
-      if (!await mostrarConfirmacion('¿Marcar este trabajo como terminado y enviarlo a revisión?')) return;
       const nodo = mapaNodoPorId[nodeId];
+
+      // Compara el tiempo real trabajado con el previsto (mejora Usuario:
+      // "registrar el tiempo real al marcar Terminado") -- ayuda a afinar
+      // futuras estimaciones sin necesidad de guardar nada aparte, ya que
+      // trabajo_iniciado_en/fecha_inicio_prevista/fecha_fin_prevista ya existían.
+      let mensaje = '¿Marcar este trabajo como terminado y enviarlo a revisión?';
+      const tiempoReal = nodo?.trabajo_iniciado_en ? formatearDuracionHM(nodo.trabajo_iniciado_en, new Date().toISOString()) : null;
+      if (tiempoReal) {
+        mensaje += `\n\nTiempo trabajado: ${tiempoReal} (h:mm)`;
+        const previsto = (nodo.fecha_inicio_prevista && nodo.fecha_fin_prevista) ? formatearDuracionHM(nodo.fecha_inicio_prevista, nodo.fecha_fin_prevista) : null;
+        if (previsto) mensaje += ` — previsto: ${previsto}`;
+      }
+      if (!await mostrarConfirmacion(mensaje)) return;
+
       const { error } = await supabaseClient.rpc('marcar_terminado', { p_node_id: nodeId });
       if (error) {
         mostrarAvisoModal('Error: ' + traducirError(error.message));
@@ -5807,6 +6248,13 @@
       if (fila.trabajador_id === miPerfil.id && fila.revision_estado === 'RECHAZADO' && filaAnterior.revision_estado !== 'RECHAZADO') {
         mostrarAviso('rechazo', '✘ Tarea rechazada', fila.comentario_revision ? `Motivo: ${fila.comentario_revision}` : 'Revisa los comentarios.', ruta);
         mostrarAvisoModal(`✘ Te han rechazado una tarea\n\n${ruta}\n\n${fila.comentario_revision ? 'Motivo: ' + fila.comentario_revision : 'Revisa los comentarios.'}`);
+        // Mejora Usuario ("aviso más inmediato al rechazarle una tarea"):
+        // además del aviso en pantalla de arriba, una notificación del
+        // navegador si la activó -- se nota aunque la pestaña esté en
+        // segundo plano (sigue haciendo falta el navegador abierto).
+        if (avisosRechazoActivados()) {
+          try { new Notification('✘ Te han rechazado una tarea', { body: `${ruta}${fila.comentario_revision ? ' — ' + fila.comentario_revision : ''}` }); } catch (e) {}
+        }
       }
       if (fila.trabajador_id === miPerfil.id && fila.revision_estado === 'APROBADO' && filaAnterior.revision_estado !== 'APROBADO') {
         mostrarAviso('aprobado', '✔ Tarea aprobada', '¡Bien hecho!', ruta);
