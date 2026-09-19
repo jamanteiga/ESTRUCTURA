@@ -664,6 +664,34 @@
     </div>
   </div>
 
+  <div class="overlay" id="modal-fechas-cascada">
+    <div class="overlay-caja" style="max-width:440px;">
+      <h3>📅 Fechas previstas en cascada</h3>
+      <p id="fc-contador" style="font-size:12px; color:#666; margin-top:-8px;"></p>
+      <p style="font-size:12px; color:#666;">Se aplican en el mismo orden en que aparecen ahora mismo en el árbol: la primera tarea empieza en la fecha/hora que pongas abajo, y cada una de las siguientes empieza justo cuando termina la anterior.</p>
+      <label>Inicio previsto de la primera tarea</label>
+      <input type="datetime-local" id="fc-inicio">
+      <label>Duración de cada tarea</label>
+      <select id="fc-duracion">
+        <option value="5">0:05 h</option>
+        <option value="10">0:10 h</option>
+        <option value="15">0:15 h</option>
+        <option value="20">0:20 h</option>
+        <option value="30">0:30 h</option>
+        <option value="45" selected>0:45 h</option>
+        <option value="60">1:00 h</option>
+        <option value="90">1:30 h</option>
+        <option value="120">2:00 h</option>
+      </select>
+      <p id="fc-previsualizacion" style="font-size:12px; color:#0069d9; margin:8px 0; display:none;"></p>
+      <div class="estado-msg" id="fc-estado"></div>
+      <div class="overlay-botones">
+        <button class="secundario" onclick="cerrarModalFechasCascada()">Cancelar</button>
+        <button onclick="confirmarFechasCascada()">Aplicar</button>
+      </div>
+    </div>
+  </div>
+
   <div class="overlay" id="modal-dependencias">
     <div class="overlay-caja" style="max-width:480px;">
       <h3>🔗 Dependencias</h3>
@@ -776,6 +804,7 @@
     <span id="texto-seleccion" style="font-size:13px;"></span>
     <button id="btn-asignar-masivo" onclick="abrirModalAsignacionMasiva()">👤 Asignar seleccionadas</button>
     <button id="btn-estado-masivo" style="display:none;" onclick="abrirModalEstadoMasivo()">📋 Estado tareas</button>
+    <button id="btn-fechas-cascada-masivo" style="display:none;" onclick="abrirModalFechasCascada()">📅 Fechas en cascada</button>
     <button id="btn-anadir-masivo" style="display:none;" onclick="abrirModalAnadirMasivo()">+ Añadir dentro de cada una</button>
     <button id="btn-desactivar-masivo" class="peligro" style="display:none;" onclick="confirmarDesactivarMasivo()">🗑️ Desactivar seleccionadas</button>
     <button id="btn-bloquear-masivo" style="display:none;" onclick="confirmarBloqueoMasivo(true)">🔒 Bloquear</button>
@@ -3958,6 +3987,112 @@
       abrirModalFechasPrevistas(nodoFechasPrevistasActual);
     }
 
+    // -------------------- Fechas previstas en cascada (selección múltiple) --------------------
+    // Para rellenar de golpe las fechas previstas de muchas tareas seguidas
+    // (p.ej. 20 PS dentro de un Subbloque, o 40 piezas numeradas dentro de
+    // una Plancha/Perfil) sin tener que abrir "📅 Fechas previstas" una a
+    // una: la primera tarea empieza en la fecha/hora indicada, dura lo que
+    // se elija (por defecto 0:45, entre 0:05 y 2:00), y cada tarea siguiente
+    // empieza justo cuando termina la anterior -- todas con la misma
+    // duración. El orden es el mismo en que aparecen ahora mismo en el
+    // árbol (de arriba abajo), no el orden en que se marcaron los checkbox.
+
+    function formatearDatetimeLocalInput(fecha) {
+      const pad = n => String(n).padStart(2, '0');
+      return `${fecha.getFullYear()}-${pad(fecha.getMonth() + 1)}-${pad(fecha.getDate())}T${pad(fecha.getHours())}:${pad(fecha.getMinutes())}`;
+    }
+
+    // Ids seleccionados, en el mismo orden en que aparecen ahora mismo
+    // pintados en el árbol (de arriba abajo) -- así "cascada" sigue el
+    // orden visual, sea cual sea el orden en que se fueron marcando.
+    function idsSeleccionadosEnOrdenVisual() {
+      return [...document.querySelectorAll('li.nodo')]
+        .map(li => li.id.replace(/^li-/, ''))
+        .filter(id => nodosSeleccionados.has(id));
+    }
+
+    function abrirModalFechasCascada() {
+      document.getElementById('fc-contador').textContent = `Se aplicará a ${nodosSeleccionados.size} tarea(s) seleccionada(s), en el orden en que aparecen en el árbol.`;
+      document.getElementById('fc-inicio').value = '';
+      document.getElementById('fc-duracion').value = '45';
+      document.getElementById('fc-previsualizacion').style.display = 'none';
+      document.getElementById('fc-estado').textContent = '';
+      document.getElementById('modal-fechas-cascada').style.display = 'flex';
+      document.getElementById('fc-inicio').oninput = actualizarPrevisualizacionFechasCascada;
+      document.getElementById('fc-duracion').onchange = actualizarPrevisualizacionFechasCascada;
+    }
+
+    function cerrarModalFechasCascada() {
+      document.getElementById('modal-fechas-cascada').style.display = 'none';
+    }
+
+    function actualizarPrevisualizacionFechasCascada() {
+      const previa = document.getElementById('fc-previsualizacion');
+      const inicioVal = document.getElementById('fc-inicio').value;
+      const n = nodosSeleccionados.size;
+      if (!inicioVal || n === 0) { previa.style.display = 'none'; return; }
+      const duracionMin = parseInt(document.getElementById('fc-duracion').value, 10);
+      const finUltima = new Date(new Date(inicioVal).getTime() + duracionMin * n * 60000);
+      previa.textContent = `La última de las ${n} terminará el ${formatearFechaHora(formatearDatetimeLocalInput(finUltima))}.`;
+      previa.style.display = 'block';
+    }
+
+    async function confirmarFechasCascada() {
+      const estadoEl = document.getElementById('fc-estado');
+      const inicioVal = document.getElementById('fc-inicio').value;
+      if (!inicioVal) {
+        estadoEl.textContent = 'Indica la fecha/hora de inicio de la primera tarea.';
+        estadoEl.className = 'estado-msg error';
+        return;
+      }
+      const duracionMin = parseInt(document.getElementById('fc-duracion').value, 10);
+      const ids = idsSeleccionadosEnOrdenVisual();
+      if (ids.length === 0) {
+        estadoEl.textContent = 'No hay tareas seleccionadas.';
+        estadoEl.className = 'estado-msg error';
+        return;
+      }
+
+      const btn = document.querySelector('#modal-fechas-cascada .overlay-botones button:last-child');
+      btn.disabled = true;
+      let cursor = new Date(inicioVal);
+      let hechos = 0;
+      const errores = [];
+
+      for (const id of ids) {
+        const nodo = mapaNodoPorId[id];
+        const inicioStr = formatearDatetimeLocalInput(cursor);
+        const finCursor = new Date(cursor.getTime() + duracionMin * 60000);
+        const finStr = formatearDatetimeLocalInput(finCursor);
+        estadoEl.textContent = `Aplicando (${hechos + errores.length + 1}/${ids.length})...`;
+        const { error } = await supabaseClient.rpc('establecer_fechas_previstas', {
+          p_node_id: id, p_fecha_inicio: inicioStr, p_fecha_fin: finStr,
+          p_motivo_categoria: null, p_motivo_detalle: null
+        });
+        if (error) errores.push(`${nodo?.codigo || id}: ${traducirError(error.message)}`);
+        else hechos++;
+        cursor = finCursor;
+      }
+
+      btn.disabled = false;
+      registrarLog('FECHAS_PREVISTAS', `Fechas previstas en cascada sobre ${ids.length} tarea(s) desde ${inicioVal} (${duracionMin} min c/u) — ${hechos} ok${errores.length ? `, ${errores.length} fallaron` : ''}`);
+
+      if (errores.length > 0) {
+        estadoEl.innerHTML = `Hecho ${hechos} de ${ids.length}. Fallaron ${errores.length}:<br>` + errores.map(e => `• ${e}`).join('<br>');
+        estadoEl.className = 'estado-msg error';
+        await cargarArbol();
+        return;
+      }
+
+      estadoEl.textContent = '';
+      cerrarModalFechasCascada();
+      nodosSeleccionados.clear();
+      modoSeleccion = false;
+      document.getElementById('chk-modo-seleccion').checked = false;
+      actualizarBarraSeleccion();
+      await cargarArbol();
+    }
+
     // -------------------- Dependencias entre tareas --------------------
 
     let nodoDependenciasActual = null;
@@ -5699,6 +5834,7 @@
       document.getElementById('texto-seleccion').textContent = `${nodosSeleccionados.size} tarea(s) seleccionada(s)`;
       document.getElementById('btn-asignar-masivo').style.display = esGestor() ? 'inline-block' : 'none';
       document.getElementById('btn-estado-masivo').style.display = puedeSeleccionarBasico() ? 'inline-block' : 'none';
+      document.getElementById('btn-fechas-cascada-masivo').style.display = esGestor() ? 'inline-block' : 'none';
       document.getElementById('btn-anadir-masivo').style.display = esGestor() ? 'inline-block' : 'none';
       document.getElementById('btn-desactivar-masivo').style.display = esGestor() ? 'inline-block' : 'none';
       document.getElementById('btn-bloquear-masivo').style.display = esGestor() ? 'inline-block' : 'none';
