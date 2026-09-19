@@ -360,17 +360,27 @@
       <div class="menu-seccion-titulo" data-menu-seccion="navegacion" onclick="toggleSeccionMenu(this)">Navegación <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
         <a class="menu-item" href="index.html">🏠 Inicio</a>
+        <div class="menu-item-expandible" onclick="toggleSubmenuFlotante(event, this, 'submenu-idiomas')">🌐 Idiomas <span class="flecha-menu">›</span></div>
+        <div class="menu-submenu-contenido" id="submenu-idiomas">
+          <span class="menu-item" onclick="mostrarIdiomaEnDesarrollo('brasileno')">🇧🇷 Brasileño</span>
+          <span class="menu-item" onclick="mostrarIdiomaEnDesarrollo('coreano')">🇰🇷 Coreano</span>
+          <span class="menu-item" onclick="mostrarIdiomaEnDesarrollo('espanol')">🇪🇸 Español</span>
+          <span class="menu-item" onclick="mostrarIdiomaEnDesarrollo('ingles')">🇬🇧 Inglés</span>
+        </div>
         <a class="menu-item solo-escritorio" id="menu-link-log" href="log.html" style="display:none;">🗒️ Logs</a>
         <a class="menu-item solo-escritorio" id="menu-link-log-comunicaciones" href="log_comunicaciones.html" style="display:none;">📡 Comunicaciones</a>
         <span class="menu-item solo-escritorio" id="menu-item-buque" onclick="esInvitado() ? mostrarAvisoModal('Eres un usuario Invitado: solo puedes consultar, no puedes realizar cambios.') : abrirModalCrear(null, 'BUQUE')" style="display:none;">+ Añadir Buque</span>
         <span class="menu-item solo-escritorio" id="menu-item-pegar-buque-raiz" onclick="esInvitado() ? mostrarAvisoModal('Eres un usuario Invitado: solo puedes consultar, no puedes realizar cambios.') : abrirModalPegarRama(null)" style="display:none;">📌 Pegar buque copiado</span>
         <div class="menu-item-expandible" onclick="toggleSubmenuFlotante(event, this, 'submenu-resumen')">📊 Resumen <span class="flecha-menu">›</span></div>
         <div class="menu-submenu-contenido" id="submenu-resumen">
-          <a class="menu-item" data-solo-gestor href="avances.html">📉 Avances</a>
+          <a class="menu-item" id="menu-item-alertas" href="resumen.html" style="display:none;" title="Tareas retrasadas y usuarios con demasiada carga hoy — detalle en Resumen">⚠️ Alertas<span id="badge-alertas" style="display:none; background:#dc3545; color:#fff; border-radius:10px; padding:1px 7px; font-size:11px; font-weight:bold; margin-left:6px;"></span></a>
           <a class="menu-item" data-solo-gestor href="avancehitos.html">🎯 Avance vs hitos</a>
+          <a class="menu-item" data-solo-gestor href="avances.html">📉 Avances</a>
           <a class="menu-item" href="cambiosmodelo.html">🔧 Cambios de modelo</a>
           <a class="menu-item" data-solo-gestor href="cargatrabajo.html">👷 Carga de trabajo</a>
           <a class="menu-item" href="revision.html">⏳ Cola de revisión</a>
+          <a class="menu-item" id="menu-link-gantt" href="gantt.html" style="display:none;">🗓️ Gantt</a>
+          <a class="menu-item" id="menu-link-hitos" href="hitos.html" style="display:none;">🎯 Hitos</a>
           <a class="menu-item" data-solo-gestor href="kpi.html">📈 KPIs</a>
           <a class="menu-item" href="pendientedudas.html">❓ Pendiente de dudas</a>
           <a class="menu-item" data-solo-gestor href="previsioncarga.html">📅 Previsión de carga</a>
@@ -379,7 +389,6 @@
           <a class="menu-item" href="sinasignar.html">🚫 Sin asignar</a>
         </div>
         <a class="menu-item" href="kanban.html">🗂️ Kanban</a>
-        <a class="menu-item" id="menu-item-alertas" href="resumen.html" style="display:none;" title="Tareas retrasadas y usuarios con demasiada carga hoy — detalle en Resumen">⚠️ Alertas<span id="badge-alertas" style="display:none; background:#dc3545; color:#fff; border-radius:10px; padding:1px 7px; font-size:11px; font-weight:bold; margin-left:6px;"></span></a>
         <span class="menu-item" id="menu-item-resumen-comentarios" onclick="abrirResumenComentariosModelo()" style="display:none;">📋 Comentarios pendientes de modelo<span id="badge-comentarios-pendientes" style="display:none; background:#dc3545; color:#fff; border-radius:10px; padding:1px 7px; font-size:11px; font-weight:bold; margin-left:6px;"></span></span>
         <a class="menu-item solo-escritorio" id="menu-link-usuarios" href="usuarios.html" style="display:none;">👤 Usuarios</a>
         <a class="menu-item solo-escritorio" id="menu-link-admin" href="admin.html" style="display:none;">🛠️ Panel de administración</a>
@@ -408,14 +417,17 @@
 
       <div class="menu-seccion-titulo" data-menu-seccion="bloques" onclick="toggleSeccionMenu(this)">Bloques <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
-        <span class="menu-item" onclick="encogerTodo()">⏫ Contraer todo</span>
-        <span class="menu-item" onclick="expandirTodo()">⏬ Expandir todo</span>
-        <span class="menu-item" onclick="expandirSinSubbloques()">⏬ Expandir (sin Subbloques)</span>
-        <span class="menu-item" onclick="expandirSoloBloques()">⏬ Expandir solo bloques</span>
-        <span class="menu-item" onclick="abrirModalExpandirPorBloque()">⏬ Expandir por bloque</span>
-        <label class="menu-item">
-          <input type="checkbox" id="chk-vista-simple" onchange="toggleVistaSimplificada()"> 🎨 Vista simplificada (solo colores)
-        </label>
+        <div class="menu-item-expandible" onclick="toggleSubmenuFlotante(event, this, 'submenu-bloques')">🧱 Bloques <span class="flecha-menu">›</span></div>
+        <div class="menu-submenu-contenido" id="submenu-bloques">
+          <span class="menu-item" onclick="encogerTodo()">⏫ Contraer todo</span>
+          <span class="menu-item" onclick="expandirTodo()">⏬ Expandir todo</span>
+          <span class="menu-item" onclick="expandirSinSubbloques()">⏬ Expandir (sin Subbloques)</span>
+          <span class="menu-item" onclick="expandirSoloBloques()">⏬ Expandir solo bloques</span>
+          <span class="menu-item" onclick="abrirModalExpandirPorBloque()">⏬ Expandir por bloque</span>
+          <label class="menu-item">
+            <input type="checkbox" id="chk-vista-simple" onchange="toggleVistaSimplificada()"> 🎨 Vista simplificada (solo colores)
+          </label>
+        </div>
       </div>
 
       <div class="menu-seccion-titulo" data-menu-seccion="filtros" onclick="toggleSeccionMenu(this)">Filtros <span class="flecha-menu">›</span></div>
@@ -459,8 +471,6 @@
         <label class="menu-item" id="wrap-tiempos" style="display:none;">
           <input type="checkbox" id="chk-tiempos" onchange="toggleTiempos()"> ⏱️ Tiempos
         </label>
-        <a class="menu-item" id="menu-link-gantt" href="gantt.html" target="_blank" style="display:none;">🗓️ Gantt</a>
-        <a class="menu-item" id="menu-link-hitos" href="hitos.html" target="_blank" style="display:none;">🎯 Hitos</a>
         <a class="menu-item" id="menu-link-importar" href="importar.html" target="_blank" style="display:none;">📥 Importar Excel</a>
         <a class="menu-item" id="menu-link-duplicados" href="duplicados.html" target="_blank" style="display:none;">🔍 Comprobar duplicados</a>
         <span class="menu-item" id="menu-item-exportar-excel" onclick="exportarArbolExcel()" style="display:none;">⬇ Exportar árbol a Excel</span>
@@ -1601,6 +1611,31 @@
 
       submenu.classList.add('abierta');
       titulo.classList.add('abierta');
+    }
+
+    // Los menús desplegables flotantes se sacan a document.body al abrirse
+    // (ver arriba), así que dejan de estar "dentro" del menú lateral o de su
+    // fondo oscuro: un clic en el área de trabajo (sobre todo con el menú
+    // fijo a la izquierda, donde no hay fondo oscuro que capture el clic)
+    // no los cerraba. Este listener global los cierra al clicar en
+    // cualquier sitio que no sea el propio submenú abierto ni su opción raíz
+    // (clicar dentro del submenú, p.ej. varias acciones seguidas de
+    // Bloques, no lo cierra).
+    document.addEventListener('click', function(event) {
+      if (!document.querySelector('.menu-submenu-contenido.abierta')) return;
+      if (event.target.closest && (event.target.closest('.menu-submenu-contenido') || event.target.closest('.menu-item-expandible'))) return;
+      cerrarSubmenusFlotantes();
+    });
+
+    function mostrarIdiomaEnDesarrollo(idioma) {
+      const mensajes = {
+        espanol: 'En desarrollo',
+        ingles: 'Under development',
+        coreano: '개발 중입니다',
+        brasileno: 'Em desenvolvimento'
+      };
+      cerrarSubmenusFlotantes();
+      mostrarAvisoModal(mensajes[idioma] || 'En desarrollo');
     }
 
     function ajustarAlturaArbol() {
