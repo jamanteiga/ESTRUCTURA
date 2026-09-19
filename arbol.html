@@ -359,140 +359,140 @@
       <div class="menu-redimensionar" id="menu-redimensionar" title="Arrastra para hacer el menú más ancho o más estrecho"></div>
 
       <div class="menu-buscador-wrap">
-        <input type="text" id="buscador" placeholder="🔍 ¿Qué estás buscando?">
+        <input type="text" id="buscador" data-i18n-placeholder="buscador.placeholder" placeholder="🔍 ¿Qué estás buscando?">
       </div>
 
-      <div class="menu-seccion-titulo" data-menu-seccion="navegacion" onclick="toggleSeccionMenu(this)">Navegación <span class="flecha-menu">›</span></div>
+      <div class="menu-seccion-titulo" data-menu-seccion="navegacion" onclick="toggleSeccionMenu(this)"><span data-i18n="menu.navegacion.titulo">Navegación</span> <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
-        <a class="menu-item" href="index.html">🏠 Inicio</a>
-        <div class="menu-item-expandible" onclick="toggleSubmenuFlotante(event, this, 'submenu-idiomas')">🌐 Idiomas <span class="flecha-menu">›</span></div>
+        <a class="menu-item" href="index.html">🏠 <span data-i18n="nav.inicio">Inicio</span></a>
+        <div class="menu-item-expandible" onclick="toggleSubmenuFlotante(event, this, 'submenu-idiomas')">🌐 <span data-i18n="nav.idiomas">Idiomas</span> <span class="flecha-menu">›</span></div>
         <div class="menu-submenu-contenido" id="submenu-idiomas">
-          <span class="menu-item" onclick="mostrarIdiomaEnDesarrollo('brasileno')"><svg class="bandera-idioma" viewBox="0 0 30 20" aria-hidden="true"><rect width="30" height="20" fill="#009B3A"/><polygon points="15,3 27,10 15,17 3,10" fill="#FEDF00"/><circle cx="15" cy="10" r="5" fill="#002776"/></svg> Brasileño</span>
-          <span class="menu-item" onclick="mostrarIdiomaEnDesarrollo('coreano')"><svg class="bandera-idioma" viewBox="0 0 30 20" aria-hidden="true"><rect width="30" height="20" fill="#FFFFFF"/><g transform="translate(15,10) rotate(-90)"><path d="M0,-5 A5,5 0 0 1 0,5 A2.5,2.5 0 0 1 0,0 A2.5,2.5 0 0 1 0,-5 Z" fill="#CD2E3A"/><path d="M0,-5 A5,5 0 0 0 0,5 A2.5,2.5 0 0 0 0,0 A2.5,2.5 0 0 0 0,-5 Z" fill="#0047A0"/></g><g stroke="#000" stroke-width="0.7"><line x1="2.5" y1="2.5" x2="7" y2="2.5"/><line x1="2.5" y1="4" x2="7" y2="4"/><line x1="2.5" y1="5.5" x2="7" y2="5.5"/><line x1="23" y1="14.5" x2="27.5" y2="14.5"/><line x1="23" y1="16" x2="27.5" y2="16"/><line x1="23" y1="17.5" x2="27.5" y2="17.5"/></g></svg> Coreano</span>
-          <span class="menu-item" onclick="mostrarIdiomaEnDesarrollo('espanol')"><svg class="bandera-idioma" viewBox="0 0 30 20" aria-hidden="true"><rect width="30" height="20" fill="#AD1519"/><rect y="5" width="30" height="10" fill="#FABD00"/></svg> Español</span>
-          <span class="menu-item" onclick="mostrarIdiomaEnDesarrollo('gallego')"><svg class="bandera-idioma" viewBox="0 0 30 20" aria-hidden="true"><rect width="30" height="20" fill="#FFFFFF"/><rect x="-6" y="8" width="42" height="4.5" fill="#0090C8" transform="rotate(-33.7 15 10)"/></svg> Gallego</span>
-          <span class="menu-item" onclick="mostrarIdiomaEnDesarrollo('ingles')"><svg class="bandera-idioma" viewBox="0 0 30 20" aria-hidden="true"><rect width="30" height="20" fill="#00247D"/><path d="M0,0 L30,20 M30,0 L0,20" stroke="#FFFFFF" stroke-width="4"/><path d="M0,0 L13,8.6 M17,8.6 L30,0" stroke="#CF142B" stroke-width="1.6"/><path d="M0,20 L13,11.4 M17,11.4 L30,20" stroke="#CF142B" stroke-width="1.6"/><rect x="12" width="6" height="20" fill="#FFFFFF"/><rect y="7" width="30" height="6" fill="#FFFFFF"/><rect x="13.2" width="3.6" height="20" fill="#CF142B"/><rect y="8.2" width="30" height="3.6" fill="#CF142B"/></svg> Inglés</span>
+          <span class="menu-item" onclick="cambiarIdioma('pt')"><svg class="bandera-idioma" viewBox="0 0 30 20" aria-hidden="true"><rect width="30" height="20" fill="#009B3A"/><polygon points="15,3 27,10 15,17 3,10" fill="#FEDF00"/><circle cx="15" cy="10" r="5" fill="#002776"/></svg> Brasileño <span class="idioma-check" data-idioma="pt" style="visibility:hidden;">✓</span></span>
+          <span class="menu-item" onclick="cambiarIdioma('ko')"><svg class="bandera-idioma" viewBox="0 0 30 20" aria-hidden="true"><rect width="30" height="20" fill="#FFFFFF"/><g transform="translate(15,10) rotate(-90)"><path d="M0,-5 A5,5 0 0 1 0,5 A2.5,2.5 0 0 1 0,0 A2.5,2.5 0 0 1 0,-5 Z" fill="#CD2E3A"/><path d="M0,-5 A5,5 0 0 0 0,5 A2.5,2.5 0 0 0 0,0 A2.5,2.5 0 0 0 0,-5 Z" fill="#0047A0"/></g><g stroke="#000" stroke-width="0.7"><line x1="2.5" y1="2.5" x2="7" y2="2.5"/><line x1="2.5" y1="4" x2="7" y2="4"/><line x1="2.5" y1="5.5" x2="7" y2="5.5"/><line x1="23" y1="14.5" x2="27.5" y2="14.5"/><line x1="23" y1="16" x2="27.5" y2="16"/><line x1="23" y1="17.5" x2="27.5" y2="17.5"/></g></svg> Coreano <span class="idioma-check" data-idioma="ko" style="visibility:hidden;">✓</span></span>
+          <span class="menu-item" onclick="cambiarIdioma('es')"><svg class="bandera-idioma" viewBox="0 0 30 20" aria-hidden="true"><rect width="30" height="20" fill="#AD1519"/><rect y="5" width="30" height="10" fill="#FABD00"/></svg> Español <span class="idioma-check" data-idioma="es" style="visibility:hidden;">✓</span></span>
+          <span class="menu-item" onclick="cambiarIdioma('gl')"><svg class="bandera-idioma" viewBox="0 0 30 20" aria-hidden="true"><rect width="30" height="20" fill="#FFFFFF"/><rect x="-6" y="8" width="42" height="4.5" fill="#0090C8" transform="rotate(-33.7 15 10)"/></svg> Gallego <span class="idioma-check" data-idioma="gl" style="visibility:hidden;">✓</span></span>
+          <span class="menu-item" onclick="cambiarIdioma('en')"><svg class="bandera-idioma" viewBox="0 0 30 20" aria-hidden="true"><rect width="30" height="20" fill="#00247D"/><path d="M0,0 L30,20 M30,0 L0,20" stroke="#FFFFFF" stroke-width="4"/><path d="M0,0 L13,8.6 M17,8.6 L30,0" stroke="#CF142B" stroke-width="1.6"/><path d="M0,20 L13,11.4 M17,11.4 L30,20" stroke="#CF142B" stroke-width="1.6"/><rect x="12" width="6" height="20" fill="#FFFFFF"/><rect y="7" width="30" height="6" fill="#FFFFFF"/><rect x="13.2" width="3.6" height="20" fill="#CF142B"/><rect y="8.2" width="30" height="3.6" fill="#CF142B"/></svg> Inglés <span class="idioma-check" data-idioma="en" style="visibility:hidden;">✓</span></span>
         </div>
-        <a class="menu-item solo-escritorio" id="menu-link-log" href="log.html" style="display:none;">🗒️ Logs</a>
-        <a class="menu-item solo-escritorio" id="menu-link-log-comunicaciones" href="log_comunicaciones.html" style="display:none;">📡 Comunicaciones</a>
-        <span class="menu-item solo-escritorio" id="menu-item-buque" onclick="esInvitado() ? mostrarAvisoModal('Eres un usuario Invitado: solo puedes consultar, no puedes realizar cambios.') : abrirModalCrear(null, 'BUQUE')" style="display:none;">+ Añadir Buque</span>
-        <span class="menu-item solo-escritorio" id="menu-item-pegar-buque-raiz" onclick="esInvitado() ? mostrarAvisoModal('Eres un usuario Invitado: solo puedes consultar, no puedes realizar cambios.') : abrirModalPegarRama(null)" style="display:none;">📌 Pegar buque copiado</span>
-        <div class="menu-item-expandible" onclick="toggleSubmenuFlotante(event, this, 'submenu-resumen')">📊 Resumen <span class="flecha-menu">›</span></div>
+        <a class="menu-item solo-escritorio" id="menu-link-log" href="log.html" style="display:none;">🗒️ <span data-i18n="nav.logs">Logs</span></a>
+        <a class="menu-item solo-escritorio" id="menu-link-log-comunicaciones" href="log_comunicaciones.html" style="display:none;">📡 <span data-i18n="nav.comunicaciones">Comunicaciones</span></a>
+        <span class="menu-item solo-escritorio" id="menu-item-buque" onclick="esInvitado() ? mostrarAvisoModal('Eres un usuario Invitado: solo puedes consultar, no puedes realizar cambios.') : abrirModalCrear(null, 'BUQUE')" style="display:none;">+ <span data-i18n="nav.anadirBuque">Añadir Buque</span></span>
+        <span class="menu-item solo-escritorio" id="menu-item-pegar-buque-raiz" onclick="esInvitado() ? mostrarAvisoModal('Eres un usuario Invitado: solo puedes consultar, no puedes realizar cambios.') : abrirModalPegarRama(null)" style="display:none;">📌 <span data-i18n="nav.pegarBuque">Pegar buque copiado</span></span>
+        <div class="menu-item-expandible" onclick="toggleSubmenuFlotante(event, this, 'submenu-resumen')">📊 <span data-i18n="nav.resumen">Resumen</span> <span class="flecha-menu">›</span></div>
         <div class="menu-submenu-contenido" id="submenu-resumen">
-          <a class="menu-item" id="menu-item-alertas" href="resumen.html" style="display:none;" title="Tareas retrasadas y usuarios con demasiada carga hoy — detalle en Resumen">⚠️ Alertas<span id="badge-alertas" style="display:none; background:#dc3545; color:#fff; border-radius:10px; padding:1px 7px; font-size:11px; font-weight:bold; margin-left:6px;"></span></a>
-          <a class="menu-item" data-solo-gestor href="avancehitos.html">🎯 Avance vs hitos</a>
-          <a class="menu-item" data-solo-gestor href="avances.html">📉 Avances</a>
-          <a class="menu-item" href="cambiosmodelo.html">🔧 Cambios de modelo</a>
-          <a class="menu-item" data-solo-gestor href="cargatrabajo.html">👷 Carga de trabajo</a>
-          <a class="menu-item" href="revision.html">⏳ Cola de revisión</a>
-          <a class="menu-item" id="menu-link-gantt" href="gantt.html" style="display:none;">🗓️ Gantt</a>
-          <a class="menu-item" id="menu-link-hitos" href="hitos.html" style="display:none;">🎯 Hitos</a>
-          <a class="menu-item" data-solo-gestor href="kpi.html">📈 KPIs</a>
-          <a class="menu-item" href="pendientedudas.html">❓ Pendiente de dudas</a>
-          <a class="menu-item" data-solo-gestor href="previsioncarga.html">📅 Previsión de carga</a>
-          <a class="menu-item" href="rechazados.html">✘ Rechazados</a>
-          <a class="menu-item" href="resumen.html">📊 Resumen general</a>
-          <a class="menu-item" href="sinasignar.html">🚫 Sin asignar</a>
+          <a class="menu-item" id="menu-item-alertas" href="resumen.html" style="display:none;" title="Tareas retrasadas y usuarios con demasiada carga hoy — detalle en Resumen">⚠️ <span data-i18n="resumen.alertas">Alertas</span><span id="badge-alertas" style="display:none; background:#dc3545; color:#fff; border-radius:10px; padding:1px 7px; font-size:11px; font-weight:bold; margin-left:6px;"></span></a>
+          <a class="menu-item" data-solo-gestor href="avancehitos.html">🎯 <span data-i18n="resumen.avanceHitos">Avance vs hitos</span></a>
+          <a class="menu-item" data-solo-gestor href="avances.html">📉 <span data-i18n="resumen.avances">Avances</span></a>
+          <a class="menu-item" href="cambiosmodelo.html">🔧 <span data-i18n="resumen.cambiosModelo">Cambios de modelo</span></a>
+          <a class="menu-item" data-solo-gestor href="cargatrabajo.html">👷 <span data-i18n="resumen.cargaTrabajo">Carga de trabajo</span></a>
+          <a class="menu-item" href="revision.html">⏳ <span data-i18n="resumen.colaRevision">Cola de revisión</span></a>
+          <a class="menu-item" id="menu-link-gantt" href="gantt.html" style="display:none;">🗓️ <span data-i18n="resumen.gantt">Gantt</span></a>
+          <a class="menu-item" id="menu-link-hitos" href="hitos.html" style="display:none;">🎯 <span data-i18n="resumen.hitos">Hitos</span></a>
+          <a class="menu-item" data-solo-gestor href="kpi.html">📈 <span data-i18n="resumen.kpis">KPIs</span></a>
+          <a class="menu-item" href="pendientedudas.html">❓ <span data-i18n="resumen.pendienteDudas">Pendiente de dudas</span></a>
+          <a class="menu-item" data-solo-gestor href="previsioncarga.html">📅 <span data-i18n="resumen.previsionCarga">Previsión de carga</span></a>
+          <a class="menu-item" href="rechazados.html">✘ <span data-i18n="resumen.rechazados">Rechazados</span></a>
+          <a class="menu-item" href="resumen.html">📊 <span data-i18n="resumen.resumenGeneral">Resumen general</span></a>
+          <a class="menu-item" href="sinasignar.html">🚫 <span data-i18n="resumen.sinAsignar">Sin asignar</span></a>
         </div>
-        <a class="menu-item" href="kanban.html">🗂️ Kanban</a>
-        <span class="menu-item" id="menu-item-resumen-comentarios" onclick="abrirResumenComentariosModelo()" style="display:none;">📋 Comentarios pendientes de modelo<span id="badge-comentarios-pendientes" style="display:none; background:#dc3545; color:#fff; border-radius:10px; padding:1px 7px; font-size:11px; font-weight:bold; margin-left:6px;"></span></span>
-        <a class="menu-item solo-escritorio" id="menu-link-usuarios" href="usuarios.html" style="display:none;">👤 Usuarios</a>
-        <a class="menu-item solo-escritorio" id="menu-link-admin" href="admin.html" style="display:none;">🛠️ Panel de administración</a>
-        <div class="menu-item-expandible solo-escritorio" id="menu-item-backup" onclick="toggleSubmenuFlotante(event, this, 'submenu-backup')" style="display:none;">💾 Backup <span class="flecha-menu">›</span></div>
+        <a class="menu-item" href="kanban.html">🗂️ <span data-i18n="nav.kanban">Kanban</span></a>
+        <span class="menu-item" id="menu-item-resumen-comentarios" onclick="abrirResumenComentariosModelo()" style="display:none;">📋 <span data-i18n="nav.comentariosPendientes">Comentarios pendientes de modelo</span><span id="badge-comentarios-pendientes" style="display:none; background:#dc3545; color:#fff; border-radius:10px; padding:1px 7px; font-size:11px; font-weight:bold; margin-left:6px;"></span></span>
+        <a class="menu-item solo-escritorio" id="menu-link-usuarios" href="usuarios.html" style="display:none;">👤 <span data-i18n="nav.usuarios">Usuarios</span></a>
+        <a class="menu-item solo-escritorio" id="menu-link-admin" href="admin.html" style="display:none;">🛠️ <span data-i18n="nav.panelAdmin">Panel de administración</span></a>
+        <div class="menu-item-expandible solo-escritorio" id="menu-item-backup" onclick="toggleSubmenuFlotante(event, this, 'submenu-backup')" style="display:none;">💾 <span data-i18n="nav.backup">Backup</span> <span class="flecha-menu">›</span></div>
         <div class="menu-submenu-contenido solo-escritorio" id="submenu-backup">
           <span class="menu-item">Cargando buques...</span>
         </div>
-        <span class="menu-item" onclick="cerrarSesion()">🚪 Cerrar sesión</span>
+        <span class="menu-item" onclick="cerrarSesion()">🚪 <span data-i18n="nav.cerrarSesion">Cerrar sesión</span></span>
       </div>
 
       <!-- Mejoras para el Usuario (Trabajador): solo visible para ese rol. -->
       <div id="grupo-menu-mi-trabajo" style="display:none;">
-        <div class="menu-seccion-titulo" data-menu-seccion="mi-trabajo" onclick="toggleSeccionMenu(this)">Mi trabajo <span class="flecha-menu">›</span></div>
+        <div class="menu-seccion-titulo" data-menu-seccion="mi-trabajo" onclick="toggleSeccionMenu(this)"><span data-i18n="menu.miTrabajo.titulo">Mi trabajo</span> <span class="flecha-menu">›</span></div>
         <div class="menu-seccion-contenido">
-          <span class="menu-item" onclick="abrirMiListaHoy()">📋 Mi lista de hoy</span>
-          <span class="menu-item" onclick="abrirMiHistorial()">📊 Mi historial</span>
-          <span class="menu-item" onclick="abrirPanelFavoritos()">⭐ Favoritas y recientes</span>
+          <span class="menu-item" onclick="abrirMiListaHoy()">📋 <span data-i18n="mitrabajo.listaHoy">Mi lista de hoy</span></span>
+          <span class="menu-item" onclick="abrirMiHistorial()">📊 <span data-i18n="mitrabajo.historial">Mi historial</span></span>
+          <span class="menu-item" onclick="abrirPanelFavoritos()">⭐ <span data-i18n="mitrabajo.favoritas">Favoritas y recientes</span></span>
           <label class="menu-item">
-            <input type="checkbox" id="chk-avisos-rechazo" onchange="alternarAvisosRechazo()"> 🔔 Avisarme si me rechazan una tarea
+            <input type="checkbox" id="chk-avisos-rechazo" onchange="alternarAvisosRechazo()"> 🔔 <span data-i18n="mitrabajo.avisoRechazo">Avisarme si me rechazan una tarea</span>
           </label>
           <label class="menu-item">
-            <input type="checkbox" id="chk-modo-ligero" onchange="toggleModoLigero()"> 🪶 Modo ligero para el taller
+            <input type="checkbox" id="chk-modo-ligero" onchange="toggleModoLigero()"> 🪶 <span data-i18n="mitrabajo.modoLigero">Modo ligero para el taller</span>
           </label>
         </div>
       </div>
 
-      <div class="menu-seccion-titulo" data-menu-seccion="bloques" onclick="toggleSeccionMenu(this)">Bloques <span class="flecha-menu">›</span></div>
+      <div class="menu-seccion-titulo" data-menu-seccion="bloques" onclick="toggleSeccionMenu(this)"><span data-i18n="menu.bloques.titulo">Bloques</span> <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
-        <div class="menu-item-expandible" onclick="toggleSubmenuFlotante(event, this, 'submenu-bloques')">🧱 Bloques <span class="flecha-menu">›</span></div>
+        <div class="menu-item-expandible" onclick="toggleSubmenuFlotante(event, this, 'submenu-bloques')">🧱 <span data-i18n="bloques.bloques">Bloques</span> <span class="flecha-menu">›</span></div>
         <div class="menu-submenu-contenido" id="submenu-bloques">
-          <span class="menu-item" onclick="encogerTodo()">⏫ Contraer todo</span>
-          <span class="menu-item" onclick="expandirTodo()">⏬ Expandir todo</span>
-          <span class="menu-item" onclick="expandirSinSubbloques()">⏬ Expandir (sin Subbloques)</span>
-          <span class="menu-item" onclick="expandirSoloBloques()">⏬ Expandir solo bloques</span>
-          <span class="menu-item" onclick="abrirModalExpandirPorBloque()">⏬ Expandir por bloque</span>
+          <span class="menu-item" onclick="encogerTodo()">⏫ <span data-i18n="bloques.contraerTodo">Contraer todo</span></span>
+          <span class="menu-item" onclick="expandirTodo()">⏬ <span data-i18n="bloques.expandirTodo">Expandir todo</span></span>
+          <span class="menu-item" onclick="expandirSinSubbloques()">⏬ <span data-i18n="bloques.expandirSinSub">Expandir (sin Subbloques)</span></span>
+          <span class="menu-item" onclick="expandirSoloBloques()">⏬ <span data-i18n="bloques.expandirSolo">Expandir solo bloques</span></span>
+          <span class="menu-item" onclick="abrirModalExpandirPorBloque()">⏬ <span data-i18n="bloques.expandirPorBloque">Expandir por bloque</span></span>
           <label class="menu-item">
-            <input type="checkbox" id="chk-vista-simple" onchange="toggleVistaSimplificada()"> 🎨 Vista simplificada (solo colores)
+            <input type="checkbox" id="chk-vista-simple" onchange="toggleVistaSimplificada()"> 🎨 <span data-i18n="bloques.vistaSimplificada">Vista simplificada (solo colores)</span>
           </label>
         </div>
       </div>
 
-      <div class="menu-seccion-titulo" data-menu-seccion="filtros" onclick="toggleSeccionMenu(this)">Filtros <span class="flecha-menu">›</span></div>
+      <div class="menu-seccion-titulo" data-menu-seccion="filtros" onclick="toggleSeccionMenu(this)"><span data-i18n="menu.filtros.titulo">Filtros</span> <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
         <label class="menu-item" id="wrap-mis-tareas" style="display:none;">
-          <input type="checkbox" id="chk-mis-tareas"> Ver solo mis tareas
+          <input type="checkbox" id="chk-mis-tareas"> <span data-i18n="filtros.misTareas">Ver solo mis tareas</span>
         </label>
         <label class="menu-item" id="wrap-filtro-usuario" style="display:none;">
-          <select id="sel-filtro-usuario"><option value="">Ver tareas de: Todos</option></select>
+          <select id="sel-filtro-usuario"><option value="" data-i18n="filtros.verTareasDe">Ver tareas de: Todos</option></select>
         </label>
         <label class="menu-item" id="wrap-filtro-estado" style="display:none;">
           <select id="sel-filtro-estado">
-            <option value="">Por estado: Todos</option>
-            <option value="sin_asignar">Sin asignar</option>
-            <option value="asignada_sin_empezar">Pendiente de hacer</option>
-            <option value="en_proceso">En proceso</option>
-            <option value="pendiente_revision">Pendiente de revisión</option>
-            <option value="pendiente_dudas">Pendiente de dudas</option>
-            <option value="pendiente_cambios_modelo">Pendiente de cambios de modelo</option>
-            <option value="aprobado">Aprobado</option>
-            <option value="rechazado">Rechazado</option>
-            <option value="mezcla">Estados mezclados</option>
+            <option value="" data-i18n="filtros.porEstadoTodos">Por estado: Todos</option>
+            <option value="sin_asignar" data-i18n="estado.sinAsignar">Sin asignar</option>
+            <option value="asignada_sin_empezar" data-i18n="estado.pendienteHacer">Pendiente de hacer</option>
+            <option value="en_proceso" data-i18n="estado.enProceso">En proceso</option>
+            <option value="pendiente_revision" data-i18n="estado.pendienteRevision">Pendiente de revisión</option>
+            <option value="pendiente_dudas" data-i18n="estado.pendienteDudas">Pendiente de dudas</option>
+            <option value="pendiente_cambios_modelo" data-i18n="estado.pendienteCambiosModelo">Pendiente de cambios de modelo</option>
+            <option value="aprobado" data-i18n="estado.aprobado">Aprobado</option>
+            <option value="rechazado" data-i18n="estado.rechazado">Rechazado</option>
+            <option value="mezcla" data-i18n="estado.mezcla">Estados mezclados</option>
           </select>
         </label>
         <label class="menu-item">
-          <input type="checkbox" id="chk-solo-bloqueados"> 🔒 Elementos bloqueados
+          <input type="checkbox" id="chk-solo-bloqueados"> 🔒 <span data-i18n="filtros.bloqueados">Elementos bloqueados</span>
         </label>
         <label class="menu-item" id="wrap-desactivados" style="display:none;">
-          <input type="checkbox" id="chk-desactivados"> Mostrar desactivados
+          <input type="checkbox" id="chk-desactivados"> <span data-i18n="filtros.mostrarDesactivados">Mostrar desactivados</span>
         </label>
       </div>
 
-      <div class="menu-seccion-titulo solo-escritorio" data-menu-seccion="herramientas" onclick="toggleSeccionMenu(this)">Herramientas <span class="flecha-menu">›</span></div>
+      <div class="menu-seccion-titulo solo-escritorio" data-menu-seccion="herramientas" onclick="toggleSeccionMenu(this)"><span data-i18n="menu.herramientas.titulo">Herramientas</span> <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido solo-escritorio">
         <label class="menu-item" id="wrap-modo-seleccion" style="display:none;">
-          <input type="checkbox" id="chk-modo-seleccion" onchange="toggleModoSeleccion()"> ☑️ Selección múltiple
+          <input type="checkbox" id="chk-modo-seleccion" onchange="toggleModoSeleccion()"> ☑️ <span data-i18n="herramientas.seleccionMultiple">Selección múltiple</span>
         </label>
         <label class="menu-item" id="wrap-avance" style="display:none;">
-          <input type="checkbox" id="chk-avance" onchange="toggleAvance()"> 📈 Avance
+          <input type="checkbox" id="chk-avance" onchange="toggleAvance()"> 📈 <span data-i18n="herramientas.avance">Avance</span>
         </label>
         <label class="menu-item" id="wrap-tiempos" style="display:none;">
-          <input type="checkbox" id="chk-tiempos" onchange="toggleTiempos()"> ⏱️ Tiempos
+          <input type="checkbox" id="chk-tiempos" onchange="toggleTiempos()"> ⏱️ <span data-i18n="herramientas.tiempos">Tiempos</span>
         </label>
-        <a class="menu-item" id="menu-link-importar" href="importar.html" target="_blank" style="display:none;">📥 Importar Excel</a>
-        <a class="menu-item" id="menu-link-duplicados" href="duplicados.html" target="_blank" style="display:none;">🔍 Comprobar duplicados</a>
-        <span class="menu-item" id="menu-item-exportar-excel" onclick="exportarArbolExcel()" style="display:none;">⬇ Exportar árbol a Excel</span>
+        <a class="menu-item" id="menu-link-importar" href="importar.html" target="_blank" style="display:none;">📥 <span data-i18n="herramientas.importarExcel">Importar Excel</span></a>
+        <a class="menu-item" id="menu-link-duplicados" href="duplicados.html" target="_blank" style="display:none;">🔍 <span data-i18n="herramientas.comprobarDuplicados">Comprobar duplicados</span></a>
+        <span class="menu-item" id="menu-item-exportar-excel" onclick="exportarArbolExcel()" style="display:none;">⬇ <span data-i18n="herramientas.exportarExcel">Exportar árbol a Excel</span></span>
         <label class="menu-item" id="wrap-papelera" style="display:none;">
-          <input type="checkbox" id="chk-papelera" onchange="togglePapelera()"> 🗑️ Ver papelera
+          <input type="checkbox" id="chk-papelera" onchange="togglePapelera()"> 🗑️ <span data-i18n="herramientas.verPapelera">Ver papelera</span>
         </label>
       </div>
 
-      <div class="menu-seccion-titulo" data-menu-seccion="apariencia" onclick="toggleSeccionMenu(this)">Apariencia <span class="flecha-menu">›</span></div>
+      <div class="menu-seccion-titulo" data-menu-seccion="apariencia" onclick="toggleSeccionMenu(this)"><span data-i18n="menu.apariencia.titulo">Apariencia</span> <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
-        <span class="menu-item" id="btn-alternar-tema" onclick="alternarTema()">🌙/☀️ Alternar tema</span>
+        <span class="menu-item" id="btn-alternar-tema" onclick="alternarTema()">🌙/☀️ <span data-i18n="apariencia.alternarTema">Alternar tema</span></span>
         <label class="menu-item">
-          <input type="radio" name="modo-menu" value="desplegable" id="radio-desplegable" checked> Desplegable
+          <input type="radio" name="modo-menu" value="desplegable" id="radio-desplegable" checked> <span data-i18n="apariencia.desplegable">Desplegable</span>
         </label>
         <label class="menu-item">
-          <input type="radio" name="modo-menu" value="fijo" id="radio-fijo"> Fijo en la izquierda
+          <input type="radio" name="modo-menu" value="fijo" id="radio-fijo"> <span data-i18n="apariencia.fijo">Fijo en la izquierda</span>
         </label>
       </div>
     </div>
@@ -1067,6 +1067,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="traducciones.js"></script>
+  <script src="i18n.js"></script>
   <script>
     const SUPABASE_URL = 'https://wuarkraddnndmgvfnkmm.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
@@ -1644,18 +1646,6 @@
       if (event.target.closest && (event.target.closest('.menu-submenu-contenido') || event.target.closest('.menu-item-expandible'))) return;
       cerrarSubmenusFlotantes();
     });
-
-    function mostrarIdiomaEnDesarrollo(idioma) {
-      const mensajes = {
-        espanol: 'En desarrollo',
-        ingles: 'Under development',
-        coreano: '개발 중입니다',
-        brasileno: 'Em desenvolvimento',
-        gallego: 'En desenvolvemento'
-      };
-      cerrarSubmenusFlotantes();
-      mostrarAvisoModal(mensajes[idioma] || 'En desarrollo');
-    }
 
     function ajustarAlturaArbol() {
       const contenedor = document.getElementById('card-arbol');
@@ -4084,7 +4074,7 @@
       // siendo editable, solo ahorra tener que volver a mirarla y
       // escribirla a mano.
       const idsActuales = idsSeleccionadosEnOrdenVisual();
-      document.getElementById('fc-contador').textContent = `Se aplicará a ${idsActuales.length} tarea(s) seleccionada(s) (no cuenta los nodos de documentación tipo Modelo/Plano de corte/Windchill), en el orden en que aparecen en el árbol.`;
+      document.getElementById('fc-contador').textContent = t('cascada.contador', { n: idsActuales.length });
       const primerNodo = idsActuales.length ? mapaNodoPorId[idsActuales[0]] : null;
       document.getElementById('fc-inicio').value = primerNodo?.fecha_inicio_prevista
         ? formatearDatetimeLocalInput(new Date(primerNodo.fecha_inicio_prevista))
