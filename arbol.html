@@ -478,6 +478,7 @@
           <input type="checkbox" id="chk-tiempos" onchange="toggleTiempos()"> ⏱️ <span data-i18n="herramientas.tiempos">Tiempos</span>
         </label>
         <a class="menu-item" id="menu-link-importar" href="importar.html" target="_blank" style="display:none;">📥 <span data-i18n="herramientas.importarExcel">Importar Excel</span></a>
+        <a class="menu-item" id="menu-link-importar-dna" href="importar_dna.html" target="_blank" style="display:none;">🧬 Importar Excel (ruta DNA)</a>
         <a class="menu-item" id="menu-link-duplicados" href="duplicados.html" target="_blank" style="display:none;">🔍 <span data-i18n="herramientas.comprobarDuplicados">Comprobar duplicados</span></a>
         <span class="menu-item" id="menu-item-exportar-excel" onclick="exportarArbolExcel()" style="display:none;">⬇ <span data-i18n="herramientas.exportarExcel">Exportar árbol a Excel</span></span>
         <label class="menu-item" id="wrap-papelera" style="display:none;">
@@ -1435,6 +1436,7 @@
         document.getElementById('wrap-tiempos').style.display = 'flex';
         document.getElementById('menu-link-gantt').style.display = 'flex';
         document.getElementById('menu-link-importar').style.display = 'flex';
+        document.getElementById('menu-link-importar-dna').style.display = 'flex';
         document.getElementById('menu-link-duplicados').style.display = 'flex';
         document.getElementById('menu-item-exportar-excel').style.display = 'flex';
       }
