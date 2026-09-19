@@ -136,10 +136,7 @@
     </div>
     <div class="no-imprimir">
       <button class="secundario" onclick="alternarTema()">🌙/☀️</button>
-      <button class="secundario" onclick="exportarExcel()">⬇ Exportar a Excel</button>
-      <button class="secundario" onclick="exportarPdf()">⬇ Exportar a PDF</button>
-      <button class="secundario" onclick="exportarProject()">⬇ Exportar a MS Project (.xml)</button>
-      <button class="secundario" onclick="exportarGanttProject()">⬇ Exportar a GanttProject (.gan)</button>
+      <button class="secundario" onclick="abrirModalExportarGantt()">⬇ Exportar Gantt</button>
       <button class="peligro" onclick="cerrarPagina()">❌ Cerrar</button>
     </div>
   </div>
@@ -168,6 +165,7 @@
     <button class="secundario" onclick="verTodoElBuqueGantt()">👁️ Ver todo</button>
     <button class="secundario" onclick="verSoloBloquesRaizGantt()">⬛ B-raíz</button>
     <button class="secundario" onclick="abrirModalHitos()">🚩 Hitos</button>
+    <button class="secundario" onclick="abrirModalRutaCritica()">🔺 Ruta crítica</button>
     <span id="badge-rama-filtrada" style="display:none; font-size:12px; background:#e9f7ec; color:#218838; padding:4px 8px; border-radius:10px;"></span>
   </div>
 
@@ -215,6 +213,30 @@
       <div class="overlay-botones">
         <button class="secundario" onclick="quitarFiltroRama()">Ver todo el Buque</button>
         <button class="secundario" onclick="cerrarModalVerRama()">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="modal-ruta-critica">
+    <div class="overlay-caja" style="max-width:560px;">
+      <h3>🔺 Ruta crítica de <span id="rutacritica-nombre-buque"></span></h3>
+      <p style="font-size:12px; color:#666; margin-top:-6px;">Secuencia de tareas sin holgura: si cualquiera de ellas se retrasa, se retrasa la fecha fin prevista del conjunto. Se calcula a partir de las fechas previstas (📅) y las dependencias entre tareas (🔗) del árbol.</p>
+      <div id="rutacritica-lista" style="max-height:400px; overflow-y:auto;"></div>
+      <div class="overlay-botones">
+        <button class="secundario" onclick="cerrarModalRutaCritica()">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="modal-exportar-gantt">
+    <div class="overlay-caja" style="max-width:420px;">
+      <h3>⬇ Exportar Gantt</h3>
+      <p style="font-size:12px; color:#666; margin-top:-6px;" id="exportar-carpeta-info"></p>
+      <div id="exportar-formatos-lista" style="display:flex; flex-direction:column; gap:6px; margin:10px 0;"></div>
+      <div class="estado-msg" id="exportar-gantt-estado"></div>
+      <div class="overlay-botones">
+        <button class="secundario" onclick="cambiarCarpetaExportacion()">📂 Elegir carpeta</button>
+        <button class="secundario" onclick="cerrarModalExportarGantt()">Cerrar</button>
       </div>
     </div>
   </div>
@@ -903,6 +925,36 @@
       return { criticos, holguras };
     }
 
+    // Popup "🔺 Ruta crítica": lista, en orden de inicio previsto, las
+    // tareas sin holgura (mismo cálculo que ya pinta el 🔺 y resalta filas
+    // en el Gantt) -- para verlas todas juntas sin tener que ir buscándolas
+    // una a una por el árbol.
+    function abrirModalRutaCritica() {
+      const resultado = calcularRutaCritica();
+      const nodos = [...resultado.criticos]
+        .map(id => mapaNodoPorId[id])
+        .filter(Boolean)
+        .sort((a, b) => new Date(a.fecha_inicio_prevista) - new Date(b.fecha_inicio_prevista));
+
+      document.getElementById('rutacritica-nombre-buque').textContent = nombreRaizActual();
+      const cont = document.getElementById('rutacritica-lista');
+      cont.innerHTML = nodos.length === 0
+        ? '<p style="font-size:13px; color:#888;">No hay ruta crítica que mostrar todavía. Hacen falta fechas previstas (📅 en el árbol) y dependencias entre tareas (🔗 en el árbol) para poder calcularla.</p>'
+        : nodos.map((n, i) => `
+          <div style="display:flex; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid #eee;">
+            <span style="flex-shrink:0; color:#6f42c1; font-weight:bold;">${i + 1}.</span>
+            <div style="flex:1; min-width:0;">
+              <strong>${n.codigo}</strong> ${n.nombre}
+              <div style="font-size:12px; color:#666;">${formatearFechaCorta(new Date(n.fecha_inicio_prevista))} → ${formatearFechaCorta(new Date(n.fecha_fin_prevista))}${n.trabajador_nombre ? ' · 👷 ' + n.trabajador_nombre : ''}</div>
+            </div>
+          </div>`).join('');
+
+      document.getElementById('modal-ruta-critica').style.display = 'flex';
+    }
+    function cerrarModalRutaCritica() {
+      document.getElementById('modal-ruta-critica').style.display = 'none';
+    }
+
     function nodoOAlgunDescendienteEsDeUsuario(nodeId) {
       const nodo = mapaNodoPorId[nodeId];
       if (nodo.trabajador_id === filtroUsuarioId) return true;
@@ -1161,7 +1213,7 @@
         const hijos = mapaHijosPorPadre[id] || [];
         const rango = calcularRango(id);
         filas.push({
-          nivel, tipo: nodo.tipo, codigo: nodo.codigo, nombre: nodo.nombre,
+          id, nivel, tipo: nodo.tipo, codigo: nodo.codigo, nombre: nodo.nombre,
           esResumen: hijos.length > 0,
           inicio: rango.tieneDato ? rango.inicio : null,
           fin: rango.tieneDato ? (rango.fin || ahora) : null,
@@ -1181,9 +1233,118 @@
       return mapaNodoPorId[raizGanttId]?.codigo || buques.find(b => b.id === buqueActualId)?.codigo || 'buque';
     }
 
-    function exportarExcel() {
+    // ==========================================================================
+    // Exportar Gantt -- botón único (sustituye a los 4 botones sueltos que
+    // había antes: Excel/PDF/MS Project/GanttProject). Deja elegir el formato,
+    // en orden alfabético, y en los navegadores que lo permiten (Chrome/Edge
+    // -- File System Access API) también la carpeta de destino, que se
+    // recuerda para el resto de esta sesión sin volver a preguntar.
+    //
+    // Se han dejado fuera .mpp (binario propietario de MS Project) y .pod
+    // (formato nativo de ProjectLibre) -- decisión de Usuario, porque
+    // ninguno de los dos se puede generar de forma fiable desde el
+    // navegador y arriesgan un archivo que el programa no pueda abrir. En
+    // su lugar están .xml y .gan, que Project y GanttProject/ProjectLibre
+    // ya abren de forma nativa con Archivo > Abrir. .xer (Primavera P6) es
+    // "mejor esfuerzo": el formato está documentado, pero conviene
+    // comprobar la primera importación en P6 por si pide algún campo más.
+    // La exportación a PDF (impresión) se ha quitado, tal cual se pidió.
+    const FORMATOS_EXPORT_GANTT = [
+      { ext: 'gan', etiqueta: '.gan — GanttProject', mime: 'application/xml' },
+      { ext: 'png', etiqueta: '.png — Imagen', mime: 'image/png' },
+      { ext: 'svg', etiqueta: '.svg — Vectorial', mime: 'image/svg+xml' },
+      { ext: 'xer', etiqueta: '.xer — Primavera P6', mime: 'text/plain' },
+      { ext: 'xlsx', etiqueta: '.xlsx — Excel', mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+      { ext: 'xml', etiqueta: '.xml — MS Project', mime: 'application/xml' }
+    ];
+
+    let carpetaExportacionHandle = null;
+
+    function abrirModalExportarGantt() {
+      document.getElementById('exportar-carpeta-info').textContent = ('showDirectoryPicker' in window)
+        ? (carpetaExportacionHandle ? 'Carpeta elegida: se guardará ahí.' : 'Al exportar te pedirá elegir la carpeta de destino (se recuerda para el resto de esta sesión -- puedes cambiarla con "📂 Elegir carpeta").')
+        : 'Tu navegador no permite elegir carpeta de destino -- se descargará a la carpeta de descargas de siempre.';
+      document.getElementById('exportar-formatos-lista').innerHTML = FORMATOS_EXPORT_GANTT
+        .map(f => `<button class="secundario" style="text-align:left;" onclick="ejecutarExportacionGantt('${f.ext}')">${f.etiqueta}</button>`).join('');
+      document.getElementById('exportar-gantt-estado').textContent = '';
+      document.getElementById('modal-exportar-gantt').style.display = 'flex';
+    }
+    function cerrarModalExportarGantt() {
+      document.getElementById('modal-exportar-gantt').style.display = 'none';
+    }
+
+    async function cambiarCarpetaExportacion() {
+      if (!('showDirectoryPicker' in window)) {
+        document.getElementById('exportar-gantt-estado').textContent = 'Tu navegador no permite elegir carpeta -- se seguirá descargando a la carpeta de descargas de siempre.';
+        return;
+      }
+      try {
+        carpetaExportacionHandle = await window.showDirectoryPicker();
+        document.getElementById('exportar-carpeta-info').textContent = 'Carpeta elegida: se guardará ahí.';
+      } catch (e) {
+        // el usuario cerró el selector sin elegir carpeta -- no es un error real
+      }
+    }
+
+    // Guarda el archivo en la carpeta elegida (File System Access API) si el
+    // navegador lo permite, o si no con la descarga clásica de toda la vida.
+    async function guardarArchivoExportado(blob, nombreArchivo) {
+      if ('showDirectoryPicker' in window) {
+        try {
+          if (!carpetaExportacionHandle) carpetaExportacionHandle = await window.showDirectoryPicker();
+          const handleArchivo = await carpetaExportacionHandle.getFileHandle(nombreArchivo, { create: true });
+          const writable = await handleArchivo.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          return true;
+        } catch (e) {
+          if (e.name === 'AbortError') return false; // canceló el selector de carpeta
+          carpetaExportacionHandle = null; // p.ej. perdió el permiso -- se reintenta con la descarga clásica
+        }
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = nombreArchivo;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      return true;
+    }
+
+    async function ejecutarExportacionGantt(ext) {
+      const formato = FORMATOS_EXPORT_GANTT.find(f => f.ext === ext);
+      const estadoEl = document.getElementById('exportar-gantt-estado');
       const filas = construirFilasExportCompletas();
-      if (filas.length === 0) { alert('No hay tareas que exportar.'); return; }
+      if (filas.length === 0) { estadoEl.textContent = 'No hay tareas que exportar.'; estadoEl.className = 'estado-msg error'; return; }
+
+      estadoEl.textContent = 'Exportando...';
+      estadoEl.className = 'estado-msg';
+      const nombreRaiz = nombreRaizActual();
+      const nombreArchivo = `gantt-${nombreRaiz}-${new Date().toISOString().slice(0,10)}.${ext}`;
+
+      const CONSTRUCTORES_EXPORT_GANTT = {
+        gan: construirGan, png: construirPngGantt, svg: () => construirSvgGantt(),
+        xer: construirXer, xlsx: construirXlsxBlob, xml: construirProjectXml
+      };
+
+      let contenido;
+      try {
+        contenido = await CONSTRUCTORES_EXPORT_GANTT[ext]();
+      } catch (e) {
+        estadoEl.textContent = 'Error generando el archivo: ' + e.message;
+        estadoEl.className = 'estado-msg error';
+        return;
+      }
+      const blob = contenido instanceof Blob ? contenido : new Blob([contenido], { type: formato.mime });
+      const guardado = await guardarArchivoExportado(blob, nombreArchivo);
+      if (!guardado) { estadoEl.textContent = ''; return; }
+
+      registrarLog('EXPORT_GANTT', `Exportó el Gantt de "${nombreRaiz}" a ${formato.etiqueta} (${filas.length} tareas)`);
+      estadoEl.textContent = `Exportado: ${nombreArchivo}`;
+      estadoEl.className = 'estado-msg';
+    }
+
+    function construirXlsxBlob() {
+      const filas = construirFilasExportCompletas();
       const datos = filas.map(f => ({
         'Nivel': f.nivel,
         'Tipo': f.tipo,
@@ -1200,9 +1361,8 @@
       const hoja = XLSX.utils.json_to_sheet(datos);
       const libro = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(libro, hoja, 'Gantt');
-      const nombreRaiz = nombreRaizActual();
-      XLSX.writeFile(libro, `gantt-${nombreRaiz}-${new Date().toISOString().slice(0,10)}.xlsx`);
-      registrarLog('EXPORT_GANTT', `Exportó el Gantt de "${nombreRaiz}" a Excel (${datos.length} filas)`);
+      const arrayBuffer = XLSX.write(libro, { bookType: 'xlsx', type: 'array' });
+      return new Blob([arrayBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     }
 
     // Exportación a Microsoft Project: se genera el XML de intercambio de
@@ -1218,10 +1378,8 @@
         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
     }
-    function exportarProject() {
+    function construirProjectXml() {
       const filas = construirFilasExportCompletas();
-      if (filas.length === 0) { alert('No hay tareas que exportar.'); return; }
-
       const ahora = new Date();
       const fechaProyecto = filas.reduce((min, f) => (f.inicio && (!min || f.inicio < min)) ? f.inicio : min, null) || ahora;
       const fechaFinProyecto = filas.reduce((max, f) => (f.fin && (!max || f.fin > max)) ? f.fin : max, null) || ahora;
@@ -1298,15 +1456,7 @@
   </Assignments>
 </Project>`;
 
-      const blob = new Blob([xml], { type: 'application/xml' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `gantt-${nombreRaiz}-${new Date().toISOString().slice(0,10)}.xml`;
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      registrarLog('EXPORT_GANTT', `Exportó el Gantt de "${nombreRaiz}" a Microsoft Project (${filas.length} tareas)`);
+      return xml;
     }
 
     // -------------------- Exportar a GanttProject (.gan) --------------------
@@ -1351,10 +1501,8 @@
       return raiz.hijos;
     }
 
-    function exportarGanttProject() {
+    function construirGan() {
       const filas = construirFilasExportCompletas();
-      if (filas.length === 0) { alert('No hay tareas que exportar.'); return; }
-
       const ahora = new Date();
       const arbolExport = construirArbolExportGan(filas);
 
@@ -1436,33 +1584,187 @@
     <roles roleset-name="SoftwareDevelopment"/>
 </project>`;
 
-      const blob = new Blob([gan], { type: 'application/xml' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `gantt-${nombreRaiz}-${new Date().toISOString().slice(0,10)}.gan`;
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      registrarLog('EXPORT_GANTT', `Exportó el Gantt de "${nombreRaiz}" a GanttProject (${filas.length} tareas)`);
+      return gan;
     }
 
-    // Exportar a PDF: se expande todo temporalmente para que no falte ninguna
-    // tarea en la impresión, y se restaura el estado de plegado al terminar.
-    let estadoAbiertosAntesDeImprimir = null;
-    function exportarPdf() {
-      estadoAbiertosAntesDeImprimir = new Set(nodosAbiertos);
-      nodosAbiertos = new Set(Object.keys(mapaNodoPorId));
-      pintarGantt();
-      window.print();
-    }
-    window.addEventListener('afterprint', () => {
-      if (estadoAbiertosAntesDeImprimir) {
-        nodosAbiertos = estadoAbiertosAntesDeImprimir;
-        estadoAbiertosAntesDeImprimir = null;
-        pintarGantt();
+    // -------------------- Exportar a SVG / PNG --------------------
+    // No hay ninguna librería de gráficos cargada en esta página -- el
+    // propio Gantt ya se pinta con divs+CSS, no con SVG/canvas -- así que se
+    // reconstruye un diagrama de barras equivalente directamente en SVG (una
+    // fila por tarea, con su nombre y su barra de fechas previstas/reales) a
+    // partir de los mismos datos que ya usan los demás exportadores. El PNG
+    // simplemente rasteriza ese mismo SVG en un <canvas>.
+    function construirSvgGantt() {
+      const filas = construirFilasExportCompletas();
+      const conFecha = filas.filter(f => f.inicio && f.fin);
+      const PX_DIA = 22, ALTO_FILA = 22, ANCHO_LABEL = 340, MARGEN = 20, ALTO_CABECERA = 34;
+
+      let fechaMin, fechaMax;
+      if (conFecha.length > 0) {
+        fechaMin = new Date(Math.min(...conFecha.map(f => f.inicio.getTime())));
+        fechaMax = new Date(Math.max(...conFecha.map(f => f.fin.getTime())));
+      } else {
+        fechaMin = new Date();
+        fechaMax = new Date(fechaMin.getTime() + 7 * 86400000);
       }
-    });
+      fechaMin.setHours(0, 0, 0, 0);
+      const totalDias = Math.max(1, Math.ceil((fechaMax - fechaMin) / 86400000) + 1);
+      const anchoGrafico = totalDias * PX_DIA;
+      const anchoTotal = ANCHO_LABEL + anchoGrafico + MARGEN * 2;
+      const altoTotal = ALTO_CABECERA + Math.max(1, filas.length) * ALTO_FILA + MARGEN * 2;
+      const posX = (fecha) => ANCHO_LABEL + MARGEN + Math.round((fecha - fechaMin) / 86400000 * PX_DIA);
+
+      const escSvg = (t) => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+      let svgGrid = '';
+      for (let i = 0; i <= totalDias; i += 7) {
+        const x = ANCHO_LABEL + MARGEN + i * PX_DIA;
+        const fechaLinea = new Date(fechaMin.getTime() + i * 86400000);
+        svgGrid += `<line x1="${x}" y1="${ALTO_CABECERA}" x2="${x}" y2="${altoTotal - MARGEN}" stroke="#e0e0e0" stroke-width="1"/>`;
+        svgGrid += `<text x="${x + 2}" y="${ALTO_CABECERA - 6}" font-size="10" fill="#666" font-family="Arial, sans-serif">${escSvg(formatearFechaCorta(fechaLinea))}</text>`;
+      }
+
+      let svgFilas = '';
+      filas.forEach((f, i) => {
+        const y = ALTO_CABECERA + i * ALTO_FILA + MARGEN;
+        const nombreCorto = `${f.codigo} ${f.nombre}`.slice(0, 50);
+        svgFilas += `<text x="${MARGEN + f.nivel * 12}" y="${y + ALTO_FILA - 7}" font-size="11" fill="#222" font-family="Arial, sans-serif">${escSvg(nombreCorto)}</text>`;
+        if (f.inicio && f.fin) {
+          const x1 = posX(f.inicio);
+          const x2 = Math.max(x1 + 4, posX(f.fin));
+          const color = f.critica ? '#dc3545' : (f.esResumen ? '#495057' : '#4a90d9');
+          svgFilas += `<rect x="${x1}" y="${y + 3}" width="${x2 - x1}" height="${ALTO_FILA - 8}" rx="2" fill="${color}"/>`;
+        }
+      });
+
+      return `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${anchoTotal}" height="${altoTotal}" viewBox="0 0 ${anchoTotal} ${altoTotal}">
+  <rect x="0" y="0" width="${anchoTotal}" height="${altoTotal}" fill="#ffffff"/>
+  <text x="${MARGEN}" y="16" font-size="13" font-weight="bold" fill="#222" font-family="Arial, sans-serif">${escSvg('Gantt — ' + nombreRaizActual())}</text>
+  ${svgGrid}
+  ${svgFilas}
+</svg>`;
+    }
+
+    function construirPngGantt() {
+      return new Promise((resolve, reject) => {
+        const svgTexto = construirSvgGantt();
+        const svgBlob = new Blob([svgTexto], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(svgBlob);
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width || 800;
+          canvas.height = img.height || 600;
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+          URL.revokeObjectURL(url);
+          canvas.toBlob((blob) => {
+            if (blob) resolve(blob); else reject(new Error('No se pudo generar el PNG.'));
+          }, 'image/png');
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('No se pudo generar la imagen para el PNG.')); };
+        img.src = url;
+      });
+    }
+
+    // -------------------- Exportar a Primavera P6 (.xer) --------------------
+    // Formato de texto plano documentado (tablas %T/%F/%R/%E separadas por
+    // tabuladores). Es "mejor esfuerzo": P6 tiene varias versiones de
+    // esquema y aquí van las tablas mínimas para una importación básica
+    // (proyecto, WBS, calendario, tareas, dependencias y recursos) -- xerTabla()
+    // arma cabecera (%F) y filas (%R) a partir de la MISMA lista de campos,
+    // así que en ningún caso pueden descuadrarse en número de columnas,
+    // que es el fallo más habitual al escribir un .xer a mano. Conviene
+    // comprobar la primera vez que se importe en P6 por si pide algo más.
+    function escXer(t) {
+      return String(t == null ? '' : t).replace(/\t/g, ' ').replace(/[\r\n]/g, ' ');
+    }
+    function xerTabla(nombreTabla, campos, filasObjetos) {
+      const out = [`%T\t${nombreTabla}`, `%F\t${campos.join('\t')}`];
+      filasObjetos.forEach(obj => {
+        out.push(`%R\t${campos.map(c => escXer(obj[c])).join('\t')}`);
+      });
+      out.push('%E');
+      return out;
+    }
+    function construirXer() {
+      const filas = construirFilasExportCompletas();
+      const ahora = new Date();
+      const fechaCorta = (d) => d ? formatearFechaGan(d) : '';
+      const fechaHora = (d) => d ? `${formatearFechaGan(d)} 08:00` : '';
+      const fechaHoy = formatearFechaGan(ahora);
+      const fechaProyecto = filas.reduce((min, f) => (f.inicio && (!min || f.inicio < min)) ? f.inicio : min, null) || ahora;
+      const fechaFinProyecto = filas.reduce((max, f) => (f.fin && (!max || f.fin > max)) ? f.fin : max, null) || ahora;
+
+      const recursos = [...new Set(filas.map(f => f.trabajador).filter(Boolean))];
+      const idRecursoPorNombre = {};
+      recursos.forEach((nombre, i) => { idRecursoPorNombre[nombre] = i + 1; });
+
+      const lineas = [];
+      lineas.push(`ERMHDR\t18.8\t${fechaHoy}\tProject\tESTRUCTURA\tESTRUCTURA\t\tEUR\tProject Management\tActivity ID`);
+
+      lineas.push(...xerTabla('CURRTYPE',
+        ['curr_id', 'decimal_digit_cnt', 'curr_symbol', 'decimal_symbol', 'digit_group_symbol', 'pos_curr_fmt_type', 'neg_curr_fmt_type', 'curr_type', 'curr_short_name', 'group_digit_cnt', 'base_exch_rate'],
+        [{ curr_id: 1, decimal_digit_cnt: 2, curr_symbol: '€', decimal_symbol: '.', digit_group_symbol: ',', pos_curr_fmt_type: '#1.1', neg_curr_fmt_type: '(#1.1)', curr_type: 'Euro', curr_short_name: 'EUR', group_digit_cnt: 3, base_exch_rate: 1 }]));
+
+      lineas.push(...xerTabla('OBS',
+        ['obs_id', 'parent_obs_id', 'obs_name', 'obs_short_name'],
+        [{ obs_id: 1, parent_obs_id: '', obs_name: 'ESTRUCTURA', obs_short_name: 'EST' }]));
+
+      lineas.push(...xerTabla('CALENDAR',
+        ['clndr_id', 'default_flag', 'clndr_name', 'clndr_type', 'day_hr_cnt', 'week_hr_cnt', 'month_hr_cnt', 'year_hr_cnt', 'rsrc_private'],
+        [{ clndr_id: 1, default_flag: 'Y', clndr_name: 'Estándar', clndr_type: 'CA_Base', day_hr_cnt: 8, week_hr_cnt: 40, month_hr_cnt: 173, year_hr_cnt: 2080, rsrc_private: 'N' }]));
+
+      lineas.push(...xerTabla('PROJECT',
+        ['proj_id', 'clndr_id', 'obs_id', 'proj_short_name', 'plan_start_date', 'plan_end_date', 'last_recalc_date', 'def_duration_type', 'def_task_type', 'critical_drtn_hr_cnt', 'export_flag'],
+        [{ proj_id: 'ESTR', clndr_id: 1, obs_id: 1, proj_short_name: nombreRaizActual().slice(0, 20), plan_start_date: fechaCorta(fechaProyecto), plan_end_date: fechaCorta(fechaFinProyecto), last_recalc_date: fechaHoy, def_duration_type: 'DT_Task', def_task_type: 'TT_Task', critical_drtn_hr_cnt: 0, export_flag: 'Y' }]));
+
+      lineas.push(...xerTabla('PROJWBS',
+        ['wbs_id', 'proj_id', 'obs_id', 'seq_num', 'proj_node_flag', 'status_code', 'wbs_short_name', 'wbs_name', 'parent_wbs_id'],
+        [{ wbs_id: 1, proj_id: 'ESTR', obs_id: 1, seq_num: 1, proj_node_flag: 'Y', status_code: 'WS_Open', wbs_short_name: 'ROOT', wbs_name: nombreRaizActual(), parent_wbs_id: '' }]));
+
+      if (recursos.length > 0) {
+        lineas.push(...xerTabla('RSRC',
+          ['rsrc_id', 'rsrc_name', 'rsrc_short_name', 'rsrc_type', 'def_qty_per_hr'],
+          recursos.map((nombre, i) => ({ rsrc_id: i + 1, rsrc_name: nombre, rsrc_short_name: nombre.slice(0, 20), rsrc_type: 'RT_Labor', def_qty_per_hr: 1 }))));
+      }
+
+      lineas.push(...xerTabla('TASK',
+        ['task_id', 'proj_id', 'wbs_id', 'task_code', 'task_name', 'task_type', 'status_code', 'duration_type', 'target_start_date', 'target_end_date', 'target_drtn_hr_cnt', 'phys_complete_pct'],
+        filas.map((f, i) => ({
+          task_id: i + 1, proj_id: 'ESTR', wbs_id: 1, task_code: String(f.codigo).slice(0, 20), task_name: f.nombre,
+          task_type: 'TT_Task', status_code: f.fin ? 'TK_Complete' : (f.inicio ? 'TK_Active' : 'TK_NotStart'),
+          duration_type: 'DT_FixedDrtn', target_start_date: fechaHora(f.inicio || ahora), target_end_date: fechaHora(f.fin || f.inicio || ahora),
+          target_drtn_hr_cnt: (f.inicio && f.fin) ? Math.max(1, Math.round((f.fin - f.inicio) / 3600000)) : 8,
+          phys_complete_pct: f.avance !== null ? f.avance : 0
+        }))));
+
+      const idTareaPorNodo = {};
+      filas.forEach((f, i) => { idTareaPorNodo[f.id] = i + 1; });
+      const predsValidos = dependenciasCache.filter(d => idTareaPorNodo[d.predecesor_id] && idTareaPorNodo[d.sucesor_id]);
+      if (predsValidos.length > 0) {
+        lineas.push(...xerTabla('TASKPRED',
+          ['task_pred_id', 'task_id', 'pred_task_id', 'proj_id', 'pred_proj_id', 'pred_type'],
+          predsValidos.map((d, i) => ({ task_pred_id: i + 1, task_id: idTareaPorNodo[d.sucesor_id], pred_task_id: idTareaPorNodo[d.predecesor_id], proj_id: 'ESTR', pred_proj_id: 'ESTR', pred_type: 'PR_FS' }))));
+      }
+
+      if (recursos.length > 0) {
+        const asignaciones = [];
+        filas.forEach((f, i) => {
+          if (f.trabajador && idRecursoPorNombre[f.trabajador]) {
+            asignaciones.push({ taskrsrc_id: asignaciones.length + 1, task_id: i + 1, proj_id: 'ESTR', rsrc_id: idRecursoPorNombre[f.trabajador] });
+          }
+        });
+        if (asignaciones.length > 0) {
+          lineas.push(...xerTabla('TASKRSRC', ['taskrsrc_id', 'task_id', 'proj_id', 'rsrc_id'], asignaciones));
+        }
+      }
+
+      return lineas.join('\r\n') + '\r\n';
+    }
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {

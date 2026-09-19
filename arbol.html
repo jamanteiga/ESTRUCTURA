@@ -22,6 +22,10 @@
     button.exito { background: #28a745; }
     button.exito:hover { background: #218838; }
     button.pequeno { padding: 3px 7px; font-size: 11px; }
+    /* Botones de expandir/encoger rama (⏬/⏫) -- un 30% más grandes que
+       "pequeno" (petición Usuario), en su propia clase para no afectar a
+       los demás botones "pequeno" del árbol (Quitar dependencia, subir/bajar...). */
+    button.boton-rama { padding: 4px 9px; font-size: 14px; }
     button:disabled { background: #ccc; cursor: not-allowed; }
 
     .leyenda { display: flex; gap: 10px; font-size: 12px; align-items: center; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
@@ -292,6 +296,7 @@
     @media (min-width: 2200px) {
       html { font-size: 13px; }
       .pequeno { padding: 2px 5px; font-size: 10px; }
+      .boton-rama { padding: 3px 7px; font-size: 13px; }
       button { padding: 5px 10px; font-size: 12px; }
       .fila-nodo { padding: 3px 5px; gap: 5px; }
       .tipo-tag { font-size: 9px; padding: 1px 5px; }
@@ -886,6 +891,17 @@
         <button class="secundario" id="confirmacion-no">Cancelar</button>
         <button id="confirmacion-si">Confirmar</button>
       </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="modal-elegir-revision" style="z-index:5000;">
+    <div class="overlay-caja" style="max-width:380px; text-align:center;">
+      <h3 style="margin-top:0; font-size:15px;" id="elegir-revision-titulo">¿Aprobar o rechazar?</h3>
+      <div class="overlay-botones" style="justify-content:center;">
+        <button class="peligro" id="elegir-revision-rechazado">✘ Rechazado</button>
+        <button class="exito" id="elegir-revision-aprobado">✔ Aprobado</button>
+      </div>
+      <button class="secundario" id="elegir-revision-cancelar" style="margin-top:10px;">Cancelar</button>
     </div>
   </div>
 
@@ -2618,8 +2634,8 @@
 
       let acciones = '';
       if (nodo.tipo === 'BUQUE' || nodo.tipo === 'BLOQUE' || nodo.tipo === 'SB' || nodo.tipo === 'PI') {
-        acciones += `<button class="pequeno secundario" onclick="expandirRama('${nodo.id}')" title="Expandir esta rama">⏬</button>`;
-        acciones += `<button class="pequeno secundario" onclick="encogerRama('${nodo.id}')" title="Encoger esta rama">⏫</button>`;
+        acciones += `<button class="boton-rama secundario" onclick="expandirRama('${nodo.id}')" title="Expandir esta rama">⏬</button>`;
+        acciones += `<button class="boton-rama secundario" onclick="encogerRama('${nodo.id}')" title="Encoger esta rama">⏫</button>`;
       }
 
       const notaDudasExtra = notasDudasPorNodo[nodo.id];
@@ -2687,7 +2703,7 @@
             ${(!sinAsignacion && nodo.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO') ? '<span class="cuadro-cambios-modelo" title="Pendiente de cambios en modelo"></span>' : ''}
             ${(!sinAsignacion && nodoRetrasado(nodo)) ? `<span class="icono-retraso" title="Retrasada — prevista para ${formatearFechaHora(nodo.fecha_fin_prevista)}">⏰</span>` : ''}
             ${nodo.tipo === 'BLOQUE' && nodo.congelado ? '<span title="Bloque congelado por un Supervisor/Admin — nadie puede cambiar el estado de lo que cuelga de él" style="cursor:help;">🧊</span>' : (nodo.tipo !== 'BLOQUE' && estaBajoBloqueCongelado(nodo) ? '<span title="Dentro de un Bloque congelado — no se puede cambiar el estado hasta que lo descongelen" style="cursor:help; opacity:0.7;">🧊</span>' : '')}
-            <span class="flecha ${claseColor}" title="${estado}">${simboloFlecha}</span>
+            <span class="flecha ${claseColor}" title="${estado}" ondblclick="manejarDobleClicEstado(event, '${nodo.id}')">${simboloFlecha}</span>
             ${bloqueadoWindchill ? '<span title="Bloqueado: Modelo y Plano de corte deben estar Aprobados">🔒</span>' : ''}
             <span class="codigo">${resaltarCoincidencia(etiquetaCodigoVisible(nodo))}</span>
             ${nombreEsRedundante(nodo.codigo, nodo.nombre) ? '' : `<span>${resaltarCoincidencia(nodo.nombre)}</span>`}
@@ -5313,6 +5329,54 @@
         };
         btnCancel.onclick = () => { limpiar(); resolve(null); };
       });
+    }
+
+    // Elegir Aprobado/Rechazado en el doble clic sobre el icono de "Pendiente
+    // de revisión" (mejora Usuario). Devuelve 'aprobado', 'rechazado' o null
+    // si se cancela.
+    function elegirAprobadoRechazado(etiquetaTarea) {
+      return new Promise((resolve) => {
+        document.getElementById('elegir-revision-titulo').textContent = etiquetaTarea ? `"${etiquetaTarea}" — ¿Aprobar o rechazar?` : '¿Aprobar o rechazar?';
+        document.getElementById('modal-elegir-revision').style.display = 'flex';
+        const btnAp = document.getElementById('elegir-revision-aprobado');
+        const btnRe = document.getElementById('elegir-revision-rechazado');
+        const btnCancel = document.getElementById('elegir-revision-cancelar');
+        const limpiar = () => {
+          btnAp.onclick = null; btnRe.onclick = null; btnCancel.onclick = null;
+          document.getElementById('modal-elegir-revision').style.display = 'none';
+        };
+        btnAp.onclick = () => { limpiar(); resolve('aprobado'); };
+        btnRe.onclick = () => { limpiar(); resolve('rechazado'); };
+        btnCancel.onclick = () => { limpiar(); resolve(null); };
+      });
+    }
+
+    // Doble clic sobre el icono de estado de una tarea (mejora Usuario):
+    //   Pendiente de hacer -> En proceso
+    //   En proceso -> Pendiente de revisión (con el mismo aviso de tiempo
+    //     trabajado que ya usa el menú contextual, vía accionMarcarTerminado)
+    //   Pendiente de revisión -> pregunta Aprobado/Rechazado; Aprobado se
+    //     aplica directo, Rechazado abre el diálogo de motivo ya existente.
+    // El resto de estados (sin asignar, mezcla, aprobado, rechazado,
+    // pendiente de dudas/cambios de modelo) no hacen nada con el doble clic
+    // -- para esos ya está el menú contextual con todas las opciones.
+    // stopPropagation() evita que el doble clic también dispare el
+    // expandir/encoger de la fila (que usa ondblclick a nivel de fila).
+    async function manejarDobleClicEstado(event, nodeId) {
+      event.stopPropagation();
+      const nodo = mapaNodoPorId[nodeId];
+      if (!nodo || TIPOS_SIN_ASIGNACION.has(nodo.tipo)) return;
+      const estado = calcularEstadoConsenso(nodo);
+      if (estado === 'asignada_sin_empezar') {
+        await accionMarcarEnTrabajo(nodeId);
+      } else if (estado === 'en_proceso') {
+        await accionMarcarTerminado(nodeId);
+      } else if (estado === 'pendiente_revision') {
+        if (!esGestor()) { mostrarAvisoModal('Solo un revisor puede aprobar o rechazar esta tarea.'); return; }
+        const eleccion = await elegirAprobadoRechazado(nodo.codigo);
+        if (eleccion === 'aprobado') await accionRevisar(nodeId, true);
+        else if (eleccion === 'rechazado') await accionRevisar(nodeId, false);
+      }
     }
 
     // Comentario y foto opcionales al marcar "Pendiente de dudas" (mejora
