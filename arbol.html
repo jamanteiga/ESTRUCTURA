@@ -22,14 +22,6 @@
     button.exito { background: #28a745; }
     button.exito:hover { background: #218838; }
     button.pequeno { padding: 3px 7px; font-size: 11px; }
-    /* Botones de expandir/encoger rama (⏬/⏫) -- un 30% más grandes que
-       "pequeno" (petición Usuario), en su propia clase para no afectar a
-       los demás botones "pequeno" del árbol (Quitar dependencia, subir/bajar...).
-       Sin fondo ni borde (petición Usuario): que se vea solo el propio
-       icono azul con los triángulos blancos, sin la pastilla gris detrás. */
-    button.boton-rama { padding: 2px 3px; font-size: 14px; background: transparent; border: none; box-shadow: none; }
-    button.boton-rama:hover { background: rgba(0,0,0,0.08); }
-    body.tema-oscuro button.boton-rama:hover { background: rgba(255,255,255,0.12); }
     button:disabled { background: #ccc; cursor: not-allowed; }
 
     .leyenda { display: flex; gap: 10px; font-size: 12px; align-items: center; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
@@ -52,8 +44,6 @@
       flex-shrink: 0; margin: 0 1px;
     }
     .icono-retraso { font-size: 14px; color: #dc3545; flex-shrink: 0; cursor: default; }
-    .favorito-estrella { font-size: 16px; display: inline-block; width: 20px; text-align: center; line-height: 1; cursor: pointer; flex-shrink: 0; }
-    .fila-nodo.resaltado-temporal, .resaltado-temporal { background: #fff3b0 !important; transition: background 1.6s ease; }
     .fila-dependencia { display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid #eee; font-size:13px; }
     .fila-dependencia .ruta { color:#666; flex:1; min-width:0; overflow-wrap:break-word; }
     .fila-dependencia .estado-dep { font-size:11px; font-weight:bold; padding:1px 7px; border-radius:8px; flex-shrink:0; }
@@ -108,7 +98,7 @@
       width: 100%; padding: 7px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 16px;
     }
     .overlay-botones { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
-    .estado-msg { font-size: 12px; margin-top: 8px; white-space: pre-line; }
+    .estado-msg { font-size: 12px; margin-top: 8px; }
     .error { color: #dc3545; }
     .ok { color: #218838; }
     .fila-doble { display: flex; gap: 8px; }
@@ -300,7 +290,6 @@
     @media (min-width: 2200px) {
       html { font-size: 13px; }
       .pequeno { padding: 2px 5px; font-size: 10px; }
-      .boton-rama { padding: 3px 7px; font-size: 13px; }
       button { padding: 5px 10px; font-size: 12px; }
       .fila-nodo { padding: 3px 5px; gap: 5px; }
       .tipo-tag { font-size: 9px; padding: 1px 5px; }
@@ -360,27 +349,17 @@
       <div class="menu-seccion-titulo" data-menu-seccion="navegacion" onclick="toggleSeccionMenu(this)">Navegación <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
         <a class="menu-item" href="index.html">🏠 Inicio</a>
-        <div class="menu-item-expandible" onclick="toggleSubmenuFlotante(event, this, 'submenu-idiomas')">🌐 Idiomas <span class="flecha-menu">›</span></div>
-        <div class="menu-submenu-contenido" id="submenu-idiomas">
-          <span class="menu-item" onclick="mostrarIdiomaEnDesarrollo('brasileno')">🇧🇷 Brasileño</span>
-          <span class="menu-item" onclick="mostrarIdiomaEnDesarrollo('coreano')">🇰🇷 Coreano</span>
-          <span class="menu-item" onclick="mostrarIdiomaEnDesarrollo('espanol')">🇪🇸 Español</span>
-          <span class="menu-item" onclick="mostrarIdiomaEnDesarrollo('ingles')">🇬🇧 Inglés</span>
-        </div>
         <a class="menu-item solo-escritorio" id="menu-link-log" href="log.html" style="display:none;">🗒️ Logs</a>
         <a class="menu-item solo-escritorio" id="menu-link-log-comunicaciones" href="log_comunicaciones.html" style="display:none;">📡 Comunicaciones</a>
         <span class="menu-item solo-escritorio" id="menu-item-buque" onclick="esInvitado() ? mostrarAvisoModal('Eres un usuario Invitado: solo puedes consultar, no puedes realizar cambios.') : abrirModalCrear(null, 'BUQUE')" style="display:none;">+ Añadir Buque</span>
         <span class="menu-item solo-escritorio" id="menu-item-pegar-buque-raiz" onclick="esInvitado() ? mostrarAvisoModal('Eres un usuario Invitado: solo puedes consultar, no puedes realizar cambios.') : abrirModalPegarRama(null)" style="display:none;">📌 Pegar buque copiado</span>
         <div class="menu-item-expandible" onclick="toggleSubmenuFlotante(event, this, 'submenu-resumen')">📊 Resumen <span class="flecha-menu">›</span></div>
         <div class="menu-submenu-contenido" id="submenu-resumen">
-          <a class="menu-item" id="menu-item-alertas" href="resumen.html" style="display:none;" title="Tareas retrasadas y usuarios con demasiada carga hoy — detalle en Resumen">⚠️ Alertas<span id="badge-alertas" style="display:none; background:#dc3545; color:#fff; border-radius:10px; padding:1px 7px; font-size:11px; font-weight:bold; margin-left:6px;"></span></a>
-          <a class="menu-item" data-solo-gestor href="avancehitos.html">🎯 Avance vs hitos</a>
           <a class="menu-item" data-solo-gestor href="avances.html">📉 Avances</a>
+          <a class="menu-item" data-solo-gestor href="avancehitos.html">🎯 Avance vs hitos</a>
           <a class="menu-item" href="cambiosmodelo.html">🔧 Cambios de modelo</a>
           <a class="menu-item" data-solo-gestor href="cargatrabajo.html">👷 Carga de trabajo</a>
           <a class="menu-item" href="revision.html">⏳ Cola de revisión</a>
-          <a class="menu-item" id="menu-link-gantt" href="gantt.html" style="display:none;">🗓️ Gantt</a>
-          <a class="menu-item" id="menu-link-hitos" href="hitos.html" style="display:none;">🎯 Hitos</a>
           <a class="menu-item" data-solo-gestor href="kpi.html">📈 KPIs</a>
           <a class="menu-item" href="pendientedudas.html">❓ Pendiente de dudas</a>
           <a class="menu-item" data-solo-gestor href="previsioncarga.html">📅 Previsión de carga</a>
@@ -389,6 +368,7 @@
           <a class="menu-item" href="sinasignar.html">🚫 Sin asignar</a>
         </div>
         <a class="menu-item" href="kanban.html">🗂️ Kanban</a>
+        <a class="menu-item" id="menu-item-alertas" href="resumen.html" style="display:none;" title="Tareas retrasadas y usuarios con demasiada carga hoy — detalle en Resumen">⚠️ Alertas<span id="badge-alertas" style="display:none; background:#dc3545; color:#fff; border-radius:10px; padding:1px 7px; font-size:11px; font-weight:bold; margin-left:6px;"></span></a>
         <span class="menu-item" id="menu-item-resumen-comentarios" onclick="abrirResumenComentariosModelo()" style="display:none;">📋 Comentarios pendientes de modelo<span id="badge-comentarios-pendientes" style="display:none; background:#dc3545; color:#fff; border-radius:10px; padding:1px 7px; font-size:11px; font-weight:bold; margin-left:6px;"></span></span>
         <a class="menu-item solo-escritorio" id="menu-link-usuarios" href="usuarios.html" style="display:none;">👤 Usuarios</a>
         <a class="menu-item solo-escritorio" id="menu-link-admin" href="admin.html" style="display:none;">🛠️ Panel de administración</a>
@@ -399,35 +379,16 @@
         <span class="menu-item" onclick="cerrarSesion()">🚪 Cerrar sesión</span>
       </div>
 
-      <!-- Mejoras para el Usuario (Trabajador): solo visible para ese rol. -->
-      <div id="grupo-menu-mi-trabajo" style="display:none;">
-        <div class="menu-seccion-titulo" data-menu-seccion="mi-trabajo" onclick="toggleSeccionMenu(this)">Mi trabajo <span class="flecha-menu">›</span></div>
-        <div class="menu-seccion-contenido">
-          <span class="menu-item" onclick="abrirMiListaHoy()">📋 Mi lista de hoy</span>
-          <span class="menu-item" onclick="abrirMiHistorial()">📊 Mi historial</span>
-          <span class="menu-item" onclick="abrirPanelFavoritos()">⭐ Favoritas y recientes</span>
-          <label class="menu-item">
-            <input type="checkbox" id="chk-avisos-rechazo" onchange="alternarAvisosRechazo()"> 🔔 Avisarme si me rechazan una tarea
-          </label>
-          <label class="menu-item">
-            <input type="checkbox" id="chk-modo-ligero" onchange="toggleModoLigero()"> 🪶 Modo ligero para el taller
-          </label>
-        </div>
-      </div>
-
       <div class="menu-seccion-titulo" data-menu-seccion="bloques" onclick="toggleSeccionMenu(this)">Bloques <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
-        <div class="menu-item-expandible" onclick="toggleSubmenuFlotante(event, this, 'submenu-bloques')">🧱 Bloques <span class="flecha-menu">›</span></div>
-        <div class="menu-submenu-contenido" id="submenu-bloques">
-          <span class="menu-item" onclick="encogerTodo()">⏫ Contraer todo</span>
-          <span class="menu-item" onclick="expandirTodo()">⏬ Expandir todo</span>
-          <span class="menu-item" onclick="expandirSinSubbloques()">⏬ Expandir (sin Subbloques)</span>
-          <span class="menu-item" onclick="expandirSoloBloques()">⏬ Expandir solo bloques</span>
-          <span class="menu-item" onclick="abrirModalExpandirPorBloque()">⏬ Expandir por bloque</span>
-          <label class="menu-item">
-            <input type="checkbox" id="chk-vista-simple" onchange="toggleVistaSimplificada()"> 🎨 Vista simplificada (solo colores)
-          </label>
-        </div>
+        <span class="menu-item" onclick="encogerTodo()">⏫ Contraer todo</span>
+        <span class="menu-item" onclick="expandirTodo()">⏬ Expandir todo</span>
+        <span class="menu-item" onclick="expandirSinSubbloques()">⏬ Expandir (sin Subbloques)</span>
+        <span class="menu-item" onclick="expandirSoloBloques()">⏬ Expandir solo bloques</span>
+        <span class="menu-item" onclick="abrirModalExpandirPorBloque()">⏬ Expandir por bloque</span>
+        <label class="menu-item">
+          <input type="checkbox" id="chk-vista-simple" onchange="toggleVistaSimplificada()"> 🎨 Vista simplificada (solo colores)
+        </label>
       </div>
 
       <div class="menu-seccion-titulo" data-menu-seccion="filtros" onclick="toggleSeccionMenu(this)">Filtros <span class="flecha-menu">›</span></div>
@@ -471,6 +432,8 @@
         <label class="menu-item" id="wrap-tiempos" style="display:none;">
           <input type="checkbox" id="chk-tiempos" onchange="toggleTiempos()"> ⏱️ Tiempos
         </label>
+        <a class="menu-item" id="menu-link-gantt" href="gantt.html" target="_blank" style="display:none;">🗓️ Gantt</a>
+        <a class="menu-item" id="menu-link-hitos" href="hitos.html" target="_blank" style="display:none;">🎯 Hitos</a>
         <a class="menu-item" id="menu-link-importar" href="importar.html" target="_blank" style="display:none;">📥 Importar Excel</a>
         <a class="menu-item" id="menu-link-duplicados" href="duplicados.html" target="_blank" style="display:none;">🔍 Comprobar duplicados</a>
         <span class="menu-item" id="menu-item-exportar-excel" onclick="exportarArbolExcel()" style="display:none;">⬇ Exportar árbol a Excel</span>
@@ -493,7 +456,6 @@
   </div>
 
   <div class="card" id="card-arbol">
-    <div id="banner-modo-ligero" style="display:none; background:#fff3cd; color:#664d03; border:1px solid #ffe69c; border-radius:6px; padding:8px 12px; margin-bottom:10px; font-size:13px;"></div>
     <ul class="arbol raiz" id="arbol-raiz">
       <li><span class="spinner-carga"></span>Cargando...</li>
     </ul>
@@ -506,12 +468,8 @@
         <label>Tipo</label>
         <select id="modal-nodo-tipo" onchange="actualizarCodigoSegunTipo()"></select>
       </div>
-      <div id="modal-nodo-familia-wrap" style="display:none;">
-        <label>Familia</label>
-        <select id="modal-nodo-familia"></select>
-      </div>
       <label>Código</label>
-      <input type="text" id="modal-nodo-codigo" placeholder="Ej: SB3, UA1, NL801..." oninput="autoseleccionarFamiliaPorCodigo()">
+      <input type="text" id="modal-nodo-codigo" placeholder="Ej: SB3, UA1, NL801...">
       <label>Nombre</label>
       <input type="text" id="modal-nodo-nombre">
       <label>Descripción (opcional)</label>
@@ -646,9 +604,9 @@
       <h3>📅 Fechas previstas</h3>
       <p id="fp-nodo-info" style="font-size:12px; color:#666; margin-top:-8px;"></p>
       <label>Inicio previsto</label>
-      <input type="datetime-local" id="fp-inicio" oninput="alCambiarFpInicio()">
+      <input type="datetime-local" id="fp-inicio">
       <label>Fin previsto</label>
-      <input type="datetime-local" id="fp-fin" oninput="alCambiarFpFin()">
+      <input type="datetime-local" id="fp-fin" oninput="actualizarVisibilidadMotivoRetraso()">
       <p id="fp-sugerencia" style="font-size:12px; color:#0069d9; margin:6px 0; display:none;"></p>
       <p id="fp-base" style="font-size:12px; color:#888; margin:6px 0;"></p>
       <div id="fp-motivo-caja" style="display:none; background:#fff8e6; border:1px solid #ffe6a3; border-radius:6px; padding:8px; margin:6px 0;">
@@ -670,46 +628,6 @@
         <button class="secundario" id="fp-btn-reiniciar-base" style="margin-right:auto; display:none;" onclick="accionReiniciarLineaBase()">🔁 Reiniciar línea base</button>
         <button class="secundario" onclick="cerrarModalFechasPrevistas()">Cancelar</button>
         <button onclick="guardarFechasPrevistas()">Guardar</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="overlay" id="modal-fechas-cascada">
-    <div class="overlay-caja" style="max-width:440px;">
-      <h3>📅 Fechas previstas en cascada</h3>
-      <p id="fc-contador" style="font-size:12px; color:#666; margin-top:-8px;"></p>
-      <p style="font-size:12px; color:#666;">Se reparten por orden, respetando el horario laboral (invierno/verano, descansos, fin de semana, festivos y ausencias): la primera tarea empieza en la fecha/hora que pongas abajo, y cada una de las siguientes empieza justo cuando termina la anterior dentro de su jornada -- si una no cabe entera en el día, sigue al principio del siguiente día laborable.</p>
-      <div id="fc-horario-usuario" style="display:none; background:#f4f8ff; border:1px solid #cfe2ff; border-radius:6px; padding:8px; margin:6px 0; font-size:12px;">
-        <p style="margin:0 0 6px; color:#555;">Horario laboral de <strong id="fc-horario-nombre"></strong> (se guarda como su valor por defecto):</p>
-        <label style="display:inline-block; margin-right:14px;">Hora de entrada
-          <input type="time" id="fc-hora-entrada" style="width:auto;">
-        </label>
-        <label style="display:inline-block;">Jornada
-          <select id="fc-modo-jornada" style="width:auto;">
-            <option value="TALLER">Taller</option>
-            <option value="OFICINA">Oficina (salida mínima 16:00, L-J en invierno)</option>
-          </select>
-        </label>
-      </div>
-      <label>Inicio previsto de la primera tarea</label>
-      <input type="datetime-local" id="fc-inicio">
-      <label>Duración efectiva de cada tarea</label>
-      <select id="fc-duracion">
-        <option value="5">0:05 h</option>
-        <option value="10">0:10 h</option>
-        <option value="15">0:15 h</option>
-        <option value="20">0:20 h</option>
-        <option value="30">0:30 h</option>
-        <option value="45" selected>0:45 h</option>
-        <option value="60">1:00 h</option>
-        <option value="90">1:30 h</option>
-        <option value="120">2:00 h</option>
-      </select>
-      <p id="fc-previsualizacion" style="font-size:12px; color:#0069d9; margin:8px 0; display:none;"></p>
-      <div class="estado-msg" id="fc-estado"></div>
-      <div class="overlay-botones">
-        <button class="secundario" onclick="cerrarModalFechasCascada()">Cancelar</button>
-        <button onclick="confirmarFechasCascada()">Aplicar</button>
       </div>
     </div>
   </div>
@@ -826,7 +744,6 @@
     <span id="texto-seleccion" style="font-size:13px;"></span>
     <button id="btn-asignar-masivo" onclick="abrirModalAsignacionMasiva()">👤 Asignar seleccionadas</button>
     <button id="btn-estado-masivo" style="display:none;" onclick="abrirModalEstadoMasivo()">📋 Estado tareas</button>
-    <button id="btn-fechas-cascada-masivo" style="display:none;" onclick="abrirModalFechasCascada()">📅 Fechas en cascada</button>
     <button id="btn-anadir-masivo" style="display:none;" onclick="abrirModalAnadirMasivo()">+ Añadir dentro de cada una</button>
     <button id="btn-desactivar-masivo" class="peligro" style="display:none;" onclick="confirmarDesactivarMasivo()">🗑️ Desactivar seleccionadas</button>
     <button id="btn-bloquear-masivo" style="display:none;" onclick="confirmarBloqueoMasivo(true)">🔒 Bloquear</button>
@@ -921,8 +838,8 @@
         <option value="pendiente_revision">Pendiente de revisión</option>
         <option value="pendiente_dudas">Pendiente de dudas</option>
         <option value="pendiente_cambios_modelo">Pendiente cambios en modelo</option>
-        <option value="aprobado" id="estadomasivo-opt-aprobado">Aprobado</option>
-        <option value="rechazado" id="estadomasivo-opt-rechazado">Rechazado</option>
+        <option value="aprobado">Aprobado</option>
+        <option value="rechazado">Rechazado</option>
       </select>
       <div class="estado-msg" id="estadomasivo-estado"></div>
       <div class="overlay-botones">
@@ -949,17 +866,6 @@
     </div>
   </div>
 
-  <div class="overlay" id="modal-elegir-revision" style="z-index:5000;">
-    <div class="overlay-caja" style="max-width:380px; text-align:center;">
-      <h3 style="margin-top:0; font-size:15px;" id="elegir-revision-titulo">¿Aprobar o rechazar?</h3>
-      <div class="overlay-botones" style="justify-content:center;">
-        <button class="peligro" id="elegir-revision-rechazado">✘ Rechazado</button>
-        <button class="exito" id="elegir-revision-aprobado">✔ Aprobado</button>
-      </div>
-      <button class="secundario" id="elegir-revision-cancelar" style="margin-top:10px;">Cancelar</button>
-    </div>
-  </div>
-
   <div class="overlay" id="modal-pedirtexto" style="z-index:5000;">
     <div class="overlay-caja" style="max-width:420px;">
       <p id="modal-pedirtexto-texto" style="font-size:14px; margin:10px 0 10px; white-space:pre-line;"></p>
@@ -967,22 +873,6 @@
       <div class="overlay-botones">
         <button class="secundario" id="pedirtexto-cancel">Cancelar</button>
         <button id="pedirtexto-ok">Aceptar</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Motivo de rechazo: lista de motivos frecuentes + "Otro" con detalle libre. -->
-  <div class="overlay" id="modal-motivo-rechazo" style="z-index:5000;">
-    <div class="overlay-caja" style="max-width:420px;">
-      <h3 style="margin-top:0; font-size:15px;">Motivo del rechazo</h3>
-      <label>Motivo</label>
-      <select id="mr-motivo" style="width:100%; padding:7px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box; font-size:16px;"></select>
-      <label id="mr-detalle-label">Detalle (opcional)</label>
-      <textarea id="mr-detalle" rows="3" style="width:100%; box-sizing:border-box; padding:8px; border:1px solid #ccc; border-radius:4px; font-family:inherit; font-size:13px;"></textarea>
-      <div class="estado-msg error" id="mr-estado" style="min-height:16px;"></div>
-      <div class="overlay-botones">
-        <button class="secundario" id="mr-cancel">Cancelar</button>
-        <button id="mr-ok">Rechazar</button>
       </div>
     </div>
   </div>
@@ -997,59 +887,6 @@
       <div class="overlay-botones">
         <button class="secundario" onclick="cerrarModalEliminar()">Cancelar</button>
         <button class="peligro" onclick="confirmarEliminarDefinitivoAhora()">Sí, eliminar para siempre</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Comentario y foto opcionales al marcar "Pendiente de dudas" (mejora Usuario). -->
-  <div class="overlay" id="modal-nota-dudas" style="z-index:5000;">
-    <div class="overlay-caja" style="max-width:420px;">
-      <h3 style="margin-top:0; font-size:15px;" id="nd-titulo">Pendiente de dudas</h3>
-      <label>Explica la duda (opcional)</label>
-      <textarea id="nd-texto" rows="3" style="width:100%; box-sizing:border-box; padding:8px; border:1px solid #ccc; border-radius:4px; font-family:inherit; font-size:13px;"></textarea>
-      <label>Foto (opcional)</label>
-      <input type="file" id="nd-foto" accept="image/*">
-      <div class="estado-msg error" id="nd-estado" style="min-height:16px;"></div>
-      <div class="overlay-botones">
-        <button class="secundario" id="nd-cancel">Cancelar</button>
-        <button id="nd-ok">Marcar pendiente de dudas</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- "Mi lista de hoy" con orden manual (mejora Usuario). -->
-  <div class="overlay" id="modal-mi-lista" style="z-index:5000;">
-    <div class="overlay-caja" style="max-width:480px; max-height:80vh; overflow-y:auto;">
-      <h3 style="margin-top:0; font-size:15px;">📋 Mi lista de hoy</h3>
-      <p style="font-size:12px; color:#666; margin-top:-6px;">Usa ▲▼ para poner primero lo que quieras hacer antes. El orden se guarda solo en este dispositivo.</p>
-      <div id="ml-lista"></div>
-      <div class="overlay-botones">
-        <button class="secundario" onclick="cerrarMiListaHoy()">Cerrar</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- "Mi historial" personal (mejora Usuario). -->
-  <div class="overlay" id="modal-mi-historial" style="z-index:5000;">
-    <div class="overlay-caja" style="max-width:420px;">
-      <h3 style="margin-top:0; font-size:15px;">📊 Mi historial</h3>
-      <div id="mh-contenido"></div>
-      <div class="overlay-botones">
-        <button class="secundario" onclick="cerrarMiHistorial()">Cerrar</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Favoritas y recientes (mejora Usuario). -->
-  <div class="overlay" id="modal-favoritos" style="z-index:5000;">
-    <div class="overlay-caja" style="max-width:480px; max-height:80vh; overflow-y:auto;">
-      <h3 style="margin-top:0; font-size:15px;">⭐ Favoritas y recientes</h3>
-      <label>Favoritas</label>
-      <div id="pf-favoritas"></div>
-      <label style="margin-top:10px; display:block;">Recientes</label>
-      <div id="pf-recientes"></div>
-      <div class="overlay-botones">
-        <button class="secundario" onclick="cerrarPanelFavoritos()">Cerrar</button>
       </div>
     </div>
   </div>
@@ -1153,7 +990,7 @@
     // código "PL1000") como las piezas numeradas de verdad que cuelgan de él
     // (código "1001"...) — se distinguen por el código: la familia siempre
     // lleva letras delante, la pieza de verdad es solo números.
-    const TIPOS_DOCUMENTABLES = new Set(['PLANCHA_1000', 'PLANCHA_2000', 'PLANCHA_3000', 'PERFIL_4000', 'PERFIL_6000', 'PERFIL_7000']);
+    const TIPOS_DOCUMENTABLES = new Set(['PLANCHA_1000', 'PLANCHA_2000', 'PLANCHA_3000', 'PERFIL_4000', 'PERFIL_6000']);
     function esPiezaNumerada(codigo) { return /^\d+$/.test(String(codigo || '').trim()); }
 
     const ETIQUETAS_TIPO = {
@@ -1186,7 +1023,6 @@
       PLANCHA_3000: 'Plancha 3000',
       PERFIL_4000: 'Perfil 4000',
       PERFIL_6000: 'Perfil 6000',
-      PERFIL_7000: 'Perfil 7000',
       DOC_MODELO: 'Modelo',
       DOC_PLANO_CORTE: 'Plano de corte',
       DOC_WINDCHILL: 'Windchill',
@@ -1204,8 +1040,7 @@
       PLANCHA_2000: 'PL',
       PLANCHA_3000: 'PL',
       PERFIL_4000: 'PERF',
-      PERFIL_6000: 'PERF',
-      PERFIL_7000: 'PERF'
+      PERFIL_6000: 'PERF'
     };
     function etiquetaCortaTipo(tipo) { return TIPO_TAG_CORTO[tipo] || tipo; }
 
@@ -1226,88 +1061,6 @@
     // aprobados/corregidos (cada uno con su check): { [nodeId]: { GHE: bool, NAV: bool } }.
     // Solo true cuando hay al menos un comentario de ese origen y todos están hechos.
     let estadoComentariosPorNodo = {};
-
-    // -------------------- Mejoras para Usuario (Trabajador) --------------------
-    // Notas/fotos opcionales dejadas al marcar "Pendiente de dudas": la más
-    // reciente por nodo, cargada aparte (tabla notas_pendiente_dudas) igual
-    // que los comentarios de modelo.
-    let notasDudasPorNodo = {};
-    // Favoritas y recientes: solo tienen sentido por dispositivo (no hay
-    // pantalla de "mis ajustes" en el servidor para esto), así que se
-    // guardan en localStorage por usuario.
-    let favoritosIds = new Set();
-    let recientesIds = [];
-    // Modo ligero: cuando está activo, cargarArbol() da un margen de tiempo
-    // a la respuesta y, si no llega (mala cobertura en el taller), usa la
-    // última copia guardada en este dispositivo en vez de dejar la pantalla
-    // colgada.
-    let modoLigero = false;
-
-    function claveFavoritos() { return 'estructura_favoritos_' + miPerfil.id; }
-    function claveRecientes() { return 'estructura_recientes_' + miPerfil.id; }
-    function claveOrdenMisTareas() { return 'estructura_orden_mis_tareas_' + miPerfil.id; }
-    function claveCacheLigero() { return 'estructura_cache_ligero_' + miPerfil.id; }
-
-    function cargarFavoritosYRecientes() {
-      try { favoritosIds = new Set(JSON.parse(localStorage.getItem(claveFavoritos()) || '[]')); } catch (e) { favoritosIds = new Set(); }
-      try { recientesIds = JSON.parse(localStorage.getItem(claveRecientes()) || '[]'); } catch (e) { recientesIds = []; }
-    }
-    function guardarFavoritosLS() { try { localStorage.setItem(claveFavoritos(), JSON.stringify([...favoritosIds])); } catch (e) {} }
-    function guardarRecientesLS() { try { localStorage.setItem(claveRecientes(), JSON.stringify(recientesIds)); } catch (e) {} }
-    function esFavorito(nodeId) { return favoritosIds.has(nodeId); }
-
-    function alternarFavorito(nodeId) {
-      if (favoritosIds.has(nodeId)) favoritosIds.delete(nodeId); else favoritosIds.add(nodeId);
-      guardarFavoritosLS();
-      renderizarArbolCompleto();
-    }
-
-    // Se llama cada vez que se abre el menú contextual de un nodo (clic
-    // derecho, pulsación larga o el botón "⋯"): es la señal más fiable de
-    // que el usuario "ha estado" en esa pieza, sin añadir clics de más.
-    function registrarNodoReciente(nodeId) {
-      if (miPerfil.rol !== 'TRABAJADOR') return;
-      recientesIds = [nodeId, ...recientesIds.filter(id => id !== nodeId)].slice(0, 8);
-      guardarRecientesLS();
-    }
-
-    function cargarPreferenciaModoLigero() {
-      modoLigero = localStorage.getItem('estructura_modo_ligero') === '1';
-      const chk = document.getElementById('chk-modo-ligero');
-      if (chk) chk.checked = modoLigero;
-    }
-    function toggleModoLigero() {
-      modoLigero = document.getElementById('chk-modo-ligero').checked;
-      try { localStorage.setItem('estructura_modo_ligero', modoLigero ? '1' : '0'); } catch (e) {}
-      if (!modoLigero) document.getElementById('banner-modo-ligero').style.display = 'none';
-    }
-
-    // Aviso de "me han rechazado una tarea" con notificación del navegador,
-    // además del aviso en pantalla que ya existía (mostrarAviso/mostrarAvisoModal
-    // en procesarEventoRealtime) — para cuando la pestaña está en segundo
-    // plano. Sigue haciendo falta que el navegador siga abierto: no es un
-    // aviso push del servidor.
-    function avisosRechazoActivados() {
-      return localStorage.getItem('estructura_avisos_rechazo_trabajador') === '1' &&
-        typeof Notification !== 'undefined' && Notification.permission === 'granted';
-    }
-    async function alternarAvisosRechazo() {
-      const chk = document.getElementById('chk-avisos-rechazo');
-      if (chk.checked) {
-        if (typeof Notification === 'undefined') { mostrarAvisoModal('Tu navegador no admite notificaciones.'); chk.checked = false; return; }
-        let permiso = Notification.permission;
-        if (permiso === 'default') permiso = await Notification.requestPermission();
-        if (permiso !== 'granted') { mostrarAvisoModal('No se han concedido permisos de notificación.'); chk.checked = false; return; }
-        localStorage.setItem('estructura_avisos_rechazo_trabajador', '1');
-      } else {
-        localStorage.setItem('estructura_avisos_rechazo_trabajador', '0');
-      }
-    }
-    function inicializarAvisosRechazo() {
-      const chk = document.getElementById('chk-avisos-rechazo');
-      if (!chk) return;
-      chk.checked = avisosRechazoActivados();
-    }
 
     function guardarEstadoAbiertos() {
       if (!miPerfil) return;
@@ -1424,7 +1177,7 @@
         document.getElementById('menu-link-duplicados').style.display = 'flex';
         document.getElementById('menu-item-exportar-excel').style.display = 'flex';
       }
-      if (puedeSeleccionarBasico()) {
+      if (puedeSeleccionar()) {
         document.getElementById('wrap-modo-seleccion').style.display = 'flex';
       }
       if (!esInvitado()) {
@@ -1438,10 +1191,6 @@
 
       if (miPerfil.rol === 'TRABAJADOR') {
         document.getElementById('wrap-mis-tareas').style.display = 'flex';
-        document.getElementById('grupo-menu-mi-trabajo').style.display = 'block';
-        cargarFavoritosYRecientes();
-        cargarPreferenciaModoLigero();
-        inicializarAvisosRechazo();
       }
       if (pareceGestor()) {
         document.getElementById('wrap-desactivados').style.display = 'flex';
@@ -1519,15 +1268,9 @@
     // corte/Windchill) de piezas finales — no ve ni toca nada más del árbol.
     function esWindchill() { return miPerfil.rol === 'WINDCHILL'; }
     function pareceGestor() { return esGestor() || esInvitado(); }
-    // La selección múltiple "completa" (asignar a cualquiera, desactivar,
-    // bloquear/desbloquear, aprobar documentación, publicar en Windchill...)
-    // sigue siendo cosa exclusiva de ADMIN/REVISOR.
+    // Un usuario cualquiera NO puede tomar la tarea de otro — reasignar tareas
+    // (incluido "Tomar tarea") sigue siendo cosa exclusiva de ADMIN/REVISOR.
     function puedeSeleccionar() { return esGestor(); }
-    // Selección múltiple "básica": cualquier usuario normal (ni Invitado ni
-    // Windchill, que tienen sus propios flujos aparte) puede activarla para
-    // tomar de golpe varias tareas sin asignar, o cambiar de golpe el estado
-    // de varias de sus propias tareas -- nunca las de otro.
-    function puedeSeleccionarBasico() { return puedeSeleccionar() || (!esInvitado() && !esWindchill()); }
 
     async function registrarLog(accion, descripcion, nodeId) {
       try {
@@ -1623,31 +1366,6 @@
 
       submenu.classList.add('abierta');
       titulo.classList.add('abierta');
-    }
-
-    // Los menús desplegables flotantes se sacan a document.body al abrirse
-    // (ver arriba), así que dejan de estar "dentro" del menú lateral o de su
-    // fondo oscuro: un clic en el área de trabajo (sobre todo con el menú
-    // fijo a la izquierda, donde no hay fondo oscuro que capture el clic)
-    // no los cerraba. Este listener global los cierra al clicar en
-    // cualquier sitio que no sea el propio submenú abierto ni su opción raíz
-    // (clicar dentro del submenú, p.ej. varias acciones seguidas de
-    // Bloques, no lo cierra).
-    document.addEventListener('click', function(event) {
-      if (!document.querySelector('.menu-submenu-contenido.abierta')) return;
-      if (event.target.closest && (event.target.closest('.menu-submenu-contenido') || event.target.closest('.menu-item-expandible'))) return;
-      cerrarSubmenusFlotantes();
-    });
-
-    function mostrarIdiomaEnDesarrollo(idioma) {
-      const mensajes = {
-        espanol: 'En desarrollo',
-        ingles: 'Under development',
-        coreano: '개발 중입니다',
-        brasileno: 'Em desenvolvimento'
-      };
-      cerrarSubmenusFlotantes();
-      mostrarAvisoModal(mensajes[idioma] || 'En desarrollo');
     }
 
     function ajustarAlturaArbol() {
@@ -1791,61 +1509,12 @@
       return nodos.filter(n => n.tipo === 'BUQUE' ? idsRaizSet.has(n.id) : permitidos.has(n.id));
     }
 
-    // Carga los últimos comentarios de "Pendiente de dudas" (nota y/o foto
-    // opcionales, mejora Usuario) y se queda con el más reciente por nodo.
-    async function cargarNotasDudas() {
-      try {
-        const { data, error } = await supabaseClient.from('notas_pendiente_dudas').select('*').order('creado_en', { ascending: false });
-        if (error) { console.warn('No se pudieron cargar las notas de dudas:', error.message); return; }
-        notasDudasPorNodo = {};
-        (data || []).forEach(n => { if (!notasDudasPorNodo[n.node_id]) notasDudasPorNodo[n.node_id] = n; });
-      } catch (e) {
-        console.warn('No se pudieron cargar las notas de dudas:', e);
-      }
-    }
-
     async function cargarArbol() {
       let query = supabaseClient.from('v_nodes_with_workflow').select('*').order('orden', { ascending: true });
       if (!mostrarDesactivados) query = query.eq('activo', true);
+      const [{ data, error }] = await Promise.all([query, cargarEstadoComentariosModelo()]);
 
       const raiz = document.getElementById('arbol-raiz');
-      const banner = document.getElementById('banner-modo-ligero');
-      let data, error;
-
-      // Modo ligero (mejora Usuario, "sin que se quede colgado" con mal
-      // wifi de taller): da 10s de margen y, si no llega respuesta, cae a
-      // la última copia guardada en este dispositivo en vez de dejar la
-      // pantalla cargando indefinidamente.
-      if (modoLigero) {
-        try {
-          const [resultado] = await Promise.race([
-            Promise.all([query, cargarEstadoComentariosModelo(), cargarNotasDudas()]),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout_modo_ligero')), 10000))
-          ]);
-          ({ data, error } = resultado);
-          if (!error) { try { localStorage.setItem(claveCacheLigero(), JSON.stringify({ data, guardadoEn: Date.now() })); } catch (e2) {} }
-          if (banner) banner.style.display = 'none';
-        } catch (e) {
-          let cache = null;
-          try { cache = JSON.parse(localStorage.getItem(claveCacheLigero()) || 'null'); } catch (e2) {}
-          if (cache && cache.data) {
-            data = cache.data; error = null;
-            if (banner) {
-              const minutos = Math.round((Date.now() - cache.guardadoEn) / 60000);
-              banner.textContent = `🪶 Modo ligero: sin respuesta del servidor — mostrando la última copia guardada en este dispositivo (hace ${minutos < 1 ? 'menos de 1 minuto' : minutos + ' min'}). Los cambios no se guardarán hasta que vuelva la conexión.`;
-              banner.style.display = 'block';
-            }
-          } else {
-            raiz.innerHTML = '<li style="color:red;">No se pudo cargar (sin respuesta y sin copia guardada todavía). Vuelve a intentarlo cuando tengas mejor cobertura.</li>';
-            return;
-          }
-        }
-      } else {
-        const [resultado] = await Promise.all([query, cargarEstadoComentariosModelo(), cargarNotasDudas()]);
-        ({ data, error } = resultado);
-        if (banner) banner.style.display = 'none';
-      }
-
       if (error) { raiz.innerHTML = `<li style="color:red;">Error al cargar: ${error.message}</li>`; return; }
 
       todosLosNodos = filtrarPorBuqueAsignado(data || []);
@@ -2714,13 +2383,12 @@
 
       let acciones = '';
       if (nodo.tipo === 'BUQUE' || nodo.tipo === 'BLOQUE' || nodo.tipo === 'SB' || nodo.tipo === 'PI') {
-        acciones += `<button class="boton-rama" onclick="expandirRama('${nodo.id}')" title="Expandir esta rama">⏬</button>`;
-        acciones += `<button class="boton-rama" onclick="encogerRama('${nodo.id}')" title="Encoger esta rama">⏫</button>`;
+        acciones += `<button class="pequeno secundario" onclick="expandirRama('${nodo.id}')" title="Expandir esta rama">⏬</button>`;
+        acciones += `<button class="pequeno secundario" onclick="encogerRama('${nodo.id}')" title="Encoger esta rama">⏫</button>`;
       }
 
-      const notaDudasExtra = notasDudasPorNodo[nodo.id];
       const notaDudas = (!sinAsignacion && !vistaSimplificada && nodo.trabajo_estado === 'PENDIENTE_DUDAS')
-        ? `<div class="motivo-rechazo" style="color:rgb(0,176,240);">❓ Pendiente de dudas${notaDudasExtra?.nota ? ' — ' + notaDudasExtra.nota : ''}${notaDudasExtra?.foto_url ? ` · <a href="${notaDudasExtra.foto_url}" target="_blank" rel="noopener">📷 Ver foto</a>` : ''}</div>` : '';
+        ? `<div class="motivo-rechazo" style="color:rgb(0,176,240);">❓ Pendiente de dudas</div>` : '';
 
       const notaCambiosModelo = (!sinAsignacion && !vistaSimplificada && nodo.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO')
         ? (() => {
@@ -2753,11 +2421,7 @@
         }
       }
 
-      // Un gestor puede seleccionar cualquier tarea; un usuario normal solo
-      // las que están sin asignar (para tomarlas de golpe) o las suyas
-      // propias (para cambiarles de golpe el estado) -- nunca las de otro.
-      const puedeMarcarEstaCasilla = puedeSeleccionar() || (puedeSeleccionarBasico() && (!nodo.trabajador_id || nodo.trabajador_id === miPerfil.id));
-      const checkboxSeleccion = (modoSeleccion && puedeMarcarEstaCasilla && !sinAsignacion)
+      const checkboxSeleccion = (modoSeleccion && puedeSeleccionar() && !sinAsignacion)
         ? `<input type="checkbox" class="chk-seleccion" ${nodosSeleccionados.has(nodo.id) ? 'checked' : ''} onclick="toggleSeleccionNodo('${nodo.id}', event)">`
         : '';
 
@@ -2768,7 +2432,6 @@
           <div class="fila-nodo ${bloqueadoWindchill ? 'fila-doc-bloqueada' : ''}"
                title="${bloqueadoWindchill ? 'Bloqueado: Modelo y Plano de corte deben estar Aprobados' : tituloTipo}"
                oncontextmenu="mostrarMenuContextual(event, '${nodo.id}'); return false;"
-               onclick="manejarClicFila(event, '${nodo.id}')"
                ${tieneHijos ? `ondblclick="toggleNodo('${nodo.id}')"` : ''}
                ${esGestor() ? `draggable="true" ondragstart="iniciarArrastre(event, '${nodo.id}')" ondragend="finalizarArrastre(event)"` : ''}
                ondragover="sobreArrastre(event, '${nodo.id}')"
@@ -2780,11 +2443,10 @@
             ${checkboxSeleccion}
             <span class="toggle ${tieneHijos ? '' : 'vacio'}" onclick="toggleNodo('${nodo.id}')">${abierto ? '▼' : '▶'}</span>
             ${!sinAsignacion ? `<span class="candado" title="${nodo.bloqueado ? 'Bloqueado — clic para desbloquear' : 'Desbloqueado — clic para bloquear'}" onclick="event.stopPropagation(); accionAlternarBloqueoDesdeIcono('${nodo.id}')">${nodo.bloqueado ? '🔒' : '🔓'}</span>` : ''}
-            ${(!sinAsignacion && miPerfil.rol === 'TRABAJADOR') ? `<span class="favorito-estrella" title="${esFavorito(nodo.id) ? 'Quitar de favoritas' : 'Marcar como favorita'}" onclick="event.stopPropagation(); alternarFavorito('${nodo.id}')">${esFavorito(nodo.id) ? '⭐' : '☆'}</span>` : ''}
             ${(!sinAsignacion && nodo.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO') ? '<span class="cuadro-cambios-modelo" title="Pendiente de cambios en modelo"></span>' : ''}
             ${(!sinAsignacion && nodoRetrasado(nodo)) ? `<span class="icono-retraso" title="Retrasada — prevista para ${formatearFechaHora(nodo.fecha_fin_prevista)}">⏰</span>` : ''}
             ${nodo.tipo === 'BLOQUE' && nodo.congelado ? '<span title="Bloque congelado por un Supervisor/Admin — nadie puede cambiar el estado de lo que cuelga de él" style="cursor:help;">🧊</span>' : (nodo.tipo !== 'BLOQUE' && estaBajoBloqueCongelado(nodo) ? '<span title="Dentro de un Bloque congelado — no se puede cambiar el estado hasta que lo descongelen" style="cursor:help; opacity:0.7;">🧊</span>' : '')}
-            <span class="flecha ${claseColor}" title="${estado}" ondblclick="manejarDobleClicEstado(event, '${nodo.id}')">${simboloFlecha}</span>
+            <span class="flecha ${claseColor}" title="${estado}">${simboloFlecha}</span>
             ${bloqueadoWindchill ? '<span title="Bloqueado: Modelo y Plano de corte deben estar Aprobados">🔒</span>' : ''}
             <span class="codigo">${resaltarCoincidencia(etiquetaCodigoVisible(nodo))}</span>
             ${nombreEsRedundante(nodo.codigo, nodo.nombre) ? '' : `<span>${resaltarCoincidencia(nodo.nombre)}</span>`}
@@ -2827,30 +2489,6 @@
       // se cierra, así los Bloques aparecen pero sin desplegar su interior.
       todosLosNodos.forEach(n => {
         if (n.tipo === 'BUQUE') nodosAbiertos.add(n.id); else nodosAbiertos.delete(n.id);
-      });
-      cargarArbol();
-    }
-
-    // Despliega TODOS los Bloques de todos los Buques, enteros (con todo lo
-    // que cuelga de cada uno) -- disponible desde el menú contextual.
-    function expandirTodosLosBloques() {
-      todosLosNodos.forEach(n => {
-        if (n.tipo === 'BUQUE') {
-          nodosAbiertos.add(n.id);
-        } else if (n.tipo === 'BLOQUE') {
-          nodosAbiertos.add(n.id);
-          obtenerDescendientesIds(n.id).forEach(id => nodosAbiertos.add(id));
-        }
-      });
-      cargarArbol();
-    }
-
-    // Despliega todos los Bloques mostrando solo su primer nivel (Anidados,
-    // Subbloque, PM, PS, UC...), sin entrar más adentro de cada uno.
-    function expandirBloquesPrimerNivel() {
-      todosLosNodos.forEach(n => {
-        if (n.tipo === 'BUQUE' || n.tipo === 'BLOQUE') nodosAbiertos.add(n.id);
-        else nodosAbiertos.delete(n.id);
       });
       cargarArbol();
     }
@@ -3225,7 +2863,6 @@
     function mostrarMenuContextual(evento, nodeId) {
       evento.preventDefault();
       evento.stopPropagation();
-      registrarNodoReciente(nodeId);
       const nodo = mapaNodoPorId[nodeId];
       const sinAsignacion = TIPOS_SIN_ASIGNACION.has(nodo.tipo);
       const esMio = nodo.trabajador_id === miPerfil.id;
@@ -3233,49 +2870,6 @@
       const items = [];
       const tieneHijos = (mapaHijosPorPadre[nodeId] || []).length > 0;
       const esPiezaDocumentable = TIPOS_DOCUMENTABLES.has(nodo.tipo) && esPiezaNumerada(nodo.codigo);
-
-      // Comandos de despliegue a nivel de todo el árbol -- se ofrecen desde
-      // cualquier nodo, para cualquier rol (son de solo consulta, no cambian
-      // nada). "Expandir bloque seleccionado..." reutiliza el mismo modal
-      // que ya existía en el menú lateral (⏬ Expandir por bloque).
-      items.push({
-        submenu: true,
-        label: '⏬ Expandir bloques',
-        subitems: [
-          { label: 'Expandir todos los bloques', tip: 'Despliega totalmente todos los Bloques del buque, con todo lo que cuelga de cada uno.', fn: () => expandirTodosLosBloques() },
-          { label: 'Expandir bloques (primeros nodos)', tip: 'Despliega todos los Bloques mostrando solo su primer nivel (Anidados, Subbloque, PM, PS, UC...), sin entrar más adentro.', fn: () => expandirBloquesPrimerNivel() },
-          { label: 'Expandir bloque seleccionado...', tip: 'Elige un Bloque concreto para desplegarlo entero (el resto del árbol se contrae).', fn: () => abrirModalExpandirPorBloque() }
-        ]
-      });
-
-      // Enlaces de solo consulta entre una ubicación del Subbloque
-      // (PS/PT/PM/NL/NC/NP) y las Planchas/Perfiles que se generaron desde
-      // ahí -- viven en Anidados, no como hijos de este nodo, así que sin
-      // esto no habría forma de encontrarlas desde aquí.
-      if (TIPOS_UBICACION_PIEZAS.has(nodo.tipo)) {
-        const piezasAqui = todosLosNodos
-          .filter(n => n.ubicacion_id === nodeId)
-          .sort((a, b) => a.codigo.localeCompare(b.codigo, 'es'));
-        if (piezasAqui.length > 0) {
-          items.push({
-            submenu: true,
-            label: `📦 Piezas usadas aquí (${piezasAqui.length})`,
-            subitems: piezasAqui.map(p => ({
-              label: `${p.codigo}${p.nombre ? ' — ' + p.nombre : ''}`,
-              tip: 'Ir a esta pieza, dentro de Anidados.',
-              fn: () => irANodoEnArbol(p.id)
-            }))
-          });
-        }
-      }
-      if (esPiezaDocumentable && nodo.ubicacion_id && mapaNodoPorId[nodo.ubicacion_id]) {
-        const ubicacion = mapaNodoPorId[nodo.ubicacion_id];
-        items.push({
-          label: `📍 Ir a su ubicación (${ubicacion.codigo})`,
-          tip: 'Esta pieza se generó desde este nodo del Subbloque.',
-          fn: () => irANodoEnArbol(ubicacion.id)
-        });
-      }
 
       // Windchill (y sus hijos Publicar/Fichero subido) están bloqueados
       // mientras Modelo y Plano de corte de la pieza no estén Aprobados --
@@ -3422,9 +3016,6 @@
           });
 
           items.push({ label: '📅 Fechas previstas', tip: 'Fija cuándo debería empezar y terminar esta tarea, para comparar plan vs. real.', fn: () => abrirModalFechasPrevistas(nodeId) });
-          if (nodo.fecha_inicio_prevista || nodo.fecha_fin_prevista) {
-            items.push({ label: '🗑️ Quitar fecha prevista', tip: 'Elimina la fecha prevista de esta tarea (el nodo superior recalculará solo la suya).', fn: () => accionEliminarFechaPrevista(nodeId) });
-          }
           items.push({ label: '🔗 Dependencias', tip: 'Marca qué tareas tienen que estar Aprobadas antes de poder empezar esta.', fn: () => abrirModalDependencias(nodeId) });
 
           items.push({
@@ -3475,9 +3066,6 @@
               : 'Bloquea esta tarea y, si tiene, todos los nodos que cuelgan de ella.',
             fn: () => accionAlternarBloqueo(nodeId, !nodo.bloqueado)
           });
-          if (nodo.fecha_inicio_prevista || nodo.fecha_fin_prevista) {
-            items.push({ label: '🗑️ Quitar fecha prevista', tip: 'Elimina la fecha prevista de esta tarea (el nodo superior recalculará solo la suya).', fn: () => accionEliminarFechaPrevista(nodeId) });
-          }
           items.push({
             submenu: true,
             label: 'Estado tarea',
@@ -3808,11 +3396,6 @@
     // Fin previsto tal y como estaba al abrir el modal — para saber si lo que
     // se va a guardar es un retraso (fin nuevo posterior) y pedir motivo.
     let fpFinOriginal = null;
-    // Mientras esto sea false, cambiar "Inicio previsto" copia automáticamente
-    // el mismo valor en "Fin previsto" (para que sea más rápido rellenar una
-    // tarea nueva) -- en cuanto el usuario toca "Fin previsto" a mano, o si la
-    // tarea ya traía un fin previsto guardado, se deja de tocar.
-    let fpFinTocadoManualmente = false;
 
     async function abrirModalFechasPrevistas(nodeId) {
       nodoFechasPrevistasActual = nodeId;
@@ -3822,7 +3405,6 @@
       document.getElementById('fp-fin').value = nodo.fecha_fin_prevista ? nodo.fecha_fin_prevista.slice(0, 16) : '';
       document.getElementById('fp-estado').textContent = '';
       fpFinOriginal = nodo.fecha_fin_prevista ? nodo.fecha_fin_prevista.slice(0, 16) : null;
-      fpFinTocadoManualmente = !!nodo.fecha_fin_prevista;
       document.getElementById('fp-motivo-categoria').value = '';
       document.getElementById('fp-motivo-detalle').value = '';
       document.getElementById('fp-motivo-caja').style.display = 'none';
@@ -3958,38 +3540,6 @@
       document.getElementById('fp-motivo-caja').style.display = esRetrasoFechaFin() ? 'block' : 'none';
     }
 
-    // Por defecto, "Fin previsto" copia lo que se ponga en "Inicio previsto"
-    // -- así solo hace falta tocar la hora de fin. En cuanto el usuario edita
-    // "Fin previsto" a mano, se deja de copiar (para no pisarle el valor).
-    function alCambiarFpInicio() {
-      if (!fpFinTocadoManualmente) {
-        document.getElementById('fp-fin').value = document.getElementById('fp-inicio').value;
-      }
-      actualizarVisibilidadMotivoRetraso();
-    }
-
-    function alCambiarFpFin() {
-      fpFinTocadoManualmente = true;
-      actualizarVisibilidadMotivoRetraso();
-    }
-
-    // Quitar la fecha prevista de una tarea desde el menú contextual (sin
-    // pasar por el modal completo). Lo puede hacer un ADMIN/Supervisor, o el
-    // propio usuario asignado a la tarea sobre su propia tarea -- el nodo
-    // superior recalculará solo su rango de fechas (trigger en cascada).
-    async function accionEliminarFechaPrevista(nodeId) {
-      const nodo = mapaNodoPorId[nodeId];
-      if (!await mostrarConfirmacion(`¿Quitar la fecha prevista de "${nodo?.codigo}"? Los nodos superiores recalcularán solos su propia fecha prevista.`)) return;
-      const { error } = await supabaseClient.rpc('eliminar_fecha_prevista_nodo', { p_node_id: nodeId });
-      if (error) {
-        mostrarAvisoModal('Error: ' + traducirError(error.message));
-        registrarLog('INTENTO_FALLIDO', `Intento de quitar la fecha prevista de "${nodo?.codigo}" denegado: ${error.message}`, nodeId);
-        return;
-      }
-      registrarLog('FECHAS_PREVISTAS', `Quitó la fecha prevista de "${nodo?.codigo}"`, nodeId);
-      await cargarArbol();
-    }
-
     async function guardarFechasPrevistas() {
       const estadoEl = document.getElementById('fp-estado');
       const inicio = document.getElementById('fp-inicio').value || null;
@@ -4033,190 +3583,6 @@
       registrarLog('FECHAS_PREVISTAS', `Reinició la línea base de "${nodo?.codigo}"`, nodoFechasPrevistasActual);
       await cargarArbol();
       abrirModalFechasPrevistas(nodoFechasPrevistasActual);
-    }
-
-    // -------------------- Fechas previstas en cascada (selección múltiple) --------------------
-    // Para rellenar de golpe las fechas previstas de muchas tareas seguidas
-    // (p.ej. 20 PS dentro de un Subbloque, o 40 piezas numeradas dentro de
-    // una Plancha/Perfil) sin tener que abrir "📅 Fechas previstas" una a
-    // una: la primera tarea empieza en la fecha/hora indicada, dura lo que
-    // se elija (por defecto 0:45, entre 0:05 y 2:00), y cada tarea siguiente
-    // empieza justo cuando termina la anterior -- todas con la misma
-    // duración. El orden es el mismo en que aparecen ahora mismo en el
-    // árbol (de arriba abajo), no el orden en que se marcaron los checkbox.
-
-    function formatearDatetimeLocalInput(fecha) {
-      const pad = n => String(n).padStart(2, '0');
-      return `${fecha.getFullYear()}-${pad(fecha.getMonth() + 1)}-${pad(fecha.getDate())}T${pad(fecha.getHours())}:${pad(fecha.getMinutes())}`;
-    }
-
-    // Ids seleccionados, en el mismo orden en que aparecen ahora mismo
-    // pintados en el árbol (de arriba abajo) -- así "cascada" sigue el
-    // orden visual, sea cual sea el orden en que se fueron marcando.
-    function idsSeleccionadosEnOrdenVisual() {
-      return [...document.querySelectorAll('li.nodo')]
-        .map(li => li.id.replace(/^li-/, ''))
-        .filter(id => nodosSeleccionados.has(id));
-    }
-
-    async function abrirModalFechasCascada() {
-      document.getElementById('fc-contador').textContent = `Se aplicará a ${nodosSeleccionados.size} tarea(s) seleccionada(s), en el orden en que aparecen en el árbol.`;
-
-      // Si la primera tarea (en orden visual) ya tiene una fecha de inicio
-      // prevista guardada (p.ej. se está reasignando el horario a tareas
-      // que ya tenían fecha), se precarga como valor de partida -- sigue
-      // siendo editable, solo ahorra tener que volver a mirarla y
-      // escribirla a mano.
-      const idsActuales = idsSeleccionadosEnOrdenVisual();
-      const primerNodo = idsActuales.length ? mapaNodoPorId[idsActuales[0]] : null;
-      document.getElementById('fc-inicio').value = primerNodo?.fecha_inicio_prevista
-        ? formatearDatetimeLocalInput(new Date(primerNodo.fecha_inicio_prevista))
-        : '';
-
-      document.getElementById('fc-duracion').value = '45';
-      document.getElementById('fc-previsualizacion').style.display = 'none';
-      document.getElementById('fc-estado').textContent = '';
-
-      // Horario laboral (hora de entrada / oficina-taller) del trabajador
-      // de la primera tarea -- se puede ajustar aquí mismo y se guarda como
-      // su valor por defecto (también editable luego desde Usuarios).
-      const cajaHorario = document.getElementById('fc-horario-usuario');
-      if (primerNodo?.trabajador_id) {
-        const { data: perfilTrabajador } = await supabaseClient
-          .from('profiles').select('nombre_completo, hora_entrada, modo_jornada')
-          .eq('id', primerNodo.trabajador_id).maybeSingle();
-        document.getElementById('fc-horario-nombre').textContent = perfilTrabajador?.nombre_completo || primerNodo.trabajador_nombre || 'este trabajador';
-        document.getElementById('fc-hora-entrada').value = (perfilTrabajador?.hora_entrada || '08:00').slice(0, 5);
-        document.getElementById('fc-modo-jornada').value = perfilTrabajador?.modo_jornada || 'TALLER';
-        cajaHorario.style.display = 'block';
-      } else {
-        cajaHorario.style.display = 'none';
-      }
-
-      document.getElementById('modal-fechas-cascada').style.display = 'flex';
-      document.getElementById('fc-inicio').oninput = actualizarPrevisualizacionFechasCascada;
-      document.getElementById('fc-duracion').onchange = actualizarPrevisualizacionFechasCascada;
-      actualizarPrevisualizacionFechasCascada();
-    }
-
-    function cerrarModalFechasCascada() {
-      document.getElementById('modal-fechas-cascada').style.display = 'none';
-    }
-
-    // La previsualización y el reparto real usan el mismo motor de horario
-    // laboral que la base de datos (invierno/verano, descansos, fin de
-    // semana/festivos/ausencias) -- calcular_fechas_cascada() es de solo
-    // lectura, así que sirve para "probar" el resultado antes de guardar
-    // nada. Se usa el horario laboral de quien tenga asignada la PRIMERA
-    // tarea seleccionada (misma tarea cuya fecha ya se precarga al abrir
-    // el modal).
-    let debounceFechasCascadaPreview = null;
-    function actualizarPrevisualizacionFechasCascada() {
-      clearTimeout(debounceFechasCascadaPreview);
-      const previa = document.getElementById('fc-previsualizacion');
-      const inicioVal = document.getElementById('fc-inicio').value;
-      const ids = idsSeleccionadosEnOrdenVisual();
-      const n = ids.length;
-      if (!inicioVal || n === 0) { previa.style.display = 'none'; return; }
-      const duracionMin = parseInt(document.getElementById('fc-duracion').value, 10);
-      const primerNodo = mapaNodoPorId[ids[0]];
-      if (!primerNodo?.trabajador_id) {
-        previa.textContent = 'La primera tarea seleccionada no tiene trabajador asignado: asígnalo antes para poder calcular el horario laboral.';
-        previa.style.display = 'block';
-        return;
-      }
-      previa.textContent = 'Calculando según el horario laboral...';
-      previa.style.display = 'block';
-      debounceFechasCascadaPreview = setTimeout(async () => {
-        const { data, error } = await supabaseClient.rpc('calcular_fechas_cascada', {
-          p_usuario_id: primerNodo.trabajador_id,
-          p_inicio: inicioVal,
-          p_duraciones_min: new Array(n).fill(duracionMin)
-        });
-        if (error || !data || data.length === 0) {
-          previa.textContent = 'No se ha podido calcular la previsualización.';
-          return;
-        }
-        const ultima = data[data.length - 1];
-        previa.textContent = `La última de las ${n} terminará el ${formatearFechaHora(ultima.fin)} (según el horario laboral de ${primerNodo.trabajador_nombre || 'quien la tenga asignada'}).`;
-      }, 300);
-    }
-
-    async function confirmarFechasCascada() {
-      const estadoEl = document.getElementById('fc-estado');
-      const inicioVal = document.getElementById('fc-inicio').value;
-      if (!inicioVal) {
-        estadoEl.textContent = 'Indica la fecha/hora de inicio de la primera tarea.';
-        estadoEl.className = 'estado-msg error';
-        return;
-      }
-      const duracionMin = parseInt(document.getElementById('fc-duracion').value, 10);
-      const ids = idsSeleccionadosEnOrdenVisual();
-      if (ids.length === 0) {
-        estadoEl.textContent = 'No hay tareas seleccionadas.';
-        estadoEl.className = 'estado-msg error';
-        return;
-      }
-
-      const btn = document.querySelector('#modal-fechas-cascada .overlay-botones button:last-child');
-      btn.disabled = true;
-      estadoEl.textContent = 'Aplicando (según el horario laboral, puede repartirse entre varios días)...';
-      estadoEl.className = 'estado-msg';
-
-      // Si se ha tocado el horario laboral del trabajador de la primera
-      // tarea, se guarda antes como su valor por defecto -- así el reparto
-      // que sigue ya lo usa, y queda guardado para la próxima vez.
-      const primerNodoConfirmar = mapaNodoPorId[ids[0]];
-      if (primerNodoConfirmar?.trabajador_id && document.getElementById('fc-horario-usuario').style.display !== 'none') {
-        const horaEntradaVal = document.getElementById('fc-hora-entrada').value || null;
-        const modoJornadaVal = document.getElementById('fc-modo-jornada').value || null;
-        const { error: errorHorario } = await supabaseClient.rpc('actualizar_horario_usuario', {
-          p_usuario_id: primerNodoConfirmar.trabajador_id, p_hora_entrada: horaEntradaVal, p_modo_jornada: modoJornadaVal
-        });
-        if (errorHorario) {
-          btn.disabled = false;
-          estadoEl.textContent = 'Error al guardar el horario laboral: ' + traducirError(errorHorario.message);
-          estadoEl.className = 'estado-msg error';
-          return;
-        }
-      }
-
-      // El reparto entero (invierno/verano, descansos, fin de semana,
-      // festivos y ausencias) lo calcula la base de datos en una sola
-      // llamada -- aplicar_fechas_cascada() usa el horario laboral del
-      // trabajador de la primera tarea para las demás también.
-      const { data, error: errorRpc } = await supabaseClient.rpc('aplicar_fechas_cascada', {
-        p_node_ids: ids, p_inicio: inicioVal, p_duracion_min: duracionMin
-      });
-
-      btn.disabled = false;
-
-      if (errorRpc) {
-        estadoEl.textContent = 'Error: ' + traducirError(errorRpc.message);
-        estadoEl.className = 'estado-msg error';
-        return;
-      }
-
-      const filas = data || [];
-      const hechos = filas.filter(r => !r.error).length;
-      const errores = filas.filter(r => r.error).map(r => `${mapaNodoPorId[r.node_id]?.codigo || r.node_id}: ${traducirError(r.error)}`);
-
-      registrarLog('FECHAS_PREVISTAS', `Fechas previstas en cascada sobre ${ids.length} tarea(s) desde ${inicioVal} (${duracionMin} min efectivos c/u, según horario laboral) — ${hechos} ok${errores.length ? `, ${errores.length} fallaron` : ''}`);
-
-      if (errores.length > 0) {
-        estadoEl.innerHTML = `Hecho ${hechos} de ${ids.length}. Fallaron ${errores.length}:<br>` + errores.map(e => `• ${e}`).join('<br>');
-        estadoEl.className = 'estado-msg error';
-        await cargarArbol();
-        return;
-      }
-
-      estadoEl.textContent = '';
-      cerrarModalFechasCascada();
-      nodosSeleccionados.clear();
-      modoSeleccion = false;
-      document.getElementById('chk-modo-seleccion').checked = false;
-      actualizarBarraSeleccion();
-      await cargarArbol();
     }
 
     // -------------------- Dependencias entre tareas --------------------
@@ -4354,88 +3720,13 @@
     // los propios tipos Plancha/Perfil: un hijo final documentable no
     // puede tener dentro otra Plancha o Perfil, solo Modelo/Plano de
     // corte/Windchill (que siguen permitidos, vienen de otras reglas).
-    // excluirFamiliasPieza (opcional): quita también PLANCHA_*/PERFIL_* de
-    // la lista -- lo usa el modal de "Crear varios nodos" (+N), que no
-    // sabe generar la pieza dentro de su familia en Anidados.
-    async function obtenerTiposHijoValidos(parentTipo, parentCodigo, excluirFamiliasPieza) {
+    async function obtenerTiposHijoValidos(parentTipo, parentCodigo) {
       const { data } = await supabaseClient.from('node_type_rules').select('child_type').eq('parent_type', parentTipo);
       let tipos = (data || []).map(r => r.child_type);
       if (TIPOS_DOCUMENTABLES.has(parentTipo) && esPiezaNumerada(parentCodigo)) {
         tipos = tipos.filter(t => !TIPOS_DOCUMENTABLES.has(t));
       }
-      if (excluirFamiliasPieza) {
-        tipos = tipos.filter(t => !FAMILIAS_TODAS_PIEZA.includes(t));
-      }
       return tipos;
-    }
-
-    // -------------------- Piezas (Plancha/Perfil) generadas desde PS/PT/PM/NL/NC/NP --------------------
-    //
-    // Desde estos 6 nodos del Subbloque, "+ Generar nodo hijo" no crea la
-    // pieza colgando de ahí: en el desplegable de Tipo aparecen "Plancha
-    // (PL)"/"Perfil (PERF)" en vez de cada familia por separado, y al
-    // elegir uno se calcula sola (según la 1ª cifra del número) o se elige
-    // a mano la familia (PLANCHA_1000/2000/3000 o PERFIL_4000/6000/7000)
-    // dentro de Anidados de ESTE Bloque, y ahí es donde se crea de verdad
-    // (mismo sitio de siempre para el seguimiento de trabajo, fechas y
-    // documentación). El nodo de origen (PS/PT/etc.) solo se queda con un
-    // enlace hacia ella (nodes.ubicacion_id), para poder localizarla luego.
-    const TIPOS_UBICACION_PIEZAS = new Set(['PS', 'PT', 'PM', 'NL', 'NC', 'NP']);
-    const FAMILIAS_PL_PIEZA = ['PLANCHA_1000', 'PLANCHA_2000', 'PLANCHA_3000'];
-    const FAMILIAS_PERF_PIEZA = ['PERFIL_4000', 'PERFIL_6000', 'PERFIL_7000'];
-    const FAMILIAS_TODAS_PIEZA = [...FAMILIAS_PL_PIEZA, ...FAMILIAS_PERF_PIEZA];
-    const FAMILIA_SEGUN_CIFRA = {
-      '1': 'PLANCHA_1000', '2': 'PLANCHA_2000', '3': 'PLANCHA_3000',
-      '4': 'PERFIL_4000', '6': 'PERFIL_6000', '7': 'PERFIL_7000'
-    };
-
-    // Familias (nodos "PL1000", "PERF4000"... -- código NO numérico, para
-    // distinguirlos de las piezas que cuelgan de ellos) ya creadas dentro
-    // del Bloque al que pertenece nodeId.
-    function familiasPiezaEnBloqueDe(nodeId, tiposFamilia) {
-      const nodo = mapaNodoPorId[nodeId];
-      const bloque = nodo ? bloqueDeNodo(nodo) : null;
-      if (!bloque) return [];
-      const idsBloque = new Set([bloque.id, ...obtenerDescendientesIds(bloque.id)]);
-      return todosLosNodos
-        .filter(n => idsBloque.has(n.id) && tiposFamilia.includes(n.tipo) && !esPiezaNumerada(n.codigo))
-        .sort((a, b) => a.codigo.localeCompare(b.codigo, 'es'));
-    }
-
-    function mostrarFamiliaPiezaModal(tipoSuper) {
-      const wrap = document.getElementById('modal-nodo-familia-wrap');
-      const select = document.getElementById('modal-nodo-familia');
-      if (!wrap || !select || !nodoCrearPadre) return;
-      const tiposFamilia = tipoSuper === '__PL__' ? FAMILIAS_PL_PIEZA : FAMILIAS_PERF_PIEZA;
-      const familias = familiasPiezaEnBloqueDe(nodoCrearPadre.id, tiposFamilia);
-      select.innerHTML = familias.length === 0
-        ? '<option value="">(no hay ninguna todavía en este Bloque)</option>'
-        : familias.map(f => `<option value="${f.id}">${f.codigo}${f.nombre ? ' — ' + f.nombre : ''}</option>`).join('');
-      select.dataset.familias = JSON.stringify(familias.map(f => ({ id: f.id, tipo: f.tipo })));
-      wrap.style.display = 'block';
-      autoseleccionarFamiliaPorCodigo();
-    }
-
-    function ocultarFamiliaPiezaModal() {
-      const wrap = document.getElementById('modal-nodo-familia-wrap');
-      if (wrap) wrap.style.display = 'none';
-    }
-
-    // Al escribir el número de la pieza, se autoselecciona la familia que
-    // le corresponde (1xxx->PL1000, 2xxx->PL2000, 3xxx->PL3000,
-    // 4xxx->PERF4000, 6xxx->PERF6000, 7xxx->PERF7000) -- se puede cambiar
-    // a mano si hiciera falta.
-    function autoseleccionarFamiliaPorCodigo() {
-      const tipo = document.getElementById('modal-nodo-tipo').value;
-      if (tipo !== '__PL__' && tipo !== '__PERF__') return;
-      const select = document.getElementById('modal-nodo-familia');
-      if (!select) return;
-      let familias = [];
-      try { familias = JSON.parse(select.dataset.familias || '[]'); } catch (e) {}
-      const codigo = document.getElementById('modal-nodo-codigo').value.trim();
-      const tipoEsperado = FAMILIA_SEGUN_CIFRA[codigo.charAt(0)];
-      const familia = familias.find(f => f.tipo === tipoEsperado);
-      if (familia) select.value = familia.id;
     }
 
     async function abrirModalCrear(parentId, parentTipo) {
@@ -4447,7 +3738,6 @@
       document.getElementById('modal-nodo-orden').value = '0';
       document.getElementById('modal-nodo-estado').textContent = '';
       document.getElementById('modal-nodo-guardar').onclick = () => guardarNodoNuevo();
-      ocultarFamiliaPiezaModal();
 
       const selectTipo = document.getElementById('modal-nodo-tipo');
       const wrapTipo = document.getElementById('modal-nodo-tipo-wrap');
@@ -4458,19 +3748,9 @@
       } else {
         wrapTipo.style.display = 'block';
         const tipos = await obtenerTiposHijoValidos(parentTipo, mapaNodoPorId[parentId]?.codigo);
-        const esUbicacion = TIPOS_UBICACION_PIEZAS.has(parentTipo);
-        const tieneFamiliaPL = esUbicacion && tipos.some(t => FAMILIAS_PL_PIEZA.includes(t));
-        const tieneFamiliaPERF = esUbicacion && tipos.some(t => FAMILIAS_PERF_PIEZA.includes(t));
-        const otrosTipos = esUbicacion ? tipos.filter(t => !FAMILIAS_TODAS_PIEZA.includes(t)) : tipos;
-
-        const opciones = [];
-        if (tieneFamiliaPL) opciones.push('<option value="__PL__">Plancha (PL)</option>');
-        if (tieneFamiliaPERF) opciones.push('<option value="__PERF__">Perfil (PERF)</option>');
-        opciones.push(...otrosTipos.map(t => `<option value="${t}">${t}</option>`));
-
-        selectTipo.innerHTML = opciones.length === 0
+        selectTipo.innerHTML = tipos.length === 0
           ? '<option value="">(este tipo no admite hijos)</option>'
-          : opciones.join('');
+          : tipos.map(t => `<option value="${t}">${t}</option>`).join('');
       }
       actualizarCodigoSegunTipo();
       document.getElementById('modal-nodo').style.display = 'flex';
@@ -4481,22 +3761,12 @@
     // ninguna letra delante — el código empieza directamente por el número base.
     const BASE_NUMERO_TIPO = {
       PLANCHA_1000: '1000', PLANCHA_2000: '2000', PLANCHA_3000: '3000',
-      PERFIL_4000: '4000', PERFIL_6000: '6000', PERFIL_7000: '7000'
+      PERFIL_4000: '4000', PERFIL_6000: '6000'
     };
     function actualizarCodigoSegunTipo() {
       const tipo = document.getElementById('modal-nodo-tipo').value;
       const codigoInput = document.getElementById('modal-nodo-codigo');
       const docWrap = document.getElementById('modal-nodo-doc-wrap');
-
-      if (tipo === '__PL__' || tipo === '__PERF__') {
-        if (docWrap) docWrap.style.display = 'block';
-        codigoInput.value = '';
-        codigoInput.placeholder = tipo === '__PL__' ? 'Número de la plancha (ej. 1001)' : 'Número del perfil (ej. 4001)';
-        mostrarFamiliaPiezaModal(tipo);
-        return;
-      }
-      ocultarFamiliaPiezaModal();
-
       if (docWrap) docWrap.style.display = (tipo in BASE_NUMERO_TIPO) ? 'block' : 'none';
       if (tipo in BASE_NUMERO_TIPO) {
         codigoInput.value = BASE_NUMERO_TIPO[tipo];
@@ -4536,39 +3806,35 @@
     // -------------------- Generar estructura mínima --------------------
 
     // Ramas reutilizables: cada una es el fragmento que cuelga de un tipo concreto.
-    // Dentro de UL lo único que va es NL -- PS/PT/PM van colgando de GR
-    // directamente (no de UL), igual que UC y UP.
     const RAMA_UL = { tipo: 'UL', hijos: [
-        { tipo: 'NL' }
+        { tipo: 'NL' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' }
     ]};
-    // UP (Unidad plana fabricada): mismo caso que UL, pero con NP (Panel
-    // plano) en vez de NL como su panel propio.
+    // UP (Unidad plana fabricada) tiene las mismas propiedades que UL --
+    // mismos huecos donde puede ir, mismos hijos PS/PT/PM -- pero con NP
+    // (Panel plano) en vez de NL como su panel propio.
     const RAMA_UP = { tipo: 'UP', hijos: [
-        { tipo: 'NP' }
+        { tipo: 'NP' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' }
     ]};
-    const RAMA_UC = { tipo: 'UC', hijos: [ { tipo: 'NC' } ] };
-    // GR (Grupo) admite directamente: PS, UL (con NL dentro), PM, UC (con NC
-    // dentro) y UP (con NP dentro) -- "Generar estructura mínima" en GR los
-    // crea todos de golpe.
-    const RAMA_GR = { tipo: 'GR', hijos: [
-        { tipo: 'PS' }, RAMA_UL, { tipo: 'PM' }, RAMA_UC, RAMA_UP
-    ]};
-    // Dentro de UA solo va GR -- nada más cuelga directamente de UA.
-    const RAMA_UA = { tipo: 'UA', hijos: [ RAMA_GR ] };
+    // "Generar estructura mínima" en GR sigue creando solo la rama de UL,
+    // igual que antes -- UP se crea a mano (como UL) donde el usuario
+    // quiera, y una vez creado tiene su propia "Generar estructura mínima"
+    // (ver ESTRUCTURA_MINIMA_POR_TIPO.UP más abajo) para no generar de
+    // golpe una UL y una UP juntas sin que se haya pedido.
+    const RAMA_GR = { tipo: 'GR', hijos: [ RAMA_UL ] };
+    const RAMA_UA = { tipo: 'UA', hijos: [ RAMA_GR, { tipo: 'PS' }, { tipo: 'PM' } ] };
     const RAMA_SB = { tipo: 'SB', hijos: [ RAMA_UA ] };
+    const RAMA_UC = { tipo: 'UC', hijos: [ { tipo: 'NC' } ] };
     const RAMA_PL = { tipo: 'PL', hijos: [
         { tipo: 'PLANCHA_1000', codigo: 'PL1000' },
         { tipo: 'PLANCHA_2000', codigo: 'PL2000' },
         { tipo: 'PLANCHA_3000', codigo: 'PL3000' }
     ]};
-    // PERFIL_7000 (perfil curvo) NO se genera aquí a propósito: no todos los
-    // Bloques del buque lo llevan, así que es opcional -- se añade a mano
-    // con "+ Generar nodo hijo" desde un nodo PERF cuando sí haga falta.
     const RAMA_PERF = { tipo: 'PERF', hijos: [
         { tipo: 'PERFIL_4000', codigo: 'PERF4000' },
         { tipo: 'PERFIL_6000', codigo: 'PERF6000' }
     ]};
     const RAMA_ANIDADOS = { tipo: 'ANIDADOS', hijos: [ RAMA_PL, RAMA_PERF ] };
+    const RAMA_PI = { tipo: 'PI', hijos: [ RAMA_SB, { tipo: 'PM' }, { tipo: 'PS' }, RAMA_UC ] };
 
     // Qué genera "Generar estructura mínima" según el tipo del nodo donde se invoca.
     // Un array vacío = el tipo participa del menú pero no tiene nada definido debajo (aviso en vez de crear).
@@ -4579,15 +3845,10 @@
     // sustituye ESTRUCTURA_MINIMA_POR_TIPO por esa versión al iniciar. Si esa
     // tabla no existe todavía o falla la lectura, se sigue con esta de
     // siempre sin que se note.
-    //
-    // Ya NO se mete Subbloque dentro de un "Producto intermedio" (PI):
-    // Subbloque (y PM/PS/UC) cuelgan directamente del Bloque, al mismo
-    // nivel que Anidado -- así viene la estructura correcta de un buque
-    // (ver estructura_eliminar_producto_intermedio.sql, que además corrige
-    // los buques ya existentes en la base de datos).
     const ESTRUCTURA_MINIMA_POR_TIPO_DEFECTO = {
-      BLOQUE:   [ RAMA_ANIDADOS, RAMA_SB, { tipo: 'PM' }, { tipo: 'PS' }, RAMA_UC ],
+      BLOQUE:   [ RAMA_ANIDADOS, RAMA_PI ],
       ANIDADOS: RAMA_ANIDADOS.hijos,
+      PI:       RAMA_PI.hijos,
       SB:       RAMA_SB.hijos,
       UA:       RAMA_UA.hijos,
       GR:       RAMA_GR.hijos,
@@ -4646,14 +3907,10 @@
       }
       if (!await mostrarConfirmacion(`¿Generar la estructura mínima dentro de "${nodo.codigo} - ${nodo.nombre}"? Se crean varios nodos nuevos de golpe (sin números en el código, salvo Planchas/Perfiles).`)) return;
 
-      // Se crea TODO en una sola llamada a la base de datos (función
-      // generar_estructura_minima, ver estructura_generar_minima_atomico.sql)
-      // en vez de un nodo por petición como antes -- así, si algo falla a
-      // mitad, no se queda ninguna rama a medio crear: o se crea entera, o
-      // no se crea nada y se avisa con el error real.
       try {
-        const { error } = await supabaseClient.rpc('generar_estructura_minima', { p_node_id: nodeId });
-        if (error) throw new Error(error.message);
+        for (let i = 0; i < hijos.length; i++) {
+          await crearRamaMinima(hijos[i], nodeId, i);
+        }
         registrarLog('CREAR_LOTE', `Generó la estructura mínima dentro de "${nodo.codigo}"`, nodeId);
         nodosAbiertos.add(nodeId);
         await cargarArbol();
@@ -4833,29 +4090,28 @@
       }
       if (!nombre) nombre = codigo;
 
-      // Se crea el Bloque Y toda su estructura mínima en una sola llamada a
-      // la base de datos (función crear_bloque_minimo, ver
-      // estructura_generar_minima_atomico.sql) -- todo dentro de una única
-      // transacción: o se crea el Bloque completo, o (si algo falla) no se
-      // crea nada, en vez de quedar a medias como antes con ~25 peticiones
-      // sueltas una detrás de otra.
+      // Crea ~25 nodos en cascada, uno por uno -- tarda unos segundos.
+      // Se avisa explícitamente para que no parezca que no ha pasado nada.
       btn.disabled = true;
       const textoOriginalBtn = btn.textContent;
       btn.textContent = 'Creando...';
-      estadoEl.textContent = 'Creando el Bloque y su estructura mínima (Anidados, Subbloque...) — puede tardar unos segundos.';
+      estadoEl.textContent = 'Creando el Bloque y su estructura mínima (Anidados, Producto intermedio...) — puede tardar unos segundos.';
       estadoEl.className = 'estado-msg';
 
       try {
-        const { data: nuevoBloqueId, error } = await supabaseClient.rpc('crear_bloque_minimo', {
-          p_buque_id: buqueId, p_codigo: codigo, p_nombre: nombre, p_descripcion: descripcion || null, p_orden: orden
-        });
-        if (error) throw new Error(error.message);
-        registrarLog('CREAR_LOTE', `Generó el Bloque "${codigo}" con su estructura mínima dentro de "${mapaNodoPorId[buqueId]?.codigo || ''}"`, nuevoBloqueId);
+        const nuevoBloque = await crearRamaMinima(
+          { tipo: 'BLOQUE', codigo, nombre, hijos: [RAMA_ANIDADOS, RAMA_PI] },
+          buqueId, orden
+        );
+        if (descripcion) {
+          await supabaseClient.from('nodes').update({ descripcion }).eq('id', nuevoBloque.id);
+        }
+        registrarLog('CREAR_LOTE', `Generó el Bloque "${codigo}" con su estructura mínima dentro de "${mapaNodoPorId[buqueId]?.codigo || ''}"`, nuevoBloque.id);
         btn.disabled = false;
         btn.textContent = textoOriginalBtn;
         cerrarModalNodo();
         nodosAbiertos.add(buqueId);
-        nodosAbiertos.add(nuevoBloqueId);
+        nodosAbiertos.add(nuevoBloque.id);
         await cargarArbol();
         mostrarAvisoModal(`Bloque "${codigo}" creado con su estructura mínima dentro de "${mapaNodoPorId[buqueId]?.codigo || ''}".`);
       } catch (e) {
@@ -4872,46 +4128,14 @@
 
     async function guardarNodoNuevo() {
       const estadoEl = document.getElementById('modal-nodo-estado');
-      const tipoSeleccionado = document.getElementById('modal-nodo-tipo').value;
+      const tipo = document.getElementById('modal-nodo-tipo').value;
       const codigo = document.getElementById('modal-nodo-codigo').value.trim();
       const nombre = document.getElementById('modal-nodo-nombre').value.trim();
       const descripcion = document.getElementById('modal-nodo-descripcion').value.trim();
       const orden = parseInt(document.getElementById('modal-nodo-orden').value, 10) || 0;
 
-      if (!tipoSeleccionado || !codigo || !nombre) {
+      if (!tipo || !codigo || !nombre) {
         estadoEl.textContent = 'Rellena tipo, código y nombre.'; estadoEl.className = 'estado-msg error'; return;
-      }
-
-      // Plancha/Perfil generada desde PS/PT/PM/NL/NC/NP: la pieza no cuelga
-      // de ahí, cuelga de la familia elegida (dentro de Anidados de este
-      // Bloque), y el nodo de origen se queda con un enlace (ubicacion_id).
-      const esPiezaDesdeUbicacion = tipoSeleccionado === '__PL__' || tipoSeleccionado === '__PERF__';
-      let tipo = tipoSeleccionado;
-      let parentIdReal = nodoCrearPadre ? nodoCrearPadre.id : null;
-      let ubicacionId = null;
-
-      if (esPiezaDesdeUbicacion) {
-        if (!esPiezaNumerada(codigo)) {
-          estadoEl.textContent = 'Aquí el código es solo el número de la pieza (ej. 1001).';
-          estadoEl.className = 'estado-msg error';
-          return;
-        }
-        const familiaId = document.getElementById('modal-nodo-familia').value;
-        const familia = familiaId ? mapaNodoPorId[familiaId] : null;
-        if (!familia) {
-          estadoEl.textContent = 'Elige a qué familia (Plancha o Perfil) pertenece esta pieza -- si no hay ninguna todavía, créala primero desde Anidados.';
-          estadoEl.className = 'estado-msg error';
-          return;
-        }
-        const yaExiste = (mapaHijosPorPadre[familia.id] || []).some(h => h.codigo === codigo);
-        if (yaExiste) {
-          estadoEl.textContent = `Ya existe una pieza con el código "${codigo}" dentro de ${familia.codigo}. Usa otro número.`;
-          estadoEl.className = 'estado-msg error';
-          return;
-        }
-        tipo = familia.tipo;
-        parentIdReal = familia.id;
-        ubicacionId = nodoCrearPadre.id;
       }
 
       const esBuqueNuevo = !nodoCrearPadre;
@@ -4922,25 +4146,17 @@
         return;
       }
 
-      // ubicacion_id solo se manda cuando hace falta (pieza generada desde
-      // PS/PT/PM/NL/NC/NP): así una base sin la columna todavía (antes de
-      // ejecutar estructura_piezas_desde_ubicacion.sql) sigue pudiendo
-      // crear el resto de nodos con normalidad.
-      const nuevoPayload = { parent_id: parentIdReal, tipo, codigo, nombre, descripcion: descripcion || null, orden };
-      if (ubicacionId) nuevoPayload.ubicacion_id = ubicacionId;
-
-      const { data: nuevoNodo, error } = await supabaseClient.from('nodes').insert(nuevoPayload).select().single();
+      const { data: nuevoNodo, error } = await supabaseClient.from('nodes').insert({
+        parent_id: nodoCrearPadre ? nodoCrearPadre.id : null, tipo, codigo, nombre, descripcion: descripcion || null, orden
+      }).select().single();
 
       if (error) {
         estadoEl.textContent = 'Error: ' + traducirError(error.message); estadoEl.className = 'estado-msg error';
-        registrarLog('INTENTO_FALLIDO', `Intento de crear ${tipo} "${codigo}" denegado: ${error.message}`, parentIdReal);
+        registrarLog('INTENTO_FALLIDO', `Intento de crear ${tipo} "${codigo}" denegado: ${error.message}`, nodoCrearPadre ? nodoCrearPadre.id : null);
         return;
       }
 
-      const origenTxt = esPiezaDesdeUbicacion
-        ? ` dentro de ${mapaNodoPorId[parentIdReal]?.codigo || ''} (usada en ${mapaNodoPorId[nodoCrearPadre.id]?.codigo || ''})`
-        : (nodoCrearPadre ? ` dentro de ${mapaNodoPorId[parentIdReal]?.codigo || ''}` : '');
-      registrarLog('CREAR_NODO', `Creó ${tipo} "${codigo}"${origenTxt}`, nuevoNodo?.id);
+      registrarLog('CREAR_NODO', `Creó ${tipo} "${codigo}"${nodoCrearPadre ? ` dentro de ${mapaNodoPorId[nodoCrearPadre.id]?.codigo || ''}` : ''}`, nuevoNodo?.id);
 
       const docWrapVisible = document.getElementById('modal-nodo-doc-wrap').style.display !== 'none';
       if (docWrapVisible && document.getElementById('modal-nodo-doc').checked && TIPOS_DOCUMENTABLES.has(tipo) && esPiezaNumerada(codigo)) {
@@ -4953,13 +4169,8 @@
       }
 
       cerrarModalNodo();
-      if (esPiezaDesdeUbicacion) {
-        await cargarArbol();
-        irANodoEnArbol(nuevoNodo.id);
-      } else {
-        if (nodoCrearPadre) nodosAbiertos.add(nodoCrearPadre.id);
-        await cargarArbol();
-      }
+      if (nodoCrearPadre) nodosAbiertos.add(nodoCrearPadre.id);
+      await cargarArbol();
 
       if (esBuqueNuevo && esGestor()) {
         mostrarAviso('pendiente', '🚢 Buque creado', 'Ahora puedes crear usuarios nuevos o asignar existentes desde Usuarios, y montar su estructura interna aquí.', null);
@@ -5150,34 +4361,18 @@
         return !padre || padre.activo;
       });
 
-      let hechos = 0;
-      const errores = [];
+      let hechos = 0, fallos = 0;
       for (const nodo of raices) {
-        estadoEl.textContent = `Eliminando (${hechos + errores.length + 1}/${raices.length})...`;
+        estadoEl.textContent = `Eliminando (${hechos + fallos + 1}/${raices.length})...`;
         const { error } = await supabaseClient.rpc('eliminar_nodo_definitivo', { p_node_id: nodo.id });
-        // Antes, un error aquí solo se dejaba en la consola (console.warn) --
-        // invisible para quien está delante de la pantalla: el modal se
-        // cerraba igual y parecía que "no había pasado nada" o que se había
-        // borrado todo cuando en realidad se habían quedado varias ramas sin
-        // eliminar. Ahora el motivo real se guarda y se enseña abajo.
-        if (error) { errores.push(`${nodo.codigo}: ${traducirError(error.message)}`); console.warn(`Error al eliminar ${nodo.codigo}:`, error.message); }
+        if (error) { fallos++; console.warn(`Error al eliminar ${nodo.codigo}:`, error.message); }
         else hechos++;
       }
 
-      registrarLog('ELIMINAR_DEFINITIVO', `Eliminó toda la papelera: ${hechos} rama(s) borrada(s) de ${raices.length}${errores.length ? `, ${errores.length} con error` : ''}`);
+      registrarLog('ELIMINAR_DEFINITIVO', `Eliminó toda la papelera: ${hechos} rama(s) borrada(s) de ${raices.length}${fallos ? `, ${fallos} con error` : ''}`);
 
+      cerrarModalEliminar();
       await cargarPapelera();
-
-      if (errores.length > 0) {
-        // No se cierra el modal solo -- se deja el aviso a la vista con el
-        // motivo exacto de cada fallo, para poder decidir qué hacer (y para
-        // que se pueda copiar el mensaje si hace falta reportarlo).
-        estadoEl.textContent = `Se eliminaron ${hechos} de ${raices.length}. No se pudieron eliminar ${errores.length}:\n` + errores.join('\n');
-        estadoEl.className = 'estado-msg error';
-        mostrarAvisoModal(`Se eliminaron ${hechos} de ${raices.length} rama(s) de la papelera. ${errores.length} no se pudieron eliminar -- revisa el detalle bajo el botón "Eliminar todo".`);
-      } else {
-        cerrarModalEliminar();
-      }
     }
 
     function confirmarEliminarDefinitivo(nodeId) {
@@ -5219,11 +4414,7 @@
       document.getElementById('modal-lote-estado').textContent = '';
 
       const selectTipo = document.getElementById('modal-lote-tipo');
-      // Las Planchas/Perfiles generados desde PS/PT/PM/NL/NC/NP tienen que
-      // pasar por el modal de un solo nodo (para elegir su familia en
-      // Anidados y guardar de dónde vienen) -- por eso aquí se quitan de
-      // la lista cuando se crea desde uno de esos 6 nodos.
-      const tipos = await obtenerTiposHijoValidos(parentTipo, mapaNodoPorId[parentId]?.codigo, TIPOS_UBICACION_PIEZAS.has(parentTipo));
+      const tipos = await obtenerTiposHijoValidos(parentTipo, mapaNodoPorId[parentId]?.codigo);
       selectTipo.innerHTML = tipos.length === 0
         ? '<option value="">(este tipo no admite hijos)</option>'
         : tipos.map(t => `<option value="${t}">${t}</option>`).join('');
@@ -5574,406 +4765,6 @@
       });
     }
 
-    // Motivos de rechazo más frecuentes -- una lista corta de motivos
-    // habituales (mejora "Motivos de rechazo predefinidos") más "Otro" para lo
-    // que no encaje, en vez de escribir el texto entero cada vez. Se guarda
-    // igual que antes en node_workflow.comentario_revision (RPC revisar_nodo).
-    const MOTIVOS_RECHAZO_PREDEFINIDOS = [
-      'No cumple el plano o modelo 3D',
-      'Medidas o cotas incorrectas',
-      'Falta documentación o fichero',
-      'Material o especificación incorrecta',
-      'Acabado o soldadura defectuosos',
-      'Falta marcaje / identificación',
-      'Otro (especificar abajo)'
-    ];
-
-    // Devuelve el texto final del motivo de rechazo (motivo elegido +, si lo
-    // hay, el detalle) o null si se cancela. "Otro" obliga a escribir el
-    // detalle; los demás motivos lo dejan opcional.
-    function pedirMotivoRechazo(etiquetaTarea) {
-      return new Promise((resolve) => {
-        const sel = document.getElementById('mr-motivo');
-        const detalle = document.getElementById('mr-detalle');
-        const estadoEl = document.getElementById('mr-estado');
-        sel.innerHTML = MOTIVOS_RECHAZO_PREDEFINIDOS.map(m => `<option value="${m}">${m}</option>`).join('');
-        sel.value = MOTIVOS_RECHAZO_PREDEFINIDOS[0];
-        detalle.value = '';
-        estadoEl.textContent = '';
-        document.querySelector('#modal-motivo-rechazo h3').textContent = etiquetaTarea ? `Motivo del rechazo de "${etiquetaTarea}"` : 'Motivo del rechazo';
-        document.getElementById('modal-motivo-rechazo').style.display = 'flex';
-        setTimeout(() => sel.focus(), 50);
-
-        const btnOk = document.getElementById('mr-ok');
-        const btnCancel = document.getElementById('mr-cancel');
-        const limpiar = () => { btnOk.onclick = null; btnCancel.onclick = null; document.getElementById('modal-motivo-rechazo').style.display = 'none'; };
-        btnOk.onclick = () => {
-          const esOtro = sel.value === MOTIVOS_RECHAZO_PREDEFINIDOS[MOTIVOS_RECHAZO_PREDEFINIDOS.length - 1];
-          const texto = detalle.value.trim();
-          if (esOtro && !texto) { estadoEl.textContent = 'Escribe el motivo en el detalle.'; return; }
-          const motivoFinal = esOtro ? texto : (texto ? `${sel.value} — ${texto}` : sel.value);
-          limpiar();
-          resolve(motivoFinal);
-        };
-        btnCancel.onclick = () => { limpiar(); resolve(null); };
-      });
-    }
-
-    // Elegir Aprobado/Rechazado en el doble clic sobre el icono de "Pendiente
-    // de revisión" (mejora Usuario). Devuelve 'aprobado', 'rechazado' o null
-    // si se cancela.
-    function elegirAprobadoRechazado(etiquetaTarea) {
-      return new Promise((resolve) => {
-        document.getElementById('elegir-revision-titulo').textContent = etiquetaTarea ? `"${etiquetaTarea}" — ¿Aprobar o rechazar?` : '¿Aprobar o rechazar?';
-        document.getElementById('modal-elegir-revision').style.display = 'flex';
-        const btnAp = document.getElementById('elegir-revision-aprobado');
-        const btnRe = document.getElementById('elegir-revision-rechazado');
-        const btnCancel = document.getElementById('elegir-revision-cancelar');
-        const limpiar = () => {
-          btnAp.onclick = null; btnRe.onclick = null; btnCancel.onclick = null;
-          document.getElementById('modal-elegir-revision').style.display = 'none';
-        };
-        btnAp.onclick = () => { limpiar(); resolve('aprobado'); };
-        btnRe.onclick = () => { limpiar(); resolve('rechazado'); };
-        btnCancel.onclick = () => { limpiar(); resolve(null); };
-      });
-    }
-
-    // Doble clic sobre el icono de estado de una tarea (mejora Usuario):
-    //   Pendiente de hacer -> En proceso
-    //   En proceso -> Pendiente de revisión (con el mismo aviso de tiempo
-    //     trabajado que ya usa el menú contextual, vía accionMarcarTerminado)
-    //   Pendiente de revisión -> pregunta Aprobado/Rechazado; Aprobado se
-    //     aplica directo, Rechazado abre el diálogo de motivo ya existente.
-    // El resto de estados (sin asignar, mezcla, aprobado, rechazado,
-    // pendiente de dudas/cambios de modelo) no hacen nada con el doble clic
-    // -- para esos ya está el menú contextual con todas las opciones.
-    // stopPropagation() evita que el doble clic también dispare el
-    // expandir/encoger de la fila (que usa ondblclick a nivel de fila).
-    async function manejarDobleClicEstado(event, nodeId) {
-      event.stopPropagation();
-      const nodo = mapaNodoPorId[nodeId];
-      if (!nodo || TIPOS_SIN_ASIGNACION.has(nodo.tipo)) return;
-
-      // Si hay varias tareas seleccionadas a la vez (selección múltiple) y
-      // la tarea sobre la que se hace doble clic es una de ellas, el
-      // cambio de estado se aplica en cascada a todas las seleccionadas de
-      // golpe (mejora Usuario), cada una según su propio estado. Con una
-      // sola tarea seleccionada (o sin selección múltiple activa) sigue
-      // funcionando igual que siempre, solo sobre esta tarea.
-      if (modoSeleccion && nodosSeleccionados.size > 1 && nodosSeleccionados.has(nodeId)) {
-        await manejarDobleClicEstadoCascada();
-        return;
-      }
-
-      const estado = calcularEstadoConsenso(nodo);
-      if (estado === 'asignada_sin_empezar') {
-        await accionMarcarEnTrabajo(nodeId);
-      } else if (estado === 'en_proceso') {
-        await accionMarcarTerminado(nodeId);
-      } else if (estado === 'pendiente_revision') {
-        if (!esGestor()) { mostrarAvisoModal('Solo un revisor puede aprobar o rechazar esta tarea.'); return; }
-        const eleccion = await elegirAprobadoRechazado(nodo.codigo);
-        if (eleccion === 'aprobado') await accionRevisar(nodeId, true);
-        else if (eleccion === 'rechazado') await accionRevisar(nodeId, false);
-      }
-    }
-
-    // Doble clic con varias tareas seleccionadas: cada una avanza un paso
-    // en su propio estado, todas a la vez --
-    //   Pendiente de hacer -> En proceso (sin preguntar nada, igual que el
-    //     doble clic de una sola tarea).
-    //   En proceso -> Pendiente de revisión (una única confirmación para
-    //     todo el grupo, en vez de repetir el aviso de tiempo trabajado
-    //     tarea por tarea).
-    //   Pendiente de revisión -> Aprobado o Rechazado: se pregunta una
-    //     sola vez para todo el grupo que esté en ese estado (solo si
-    //     quien hace el doble clic es un revisor). Aprobado admite un
-    //     comentario opcional único para todas; Rechazado pide un único
-    //     motivo general que se guarda igual en todas, en vez de un
-    //     motivo distinto por cada tarea.
-    // Pendiente de dudas y Pendiente de cambios de modelo quedan siempre
-    // fuera de la cascada: esas dos solo se cambian de estado una a una.
-    async function manejarDobleClicEstadoCascada() {
-      const ids = idsSeleccionadosEnOrdenVisual();
-      const grupoEmpezar = [];
-      const grupoTerminar = [];
-      const grupoRevisar = [];
-      let excluidos = 0;
-
-      ids.forEach(id => {
-        const nodo = mapaNodoPorId[id];
-        if (!nodo || TIPOS_SIN_ASIGNACION.has(nodo.tipo)) return;
-        const estado = calcularEstadoConsenso(nodo);
-        if (estado === 'asignada_sin_empezar') grupoEmpezar.push(id);
-        else if (estado === 'en_proceso') grupoTerminar.push(id);
-        else if (estado === 'pendiente_revision') grupoRevisar.push(id);
-        else if (estado === 'pendiente_dudas' || estado === 'pendiente_cambios_modelo') excluidos++;
-      });
-
-      if (grupoEmpezar.length === 0 && grupoTerminar.length === 0 && grupoRevisar.length === 0) {
-        mostrarAvisoModal(excluidos > 0
-          ? 'Las tareas seleccionadas en Pendiente de dudas o Pendiente de cambios de modelo solo se pueden cambiar de estado una a una.'
-          : 'Ninguna de las tareas seleccionadas tiene un estado que se pueda cambiar con doble clic.');
-        return;
-      }
-
-      let decisionRevision = null; // 'aprobado' | 'rechazado' | null (no aplica o se canceló)
-      let comentarioGeneral = null;
-      if (grupoRevisar.length > 0) {
-        if (!esGestor()) {
-          mostrarAvisoModal(`Solo un revisor puede aprobar o rechazar tareas: las ${grupoRevisar.length} pendientes de revisión se omiten de este cambio en cascada.`);
-        } else {
-          const eleccion = await elegirAprobadoRechazado(`${grupoRevisar.length} tarea(s) pendientes de revisión`);
-          if (eleccion === 'aprobado') {
-            const comentario = await pedirTexto('Comentario opcional para todas (déjalo en blanco si no quieres añadir nada):');
-            if (comentario !== null) { decisionRevision = 'aprobado'; comentarioGeneral = comentario.trim() || null; }
-          } else if (eleccion === 'rechazado') {
-            const motivo = await pedirMotivoRechazo(`${grupoRevisar.length} tareas seleccionadas`);
-            if (motivo) { decisionRevision = 'rechazado'; comentarioGeneral = motivo; }
-          }
-        }
-      }
-
-      const totalAAplicar = grupoEmpezar.length + grupoTerminar.length + (decisionRevision ? grupoRevisar.length : 0);
-      if (totalAAplicar === 0) return;
-
-      let mensajeConfirm = `Se aplicará en cascada a ${totalAAplicar} tarea(s) seleccionada(s):`;
-      if (grupoEmpezar.length) mensajeConfirm += `\n• ${grupoEmpezar.length} pasarán de Pendiente de hacer a En proceso.`;
-      if (grupoTerminar.length) mensajeConfirm += `\n• ${grupoTerminar.length} pasarán de En proceso a Pendiente de revisión.`;
-      if (decisionRevision) mensajeConfirm += `\n• ${grupoRevisar.length} pasarán a ${decisionRevision === 'aprobado' ? 'Aprobado' : 'Rechazado'}.`;
-      if (excluidos > 0) mensajeConfirm += `\n\n(${excluidos} en Pendiente de dudas o Pendiente de cambios de modelo se dejan igual: solo se cambian una a una.)`;
-      if (!await mostrarConfirmacion(mensajeConfirm)) return;
-
-      let hechos = 0;
-      const errores = [];
-
-      for (const id of grupoEmpezar) {
-        const nodo = mapaNodoPorId[id];
-        const { error } = await supabaseClient.rpc('marcar_en_trabajo', { p_node_id: id });
-        if (error) errores.push(`${nodo?.codigo || id}: ${traducirError(error.message)}`);
-        else { hechos++; registrarLog('EMPEZAR', `Empezó "${nodo?.codigo}" (cascada)`, id); }
-      }
-      for (const id of grupoTerminar) {
-        const nodo = mapaNodoPorId[id];
-        const { error } = await supabaseClient.rpc('marcar_terminado', { p_node_id: id });
-        if (error) errores.push(`${nodo?.codigo || id}: ${traducirError(error.message)}`);
-        else { hechos++; registrarLog('FINALIZAR', `Finalizó "${nodo?.codigo}" (cascada, pasa a Pendiente de revisión)`, id); }
-      }
-      const idsRevisarOk = [];
-      if (decisionRevision) {
-        const aprobado = decisionRevision === 'aprobado';
-        for (const id of grupoRevisar) {
-          const nodo = mapaNodoPorId[id];
-          const { error } = await supabaseClient.rpc('revisar_nodo', { p_node_id: id, p_aprobado: aprobado, p_comentario: comentarioGeneral });
-          if (error) {
-            errores.push(`${nodo?.codigo || id}: ${traducirError(error.message)}`);
-          } else {
-            hechos++;
-            idsRevisarOk.push(id);
-            registrarLog(aprobado ? 'APROBAR' : 'RECHAZAR', `${aprobado ? 'Aprobó' : 'Rechazó'} "${nodo?.codigo}" (cascada)${comentarioGeneral ? ` — ${aprobado ? 'comentario' : 'motivo'}: ${comentarioGeneral}` : ''}`, id);
-          }
-        }
-      }
-
-      await cargarArbol();
-      if (decisionRevision === 'aprobado') {
-        for (const id of idsRevisarOk) await comprobarBloqueListoTrasAprobar(id);
-      }
-      if (errores.length > 0) {
-        mostrarAvisoModal(`Hecho ${hechos} de ${totalAAplicar}. Fallaron ${errores.length}:\n` + errores.join('\n'));
-      }
-    }
-
-    // Comentario y foto opcionales al marcar "Pendiente de dudas" (mejora
-    // Usuario). Devuelve { nota, archivo } o null si se cancela — nota y
-    // archivo pueden ir vacíos, dejarlos en blanco no cancela la acción.
-    function pedirNotaDudas(etiquetaTarea) {
-      return new Promise((resolve) => {
-        const texto = document.getElementById('nd-texto');
-        const foto = document.getElementById('nd-foto');
-        const estadoEl = document.getElementById('nd-estado');
-        texto.value = ''; foto.value = ''; estadoEl.textContent = '';
-        document.getElementById('nd-titulo').textContent = etiquetaTarea ? `Pendiente de dudas — "${etiquetaTarea}"` : 'Pendiente de dudas';
-        document.getElementById('modal-nota-dudas').style.display = 'flex';
-        setTimeout(() => texto.focus(), 50);
-
-        const btnOk = document.getElementById('nd-ok');
-        const btnCancel = document.getElementById('nd-cancel');
-        const limpiar = () => { btnOk.onclick = null; btnCancel.onclick = null; document.getElementById('modal-nota-dudas').style.display = 'none'; };
-        btnOk.onclick = () => {
-          const archivo = foto.files && foto.files[0] ? foto.files[0] : null;
-          if (archivo && archivo.size > 8 * 1024 * 1024) { estadoEl.textContent = 'La foto no puede superar 8 MB.'; return; }
-          limpiar();
-          resolve({ nota: texto.value.trim() || null, archivo });
-        };
-        btnCancel.onclick = () => { limpiar(); resolve(null); };
-      });
-    }
-
-    // -------------------- "Mi lista de hoy" con orden manual (mejora Usuario) --------------------
-    // El orden es una preferencia personal de cada uno y solo tiene sentido
-    // en este dispositivo -- no hay ninguna pantalla de ajustes en el
-    // servidor para esto, así que se guarda en localStorage.
-    function leerOrdenMisTareas() {
-      try { return JSON.parse(localStorage.getItem(claveOrdenMisTareas()) || '[]'); } catch (e) { return []; }
-    }
-    function guardarOrdenMisTareas(orden) {
-      try { localStorage.setItem(claveOrdenMisTareas(), JSON.stringify(orden)); } catch (e) {}
-    }
-    function calcularMisTareasAbiertas() {
-      return todosLosNodos.filter(n => n.trabajador_id === miPerfil.id && !TIPOS_SIN_ASIGNACION.has(n.tipo) && calcularEstadoPropio(n) !== 'aprobado');
-    }
-    // Las que ya tienen posición guardada van primero, en ese orden; las
-    // que no (tareas nuevas desde la última vez) se añaden al final.
-    function ordenarSegunPreferencia(tareas) {
-      const orden = leerOrdenMisTareas();
-      const posicion = {};
-      orden.forEach((id, i) => { posicion[id] = i; });
-      return tareas.slice().sort((a, b) => {
-        const pa = posicion[a.id], pb = posicion[b.id];
-        if (pa === undefined && pb === undefined) return 0;
-        if (pa === undefined) return 1;
-        if (pb === undefined) return -1;
-        return pa - pb;
-      });
-    }
-    function abrirMiListaHoy() {
-      renderizarMiListaHoy();
-      document.getElementById('modal-mi-lista').style.display = 'flex';
-    }
-    function cerrarMiListaHoy() { document.getElementById('modal-mi-lista').style.display = 'none'; }
-    function renderizarMiListaHoy() {
-      const tareas = ordenarSegunPreferencia(calcularMisTareasAbiertas());
-      const cont = document.getElementById('ml-lista');
-      if (tareas.length === 0) {
-        cont.innerHTML = '<p style="font-size:13px; color:#888;">No tienes tareas abiertas ahora mismo.</p>';
-        return;
-      }
-      cont.innerHTML = tareas.map((n, i) => `
-        <div style="display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid #eee;">
-          <div style="display:flex; flex-direction:column; gap:2px;">
-            <button class="pequeno secundario" ${i === 0 ? 'disabled' : ''} onclick="moverEnMiLista('${n.id}', -1)" title="Subir">▲</button>
-            <button class="pequeno secundario" ${i === tareas.length - 1 ? 'disabled' : ''} onclick="moverEnMiLista('${n.id}', 1)" title="Bajar">▼</button>
-          </div>
-          <div style="flex:1; min-width:0; cursor:pointer;" onclick="irANodoEnArbol('${n.id}'); cerrarMiListaHoy();">
-            <strong>${etiquetaCodigoVisible(n)}</strong>${nombreEsRedundante(n.codigo, n.nombre) ? '' : ' — ' + n.nombre}
-            <div style="font-size:11px; color:#888;">${ETIQUETAS_TIPO[n.tipo] || n.tipo}${n.fecha_fin_prevista ? ' · previsto ' + formatearFechaCorta(new Date(n.fecha_fin_prevista)) : ''}</div>
-          </div>
-        </div>
-      `).join('');
-    }
-    function moverEnMiLista(nodeId, delta) {
-      const ids = ordenarSegunPreferencia(calcularMisTareasAbiertas()).map(n => n.id);
-      const idx = ids.indexOf(nodeId);
-      const nuevoIdx = idx + delta;
-      if (idx === -1 || nuevoIdx < 0 || nuevoIdx >= ids.length) return;
-      [ids[idx], ids[nuevoIdx]] = [ids[nuevoIdx], ids[idx]];
-      guardarOrdenMisTareas(ids);
-      renderizarMiListaHoy();
-    }
-
-    // -------------------- "Mi historial" (mejora Usuario) --------------------
-    // Todo calculado en el navegador a partir de lo ya cargado (todosLosNodos
-    // no se filtra por estado, así que las piezas ya aprobadas siguen ahí).
-    function calcularMiHistorial() {
-      const ahora = new Date();
-      const inicioSemana = new Date(ahora); inicioSemana.setDate(ahora.getDate() - 7);
-      const inicioMes = new Date(ahora); inicioMes.setDate(ahora.getDate() - 30);
-      const mias = todosLosNodos.filter(n => n.trabajador_id === miPerfil.id && n.trabajo_terminado_en && !TIPOS_SIN_ASIGNACION.has(n.tipo));
-      const terminadasSemana = mias.filter(n => new Date(n.trabajo_terminado_en) >= inicioSemana);
-      const terminadasMes = mias.filter(n => new Date(n.trabajo_terminado_en) >= inicioMes);
-      const aprobadasSemana = terminadasSemana.filter(n => n.revision_estado === 'APROBADO').length;
-      const aprobadasMes = terminadasMes.filter(n => n.revision_estado === 'APROBADO').length;
-
-      const ultimasTerminadas = mias.slice().sort((a, b) => new Date(b.trabajo_terminado_en) - new Date(a.trabajo_terminado_en)).slice(0, 20);
-      const duraciones = ultimasTerminadas
-        .filter(n => n.trabajo_iniciado_en)
-        .map(n => (new Date(n.trabajo_terminado_en) - new Date(n.trabajo_iniciado_en)) / 3600000)
-        .filter(h => h >= 0);
-      let tiempoMedioTexto = '—';
-      if (duraciones.length > 0) {
-        const media = duraciones.reduce((a, b) => a + b, 0) / duraciones.length;
-        tiempoMedioTexto = media < 24 ? `${media.toFixed(1)} h` : `${(media / 24).toFixed(1)} días`;
-      }
-      return {
-        terminadasSemana: terminadasSemana.length, terminadasMes: terminadasMes.length,
-        aprobadasSemana, aprobadasMes, tiempoMedioTexto, muestraTiempo: duraciones.length
-      };
-    }
-    function abrirMiHistorial() {
-      const h = calcularMiHistorial();
-      document.getElementById('mh-contenido').innerHTML = `
-        <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
-          <div style="flex:1; min-width:120px; background:#f3f6fb; border-radius:8px; padding:12px; text-align:center;">
-            <div style="font-size:26px; font-weight:bold;">${h.terminadasSemana}</div>
-            <div style="font-size:12px; color:#666;">Terminadas esta semana</div>
-          </div>
-          <div style="flex:1; min-width:120px; background:#f3f6fb; border-radius:8px; padding:12px; text-align:center;">
-            <div style="font-size:26px; font-weight:bold;">${h.terminadasMes}</div>
-            <div style="font-size:12px; color:#666;">Terminadas este mes</div>
-          </div>
-        </div>
-        <p style="font-size:13px;">De ellas, ya aprobadas: <strong>${h.aprobadasSemana}</strong> esta semana, <strong>${h.aprobadasMes}</strong> este mes.</p>
-        <p style="font-size:13px;">Tiempo medio de trabajo (últimas ${h.muestraTiempo} piezas terminadas): <strong>${h.tiempoMedioTexto}</strong></p>
-      `;
-      document.getElementById('modal-mi-historial').style.display = 'flex';
-    }
-    function cerrarMiHistorial() { document.getElementById('modal-mi-historial').style.display = 'none'; }
-
-    // -------------------- Favoritas y recientes (mejora Usuario) --------------------
-    function abrirPanelFavoritos() {
-      renderizarPanelFavoritos();
-      document.getElementById('modal-favoritos').style.display = 'flex';
-    }
-    function cerrarPanelFavoritos() { document.getElementById('modal-favoritos').style.display = 'none'; }
-    function filaFavoritoOReciente(nodeId) {
-      const n = mapaNodoPorId[nodeId];
-      if (!n) return '';
-      const favorito = esFavorito(nodeId);
-      return `
-        <div style="display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid #eee;">
-          <span class="favorito-estrella" onclick="alternarFavorito('${nodeId}'); renderizarPanelFavoritos();" title="${favorito ? 'Quitar de favoritas' : 'Marcar como favorita'}">${favorito ? '⭐' : '☆'}</span>
-          <div style="flex:1; min-width:0; cursor:pointer;" onclick="irANodoEnArbol('${nodeId}'); cerrarPanelFavoritos();">
-            <strong>${etiquetaCodigoVisible(n)}</strong>${nombreEsRedundante(n.codigo, n.nombre) ? '' : ' — ' + n.nombre}
-            <div style="font-size:11px; color:#888;">${ETIQUETAS_TIPO[n.tipo] || n.tipo}</div>
-          </div>
-        </div>
-      `;
-    }
-    function renderizarPanelFavoritos() {
-      const favHtml = [...favoritosIds].map(id => filaFavoritoOReciente(id)).filter(Boolean).join('');
-      const recHtml = recientesIds.filter(id => !favoritosIds.has(id)).map(id => filaFavoritoOReciente(id)).filter(Boolean).join('');
-      document.getElementById('pf-favoritas').innerHTML = favHtml || '<p style="font-size:13px; color:#888;">Todavía no tienes ninguna marcada — pulsa la estrella ☆ junto a una pieza en el árbol.</p>';
-      document.getElementById('pf-recientes').innerHTML = recHtml || '<p style="font-size:13px; color:#888;">Todavía no has abierto ninguna pieza en esta sesión.</p>';
-    }
-
-    // Acceso directo a una pieza desde "Mi lista de hoy" o "Favoritas y
-    // recientes": limpia los filtros que pudieran ocultarla, expande sus
-    // ramas y la resalta un momento para que se note dónde ha ido a parar.
-    function irANodoEnArbol(nodeId) {
-      const nodo = mapaNodoPorId[nodeId];
-      if (!nodo) { mostrarAvisoModal('Esa pieza ya no existe o no está visible con los filtros actuales.'); return; }
-      filtroTexto = ''; document.getElementById('buscador').value = '';
-      filtroUsuarioId = ''; document.getElementById('sel-filtro-usuario').value = '';
-      filtroEstado = ''; document.getElementById('sel-filtro-estado').value = '';
-      const chkMios = document.getElementById('chk-mis-tareas');
-      if (chkMios) chkMios.checked = false;
-
-      let actual = nodo.parent_id ? mapaNodoPorId[nodo.parent_id] : null;
-      while (actual) { nodosAbiertos.add(actual.id); actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null; }
-
-      renderizarArbolCompleto();
-      cerrarMenu();
-      setTimeout(() => {
-        const li = document.getElementById('li-' + nodeId);
-        if (!li) return;
-        li.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        const fila = li.querySelector('.fila-nodo');
-        if (fila) { fila.classList.add('resaltado-temporal'); setTimeout(() => fila.classList.remove('resaltado-temporal'), 2000); }
-      }, 80);
-    }
-
     function traducirError(mensaje) {
       if (!mensaje) return 'Ha ocurrido un error inesperado.';
       const m = mensaje.toLowerCase();
@@ -6073,31 +4864,6 @@
       renderizarArbolCompleto();
     }
 
-    // Shift + clic izquierdo en cualquier parte de la fila (no hace falta
-    // acertar en la casillita) activa la selección múltiple sobre ese nodo
-    // y todo lo que cuelga de él hacia abajo en la estructura, igual que
-    // marcar su casilla a mano -- sin desactivar lo que ya hubiera
-    // seleccionado. Un clic normal (sin Shift) no hace nada aquí: cada
-    // elemento de la fila sigue teniendo su propio onclick de siempre.
-    function manejarClicFila(event, nodeId) {
-      if (!event.shiftKey) return;
-      event.preventDefault();
-      event.stopPropagation();
-      const nodo = mapaNodoPorId[nodeId];
-      if (!nodo || TIPOS_SIN_ASIGNACION.has(nodo.tipo)) return;
-      const puedeMarcarEstaCasilla = puedeSeleccionar() || (puedeSeleccionarBasico() && (!nodo.trabajador_id || nodo.trabajador_id === miPerfil.id));
-      if (!puedeMarcarEstaCasilla) return;
-      if (!modoSeleccion) {
-        modoSeleccion = true;
-        const chk = document.getElementById('chk-modo-seleccion');
-        if (chk) chk.checked = true;
-      }
-      nodosSeleccionados.add(nodeId);
-      obtenerDescendientesIds(nodeId).forEach(id => nodosSeleccionados.add(id));
-      actualizarBarraSeleccion();
-      renderizarArbolCompleto();
-    }
-
     function toggleSeleccionNodo(nodeId, event) {
       event.stopPropagation();
       const descendientes = obtenerDescendientesIds(nodeId);
@@ -6125,13 +4891,12 @@
       if (!modoSeleccion || nodosSeleccionados.size === 0) { barra.classList.remove('visible'); return; }
       document.getElementById('texto-seleccion').textContent = `${nodosSeleccionados.size} tarea(s) seleccionada(s)`;
       document.getElementById('btn-asignar-masivo').style.display = esGestor() ? 'inline-block' : 'none';
-      document.getElementById('btn-estado-masivo').style.display = puedeSeleccionarBasico() ? 'inline-block' : 'none';
-      document.getElementById('btn-fechas-cascada-masivo').style.display = esGestor() ? 'inline-block' : 'none';
+      document.getElementById('btn-estado-masivo').style.display = esGestor() ? 'inline-block' : 'none';
       document.getElementById('btn-anadir-masivo').style.display = esGestor() ? 'inline-block' : 'none';
       document.getElementById('btn-desactivar-masivo').style.display = esGestor() ? 'inline-block' : 'none';
       document.getElementById('btn-bloquear-masivo').style.display = esGestor() ? 'inline-block' : 'none';
       document.getElementById('btn-desbloquear-masivo').style.display = esGestor() ? 'inline-block' : 'none';
-      document.getElementById('btn-tomar-tarea').style.display = puedeSeleccionarBasico() ? 'inline-block' : 'none';
+      document.getElementById('btn-tomar-tarea').style.display = puedeSeleccionar() ? 'inline-block' : 'none';
       document.getElementById('btn-aprobar-doc-masivo').style.display = esGestor() ? 'inline-block' : 'none';
       document.getElementById('btn-publicar-win-masivo').style.display = (esAdmin() || esWindchill()) ? 'inline-block' : 'none';
       barra.classList.add('visible');
@@ -6436,8 +5201,8 @@
 
       let comentarioRechazoMasivo = null;
       if (estadoElegido === 'rechazado') {
-        comentarioRechazoMasivo = await pedirMotivoRechazo(`${ids.length} tareas seleccionadas`);
-        if (!comentarioRechazoMasivo) return;
+        comentarioRechazoMasivo = await pedirTexto('Motivo del rechazo para todas las seleccionadas (obligatorio):');
+        if (!comentarioRechazoMasivo || !comentarioRechazoMasivo.trim()) return;
       }
 
       btn.disabled = true;
@@ -6504,10 +5269,6 @@
       document.getElementById('estadomasivo-contador').textContent = `Se aplicará a ${nodosSeleccionados.size} tarea(s) seleccionada(s).`;
       document.getElementById('estadomasivo-select').value = '';
       document.getElementById('estadomasivo-estado').textContent = '';
-      // Aprobar/Rechazar sigue siendo solo de ADMIN/REVISOR -- un usuario
-      // normal ni siquiera ve esas dos opciones en el desplegable.
-      document.getElementById('estadomasivo-opt-aprobado').style.display = esGestor() ? '' : 'none';
-      document.getElementById('estadomasivo-opt-rechazado').style.display = esGestor() ? '' : 'none';
       document.getElementById('modal-estado-masivo').style.display = 'flex';
     }
 
@@ -6528,8 +5289,8 @@
 
       let comentarioRechazo = null;
       if (estadoElegido === 'rechazado') {
-        comentarioRechazo = await pedirMotivoRechazo(`${nodosSeleccionados.size} tareas seleccionadas`);
-        if (!comentarioRechazo) return;
+        comentarioRechazo = await pedirTexto('Motivo del rechazo para todas las seleccionadas (obligatorio):');
+        if (!comentarioRechazo || !comentarioRechazo.trim()) return;
       }
 
       const accionesEstado = {
@@ -6633,42 +5394,13 @@
 
     async function accionMarcarPendienteDudas(nodeId) {
       const nodo = mapaNodoPorId[nodeId];
-
-      // Comentario y/o foto opcionales explicando la duda (mejora Usuario):
-      // se puede dejar todo en blanco (no cancela la acción), solo Cancelar
-      // aborta marcar la tarea como pendiente de dudas.
-      const resultadoNota = await pedirNotaDudas(nodo?.codigo);
-      if (resultadoNota === null) return;
-
       const { error } = await supabaseClient.rpc('marcar_pendiente_dudas', { p_node_id: nodeId });
       if (error) {
         mostrarAvisoModal('Error: ' + traducirError(error.message));
         registrarLog('INTENTO_FALLIDO', `Intento de marcar dudas en "${nodo?.codigo}" denegado: ${error.message}`, nodeId);
         return;
       }
-
-      if (resultadoNota.nota || resultadoNota.archivo) {
-        let foto_url = null;
-        if (resultadoNota.archivo) {
-          try {
-            const ruta = `${nodeId}/${Date.now()}_${resultadoNota.archivo.name}`;
-            const { error: errorSubida } = await supabaseClient.storage.from('dudas').upload(ruta, resultadoNota.archivo);
-            if (!errorSubida) {
-              const { data: publica } = supabaseClient.storage.from('dudas').getPublicUrl(ruta);
-              foto_url = publica?.publicUrl || null;
-            } else {
-              console.warn('No se pudo subir la foto de la duda:', errorSubida);
-            }
-          } catch (e) { console.warn('No se pudo subir la foto de la duda:', e); }
-        }
-        try {
-          await supabaseClient.from('notas_pendiente_dudas').insert({
-            node_id: nodeId, autor_id: miPerfil.id, nota: resultadoNota.nota, foto_url
-          });
-        } catch (e) { console.warn('No se pudo guardar la nota de dudas:', e); }
-      }
-
-      registrarLog('PENDIENTE_DUDAS', `Marcó "${nodo?.codigo}" como Pendiente de dudas${resultadoNota.nota ? ' — ' + resultadoNota.nota : ''}`, nodeId);
+      registrarLog('PENDIENTE_DUDAS', `Marcó "${nodo?.codigo}" como Pendiente de dudas`, nodeId);
       await cargarArbol();
     }
 
@@ -6920,21 +5652,8 @@
     }
 
     async function accionMarcarTerminado(nodeId) {
+      if (!await mostrarConfirmacion('¿Marcar este trabajo como terminado y enviarlo a revisión?')) return;
       const nodo = mapaNodoPorId[nodeId];
-
-      // Compara el tiempo real trabajado con el previsto (mejora Usuario:
-      // "registrar el tiempo real al marcar Terminado") -- ayuda a afinar
-      // futuras estimaciones sin necesidad de guardar nada aparte, ya que
-      // trabajo_iniciado_en/fecha_inicio_prevista/fecha_fin_prevista ya existían.
-      let mensaje = '¿Marcar este trabajo como terminado y enviarlo a revisión?';
-      const tiempoReal = nodo?.trabajo_iniciado_en ? formatearDuracionHM(nodo.trabajo_iniciado_en, new Date().toISOString()) : null;
-      if (tiempoReal) {
-        mensaje += `\n\nTiempo trabajado: ${tiempoReal} (h:mm)`;
-        const previsto = (nodo.fecha_inicio_prevista && nodo.fecha_fin_prevista) ? formatearDuracionHM(nodo.fecha_inicio_prevista, nodo.fecha_fin_prevista) : null;
-        if (previsto) mensaje += ` — previsto: ${previsto}`;
-      }
-      if (!await mostrarConfirmacion(mensaje)) return;
-
       const { error } = await supabaseClient.rpc('marcar_terminado', { p_node_id: nodeId });
       if (error) {
         mostrarAvisoModal('Error: ' + traducirError(error.message));
@@ -6948,8 +5667,8 @@
     async function accionRevisar(nodeId, aprobado) {
       let comentario = null;
       if (!aprobado) {
-        comentario = await pedirMotivoRechazo(mapaNodoPorId[nodeId]?.codigo);
-        if (!comentario) return;
+        comentario = await pedirTexto('Motivo del rechazo (obligatorio):');
+        if (!comentario || !comentario.trim()) return;
       } else {
         comentario = await pedirTexto('Comentario opcional (déjalo en blanco si no quieres añadir nada):');
         if (comentario === null) return;
@@ -7027,13 +5746,6 @@
       if (fila.trabajador_id === miPerfil.id && fila.revision_estado === 'RECHAZADO' && filaAnterior.revision_estado !== 'RECHAZADO') {
         mostrarAviso('rechazo', '✘ Tarea rechazada', fila.comentario_revision ? `Motivo: ${fila.comentario_revision}` : 'Revisa los comentarios.', ruta);
         mostrarAvisoModal(`✘ Te han rechazado una tarea\n\n${ruta}\n\n${fila.comentario_revision ? 'Motivo: ' + fila.comentario_revision : 'Revisa los comentarios.'}`);
-        // Mejora Usuario ("aviso más inmediato al rechazarle una tarea"):
-        // además del aviso en pantalla de arriba, una notificación del
-        // navegador si la activó -- se nota aunque la pestaña esté en
-        // segundo plano (sigue haciendo falta el navegador abierto).
-        if (avisosRechazoActivados()) {
-          try { new Notification('✘ Te han rechazado una tarea', { body: `${ruta}${fila.comentario_revision ? ' — ' + fila.comentario_revision : ''}` }); } catch (e) {}
-        }
       }
       if (fila.trabajador_id === miPerfil.id && fila.revision_estado === 'APROBADO' && filaAnterior.revision_estado !== 'APROBADO') {
         mostrarAviso('aprobado', '✔ Tarea aprobada', '¡Bien hecho!', ruta);
