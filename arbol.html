@@ -24,8 +24,12 @@
     button.pequeno { padding: 3px 7px; font-size: 11px; }
     /* Botones de expandir/encoger rama (⏬/⏫) -- un 30% más grandes que
        "pequeno" (petición Usuario), en su propia clase para no afectar a
-       los demás botones "pequeno" del árbol (Quitar dependencia, subir/bajar...). */
-    button.boton-rama { padding: 4px 9px; font-size: 14px; }
+       los demás botones "pequeno" del árbol (Quitar dependencia, subir/bajar...).
+       Sin fondo ni borde (petición Usuario): que se vea solo el propio
+       icono azul con los triángulos blancos, sin la pastilla gris detrás. */
+    button.boton-rama { padding: 2px 3px; font-size: 14px; background: transparent; border: none; box-shadow: none; }
+    button.boton-rama:hover { background: rgba(0,0,0,0.08); }
+    body.tema-oscuro button.boton-rama:hover { background: rgba(255,255,255,0.12); }
     button:disabled { background: #ccc; cursor: not-allowed; }
 
     .leyenda { display: flex; gap: 10px; font-size: 12px; align-items: center; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
@@ -2634,8 +2638,8 @@
 
       let acciones = '';
       if (nodo.tipo === 'BUQUE' || nodo.tipo === 'BLOQUE' || nodo.tipo === 'SB' || nodo.tipo === 'PI') {
-        acciones += `<button class="boton-rama secundario" onclick="expandirRama('${nodo.id}')" title="Expandir esta rama">⏬</button>`;
-        acciones += `<button class="boton-rama secundario" onclick="encogerRama('${nodo.id}')" title="Encoger esta rama">⏫</button>`;
+        acciones += `<button class="boton-rama" onclick="expandirRama('${nodo.id}')" title="Expandir esta rama">⏬</button>`;
+        acciones += `<button class="boton-rama" onclick="encogerRama('${nodo.id}')" title="Encoger esta rama">⏫</button>`;
       }
 
       const notaDudasExtra = notasDudasPorNodo[nodo.id];
