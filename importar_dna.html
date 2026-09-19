@@ -60,13 +60,15 @@
     <div class="card">
       <h2 style="margin-top:0; font-size:15px;">1. ¿Qué es esto?</h2>
       <p style="font-size:13px; color:#555;">
-        Importa el Excel de Windchill tal cual viene: una única columna cuya cabecera dice exactamente
+        Importa el Excel de Windchill tal cual viene: una columna cuya cabecera dice exactamente
         <code>DNA</code>, con una ruta completa por fila, p.ej.
         <code>SEC261/SB1/UA1/GR1/UL01/NL801/B221-0001-S</code>. El primer tramo es el Bloque, cada "/" es
-        un nivel más, y el tipo de cada tramo se reconoce solo (por su prefijo de letras, o como pieza
-        numerada de Plancha/Perfil si es un número, o como Componente especial si no encaja en nada de
-        lo anterior). Lo que ya exista en el árbol no se toca ni se duplica — si una fila entera ya existe,
-        se salta sin más.
+        un nivel más, y el tipo de cada tramo se reconoce solo: por su prefijo de letras (SB, UA, GR,
+        UL, NL...), o como pieza numerada de Plancha/Perfil si es un número puro (usando la columna
+        <code>Tipo de pieza</code>: "PL" o "PR", ya que el número solo no dice de cuál es), o como
+        Componente especial si no encaja en nada de lo anterior. Si existe la columna
+        <code>Anidación</code>, su valor se guarda como descripción del nodo. Lo que ya exista en el
+        árbol no se toca ni se duplica — si una fila entera ya existe, se salta sin más.
       </p>
     </div>
 
@@ -201,9 +203,19 @@
 
       await cargarBuquesDestino();
 
+      // Si se llega aquí desde el menú del árbol sobre un Buque concreto,
+      // llega en ?destino= (mismo mecanismo que usa importar.html).
+      const destinoParam = new URLSearchParams(window.location.search).get('destino');
+      if (destinoParam) {
+        const sel = document.getElementById('sel-destino');
+        if ([...sel.options].some(o => o.value === destinoParam)) {
+          sel.value = destinoParam;
+        }
+      }
+
       document.getElementById('input-excel').addEventListener('change', manejarArchivoSubido);
       document.getElementById('sel-destino').addEventListener('change', () => {
-        if (filasDNACrudas.length > 0) procesarFilas();
+        if (filasExcel.length > 0) procesarFilas();
       });
     }
 
@@ -218,35 +230,62 @@
     // -------------------- Lectura del Excel --------------------
     // Busca la celda cuya cabecera es exactamente "DNA" en cualquier
     // fila/columna de la única hoja (no asumimos que esté en la fila 1
-    // ni en una columna fija), y devuelve todo lo que hay debajo de ella
-    // en esa misma columna, hasta el final del rango usado de la hoja.
-    let filasDNACrudas = [];
+    // ni en una columna fija). En esa misma fila de cabecera busca también,
+    // si existen, "Tipo de pieza" (PL/PR -- de qué familia es una pieza
+    // numerada, ya que el número solo no basta para saberlo) y "Anidación"
+    // (código del lote de anidado, si lo hay, se guarda como descripción).
+    // Devuelve todo lo que hay debajo de la cabecera DNA hasta el final del
+    // rango usado de la hoja, saltando huecos sin cortar la lectura ahí.
+    let filasExcel = [];
 
-    function extraerColumnaDNA(hoja) {
+    function extraerFilasDNA(hoja) {
       const ref = hoja['!ref'];
-      if (!ref) return [];
+      if (!ref) return { error: 'La hoja está vacía.' };
       const rango = XLSX.utils.decode_range(ref);
 
-      let filaCabecera = null, colCabecera = null;
-      for (let f = rango.s.r; f <= rango.e.r && colCabecera === null; f++) {
+      let filaCabecera = null, colDNA = null;
+      for (let f = rango.s.r; f <= rango.e.r && colDNA === null; f++) {
         for (let c = rango.s.c; c <= rango.e.c; c++) {
           const celda = hoja[XLSX.utils.encode_cell({ r: f, c })];
           if (celda && typeof celda.v === 'string' && celda.v.trim() === 'DNA') {
-            filaCabecera = f; colCabecera = c;
+            filaCabecera = f; colDNA = c;
             break;
           }
         }
       }
-      if (colCabecera === null) return { error: 'No se ha encontrado ninguna columna con la cabecera exacta "DNA" en esta hoja.' };
+      if (colDNA === null) return { error: 'No se ha encontrado ninguna columna con la cabecera exacta "DNA" en esta hoja.' };
 
-      const valores = [];
-      for (let f = filaCabecera + 1; f <= rango.e.r; f++) {
-        const celda = hoja[XLSX.utils.encode_cell({ r: f, c: colCabecera })];
-        if (celda && celda.v !== undefined && celda.v !== null && String(celda.v).trim() !== '') {
-          valores.push(String(celda.v));
-        }
+      let colTipoPieza = null, colAnidacion = null;
+      for (let c = rango.s.c; c <= rango.e.c; c++) {
+        const celda = hoja[XLSX.utils.encode_cell({ r: filaCabecera, c })];
+        if (!celda || typeof celda.v !== 'string') continue;
+        const texto = celda.v.trim();
+        if (texto === 'Tipo de pieza') colTipoPieza = c;
+        if (texto === 'Anidación' || texto === 'Anidacion') colAnidacion = c;
       }
-      return { valores };
+
+      function valorCelda(f, c) {
+        if (c === null) return null;
+        const celda = hoja[XLSX.utils.encode_cell({ r: f, c })];
+        if (!celda || celda.v === undefined || celda.v === null) return null;
+        const texto = String(celda.v).trim();
+        return texto === '' ? null : texto;
+      }
+
+      const filas = [];
+      for (let f = filaCabecera + 1; f <= rango.e.r; f++) {
+        const dna = valorCelda(f, colDNA);
+        if (dna === null) continue;
+        filas.push({
+          dna,
+          tipoPieza: colTipoPieza !== null ? (valorCelda(f, colTipoPieza) || '').toUpperCase() : null,
+          anidacion: colAnidacion !== null ? valorCelda(f, colAnidacion) : null
+        });
+      }
+      return {
+        filas,
+        avisoTipoPieza: colTipoPieza === null ? 'Aviso: no se ha encontrado la columna "Tipo de pieza" -- cualquier tramo numérico (Plancha/Perfil) dará error, porque sin esa columna no se puede saber de qué familia es.' : null
+      };
     }
 
     function manejarArchivoSubido(e) {
@@ -259,19 +298,19 @@
         const datos = new Uint8Array(ev.target.result);
         const libro = XLSX.read(datos, { type: 'array' });
         const hoja = libro.Sheets[libro.SheetNames[0]];
-        const resultado = extraerColumnaDNA(hoja);
+        const resultado = extraerFilasDNA(hoja);
 
         if (resultado.error) {
           estadoEl.textContent = resultado.error;
           estadoEl.className = 'estado-msg error';
-          filasDNACrudas = [];
+          filasExcel = [];
           document.getElementById('card-preview').style.display = 'none';
           return;
         }
 
-        filasDNACrudas = resultado.valores;
-        estadoEl.textContent = `Leídas ${filasDNACrudas.length} filas bajo la columna "DNA".`;
-        estadoEl.className = 'estado-msg ok';
+        filasExcel = resultado.filas;
+        estadoEl.textContent = `Leídas ${filasExcel.length} filas bajo la columna "DNA".` + (resultado.avisoTipoPieza ? '\n' + resultado.avisoTipoPieza : '');
+        estadoEl.className = resultado.avisoTipoPieza ? 'estado-msg error' : 'estado-msg ok';
         document.getElementById('card-preview').style.display = 'block';
         procesarFilas();
       };
@@ -283,17 +322,21 @@
       'SB', 'SBE', 'SBL', 'CS', 'UA', 'GR', 'UL', 'NL', 'UP', 'NP',
       'PS', 'PT', 'PE', 'PM', 'UC', 'NC', 'PI'
     ]);
-    const FAMILIA_SEGUN_CIFRA = {
-      '1': 'PLANCHA_1000', '2': 'PLANCHA_2000', '3': 'PLANCHA_3000',
-      '4': 'PERFIL_4000', '6': 'PERFIL_6000', '7': 'PERFIL_7000'
-    };
+    // Familia por defecto dentro de cada tipo de pieza (Plancha/Perfil).
+    // El Excel dice si es Plancha (PL) o Perfil (PR) mediante la columna
+    // "Tipo de pieza", pero no dice la sub-familia exacta (1000/2000/3000 o
+    // 4000/6000/7000) -- se usa la primera de cada grupo como valor por
+    // defecto; si hiciera falta distinguir sub-familias, se puede corregir
+    // más adelante desde el propio árbol (son el mismo tipo de nodo, solo
+    // cambia bajo qué "cajón" de Anidados queda archivado).
+    const FAMILIA_POR_TIPO_PIEZA = { PL: 'PLANCHA_1000', PR: 'PERFIL_4000' };
 
-    function tipoDeSegmento(segmento, esRaiz) {
+    function tipoDeSegmento(segmento, esRaiz, tipoPiezaColumna) {
       if (esRaiz) return { tipo: 'BLOQUE', codigo: segmento };
       if (/^[0-9]+$/.test(segmento)) {
-        const familia = FAMILIA_SEGUN_CIFRA[segmento.charAt(0)];
+        const familia = FAMILIA_POR_TIPO_PIEZA[tipoPiezaColumna];
         if (familia) return { tipo: familia, codigo: segmento };
-        return { tipo: null, codigo: segmento, error: `No se reconoce a qué familia pertenece el número "${segmento}" (debería empezar por 1, 2, 3, 4, 6 o 7)` };
+        return { tipo: null, codigo: segmento, error: `Es un número ("${segmento}") pero la columna "Tipo de pieza" de esta fila vale "${tipoPiezaColumna || '(vacío)'}" -- solo se reconocen "PL" (Plancha) o "PR" (Perfil)` };
       }
       const m = segmento.match(/^([A-Za-zÁÉÍÓÚÑ]+)/);
       const prefijo = m ? m[1].toUpperCase() : '';
@@ -339,7 +382,8 @@
       const rutasVistasEnExcel = new Set();
       let contadorTemporal = 0;
 
-      filas.forEach((rutaCruda, indiceFila) => {
+      filas.forEach((filaExcel, indiceFila) => {
+        const rutaCruda = filaExcel.dna;
         const segmentos = segmentarDNA(rutaCruda);
         if (segmentos.length === 0) {
           resultadosFila.push({ fila: indiceFila, ruta: rutaCruda, estado: 'vacia', mensaje: 'Celda vacía' });
@@ -356,7 +400,8 @@
 
         for (let i = 0; i < segmentos.length; i++) {
           const esRaiz = i === 0;
-          const { tipo, codigo, error: errSeg } = tipoDeSegmento(segmentos[i], esRaiz);
+          const esHoja = i === segmentos.length - 1;
+          const { tipo, codigo, error: errSeg } = tipoDeSegmento(segmentos[i], esRaiz, filaExcel.tipoPieza);
           if (errSeg) { error = errSeg; break; }
           const rutaNueva = rutaAcumulada ? `${rutaAcumulada}/${codigo}` : codigo;
 
@@ -381,7 +426,12 @@
 
           let plan = porCrear.find(p => p.rutaCompleta === rutaNueva);
           if (!plan) {
-            plan = { id: `NUEVO_${contadorTemporal++}`, rutaCompleta: rutaNueva, parentRuta: rutaAcumulada, tipo, codigo };
+            plan = {
+              id: `NUEVO_${contadorTemporal++}`, rutaCompleta: rutaNueva, parentRuta: rutaAcumulada, tipo, codigo,
+              // El código del lote de anidado (si lo hay) solo tiene sentido
+              // en el nodo hoja de esta fila -- se guarda como descripción.
+              descripcion: (esHoja && filaExcel.anidacion) ? `Anidación: ${filaExcel.anidacion}` : null
+            };
             porCrear.push(plan);
             nodoPorRuta[rutaNueva] = { id: plan.id, tipo };
           }
@@ -433,7 +483,7 @@
 
       const [todosLosNodos, hijosValidosPorTipo] = await Promise.all([cargarTodosLosNodos(), cargarReglasTipos()]);
 
-      const { porCrear, resultadosFila } = planificarImportacion(todosLosNodos, destinoId, filasDNACrudas, hijosValidosPorTipo);
+      const { porCrear, resultadosFila } = planificarImportacion(todosLosNodos, destinoId, filasExcel, hijosValidosPorTipo);
       nodosACrear = porCrear;
       filasPlan = resultadosFila;
 
@@ -514,7 +564,7 @@
         estadoEl.textContent = `Creando ${plan.codigo} (${i + 1}/${nodosACrear.length})...`;
 
         const { data: nuevo, error } = await supabaseClient.from('nodes').insert({
-          parent_id: parentIdReal, tipo: plan.tipo, codigo: plan.codigo, nombre: plan.codigo, orden: 0
+          parent_id: parentIdReal, tipo: plan.tipo, codigo: plan.codigo, nombre: plan.codigo, descripcion: plan.descripcion || null, orden: 0
         }).select().single();
 
         if (error) {
@@ -526,7 +576,7 @@
         }
       }
 
-      registrarLog('IMPORTAR_EXCEL_DNA', `Importó estructura DNA: ${creados} nodos creados, ${fallados} con error, sobre ${filasDNACrudas.length} filas leídas`, destinoId);
+      registrarLog('IMPORTAR_EXCEL_DNA', `Importó estructura DNA: ${creados} nodos creados, ${fallados} con error, sobre ${filasExcel.length} filas leídas`, destinoId);
 
       estadoEl.textContent = `Terminado: ${creados} nodo(s) creado(s), ${fallados} con error.`;
       estadoEl.className = fallados > 0 ? 'estado-msg error' : 'estado-msg ok';

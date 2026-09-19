@@ -477,7 +477,7 @@
         <label class="menu-item" id="wrap-tiempos" style="display:none;">
           <input type="checkbox" id="chk-tiempos" onchange="toggleTiempos()"> ⏱️ <span data-i18n="herramientas.tiempos">Tiempos</span>
         </label>
-        <a class="menu-item" id="menu-link-importar" href="importar.html" target="_blank" style="display:none;">📥 <span data-i18n="herramientas.importarExcel">Importar Excel</span></a>
+        <a class="menu-item" id="menu-link-importar" href="importar.html" target="_blank" style="display:none;">📥 <span data-i18n="herramientas.importarExcel">Importar Excel</span> (clásico)</a>
         <a class="menu-item" id="menu-link-importar-dna" href="importar_dna.html" target="_blank" style="display:none;">🧬 Importar Excel (ruta DNA)</a>
         <a class="menu-item" id="menu-link-duplicados" href="duplicados.html" target="_blank" style="display:none;">🔍 <span data-i18n="herramientas.comprobarDuplicados">Comprobar duplicados</span></a>
         <span class="menu-item" id="menu-item-exportar-excel" onclick="exportarArbolExcel()" style="display:none;">⬇ <span data-i18n="herramientas.exportarExcel">Exportar árbol a Excel</span></span>
@@ -3386,7 +3386,10 @@
             items.push({ label: '🗂️ Generar documentación (Modelo/Plano/Windchill)', tip: 'Elige cuáles de los 3 nodos de seguimiento documental generar dentro de esta pieza.', fn: () => abrirModalGenerarDoc(nodeId) });
           }
           if (miPerfil.rol === 'ADMIN') {
-            items.push({ label: '📥 Importar desde Excel', tip: 'Importa un subárbol completo (varios niveles) colgando de este nodo, desde un fichero Excel.', fn: () => window.location.href = 'importar.html?destino=' + encodeURIComponent(nodeId) });
+            items.push({ label: '📥 Importar desde Excel (clásico)', tip: 'Importa un subárbol completo (varios niveles) colgando de este nodo, desde un Excel con columnas Ruta/Tipo/Nombre.', fn: () => window.location.href = 'importar.html?destino=' + encodeURIComponent(nodeId) });
+            if (nodo.tipo === 'BUQUE') {
+              items.push({ label: '🧬 Importar desde Excel (ruta DNA)', tip: 'Importa un Excel con una sola columna "DNA" (rutas completas tipo SEC261/SB1/UA1/...) colgando de este Buque.', fn: () => window.location.href = 'importar_dna.html?destino=' + encodeURIComponent(nodeId) });
+            }
           }
           items.push({ label: '↔️ Cambiar de nodo', tip: 'Cambia de nodo padre.', fn: () => abrirModalMover(nodeId) });
           items.push({ label: '✎ Editar', tip: 'Edita código, nombre y descripción del nodo.', fn: () => abrirModalEditar(nodeId) });

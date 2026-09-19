@@ -363,9 +363,10 @@
       BUQUE: 'Buque', BLOQUE: 'Bloque', SB: 'Subbloque', SBE: 'Unión de subbloques', SBL: 'Unión en grada',
       CS: 'Conjunto simple', UA: 'Unidad abierta', GR: 'Grupo', UL: 'Unidad longitudinal', NL: 'Panel',
       UP: 'Unidad plana fabricada', NP: 'Panel plano', PS: 'Previa simple', PT: 'Previa en T', PE: 'Pieza especial',
-      PM: 'Piezas menores', UC: 'Unidad fabricada de forro', NC: 'Panel curvo de forro', PI: 'Producto intermedio',
+      PM: 'Piezas menores', CE: 'Componente especial', PR: 'Perfil', UC: 'Unidad fabricada de forro', NC: 'Panel curvo de forro', PI: 'Producto intermedio',
       ANIDADOS: 'Anidados', PDB: 'Plano de bloque', PANELES: 'Paneles', PL: 'Plancha', PERF: 'Perfil',
       PLANCHA_1000: 'Plancha 1000', PLANCHA_2000: 'Plancha 2000', PLANCHA_3000: 'Plancha 3000',
+      PL5000: 'Plancha 5000 (chapa especial)', PL8000: 'Plancha 8000 (chapa especial)',
       PERFIL_4000: 'Perfil 4000', PERFIL_6000: 'Perfil 6000', PERFIL_7000: 'Perfil 7000'
     };
 
@@ -380,24 +381,29 @@
     const ESTRUCTURA_MINIMA_DEFECTO = {
       BLOQUE: [
         { tipo: 'ANIDADOS', hijos: [
-            { tipo: 'PL', hijos: [ { tipo: 'PLANCHA_1000', codigo: 'PL1000' }, { tipo: 'PLANCHA_2000', codigo: 'PL2000' }, { tipo: 'PLANCHA_3000', codigo: 'PL3000' } ] },
-            { tipo: 'PERF', hijos: [ { tipo: 'PERFIL_4000', codigo: 'PERF4000' }, { tipo: 'PERFIL_6000', codigo: 'PERF6000' } ] }
+            { tipo: 'PL', hijos: [ { tipo: 'PLANCHA_1000', codigo: 'PL1000' }, { tipo: 'PLANCHA_2000', codigo: 'PL2000' }, { tipo: 'PLANCHA_3000', codigo: 'PL3000' }, { tipo: 'PL5000', codigo: 'PL5000' }, { tipo: 'PL8000', codigo: 'PL8000' } ] },
+            { tipo: 'PERF', hijos: [ { tipo: 'PERFIL_4000', codigo: 'PERF4000' }, { tipo: 'PERFIL_6000', codigo: 'PERF6000' }, { tipo: 'PERFIL_7000', codigo: 'PERF7000' } ] }
         ] },
-        { tipo: 'SB', hijos: [ { tipo: 'UA', hijos: [ { tipo: 'GR', hijos: [ { tipo: 'UL', hijos: [ { tipo: 'NL' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' } ] }, { tipo: 'UC', hijos: [ { tipo: 'NC' } ] } ] }, { tipo: 'PS' }, { tipo: 'PM' } ] } ] },
-        { tipo: 'PM' }, { tipo: 'PS' }, { tipo: 'UC', hijos: [ { tipo: 'NC' } ] }
+        { tipo: 'SB', hijos: [ { tipo: 'UA', hijos: [ { tipo: 'GR', hijos: [ { tipo: 'PS' }, { tipo: 'UL', hijos: [ { tipo: 'NL' } ] }, { tipo: 'PM' }, { tipo: 'UC', hijos: [ { tipo: 'NC' } ] }, { tipo: 'UP', hijos: [ { tipo: 'NP' } ] } ] } ] } ] },
+        { tipo: 'PM' }, { tipo: 'PS' }, { tipo: 'UC', hijos: [ { tipo: 'NC' } ] },
+        { tipo: 'SBE' }, { tipo: 'SBL' }
       ],
       ANIDADOS: [
-        { tipo: 'PL', hijos: [ { tipo: 'PLANCHA_1000', codigo: 'PL1000' }, { tipo: 'PLANCHA_2000', codigo: 'PL2000' }, { tipo: 'PLANCHA_3000', codigo: 'PL3000' } ] },
-        { tipo: 'PERF', hijos: [ { tipo: 'PERFIL_4000', codigo: 'PERF4000' }, { tipo: 'PERFIL_6000', codigo: 'PERF6000' } ] }
+        { tipo: 'PL', hijos: [ { tipo: 'PLANCHA_1000', codigo: 'PL1000' }, { tipo: 'PLANCHA_2000', codigo: 'PL2000' }, { tipo: 'PLANCHA_3000', codigo: 'PL3000' }, { tipo: 'PL5000', codigo: 'PL5000' }, { tipo: 'PL8000', codigo: 'PL8000' } ] },
+        { tipo: 'PERF', hijos: [ { tipo: 'PERFIL_4000', codigo: 'PERF4000' }, { tipo: 'PERFIL_6000', codigo: 'PERF6000' }, { tipo: 'PERFIL_7000', codigo: 'PERF7000' } ] }
       ],
-      SB: [ { tipo: 'UA', hijos: [ { tipo: 'GR', hijos: [ { tipo: 'UL', hijos: [ { tipo: 'NL' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' } ] }, { tipo: 'UC', hijos: [ { tipo: 'NC' } ] } ] }, { tipo: 'PS' }, { tipo: 'PM' } ] } ],
-      UA: [ { tipo: 'GR', hijos: [ { tipo: 'UL', hijos: [ { tipo: 'NL' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' } ] }, { tipo: 'UC', hijos: [ { tipo: 'NC' } ] } ] }, { tipo: 'PS' }, { tipo: 'PM' } ],
-      GR: [ { tipo: 'UL', hijos: [ { tipo: 'NL' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' } ] }, { tipo: 'UC', hijos: [ { tipo: 'NC' } ] } ],
-      UL: [ { tipo: 'NL' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' } ],
-      UP: [ { tipo: 'NP' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' } ],
+      SB: [ { tipo: 'UA', hijos: [ { tipo: 'GR', hijos: [ { tipo: 'PS' }, { tipo: 'UL', hijos: [ { tipo: 'NL' } ] }, { tipo: 'PM' }, { tipo: 'UC', hijos: [ { tipo: 'NC' } ] }, { tipo: 'UP', hijos: [ { tipo: 'NP' } ] } ] } ] } ],
+      UA: [ { tipo: 'GR', hijos: [ { tipo: 'PS' }, { tipo: 'UL', hijos: [ { tipo: 'NL' } ] }, { tipo: 'PM' }, { tipo: 'UC', hijos: [ { tipo: 'NC' } ] }, { tipo: 'UP', hijos: [ { tipo: 'NP' } ] } ] } ],
+      GR: [ { tipo: 'PS' }, { tipo: 'UL', hijos: [ { tipo: 'NL' } ] }, { tipo: 'PM' }, { tipo: 'UC', hijos: [ { tipo: 'NC' } ] }, { tipo: 'UP', hijos: [ { tipo: 'NP' } ] } ],
+      UL: [ { tipo: 'NL' } ],
+      UP: [ { tipo: 'NP' } ],
       PS: [], PT: [], PE: [],
       UC: [ { tipo: 'NC' } ],
-      NC: []
+      NC: [],
+      SBE: [],
+      SBL: [],
+      CE: [],
+      PR: []
     };
 
     async function iniciar() {
