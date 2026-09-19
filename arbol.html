@@ -4053,21 +4053,31 @@
     // Ids seleccionados, en el mismo orden en que aparecen ahora mismo
     // pintados en el árbol (de arriba abajo) -- así "cascada" sigue el
     // orden visual, sea cual sea el orden en que se fueron marcando.
+    //
+    // Al marcar una pieza se marca también, por dentro, toda su rama de
+    // documentación (DOC_MODELO/DOC_PLANO_CORTE/DOC_WINDCHILL y sus hijos
+    // DOC_REALIZADO/DOC_PUBLICAR/DOC_FICHERO_SUBIDO -- normal y necesario
+    // para "Desactivar seleccionados", que si no los dejaría activos
+    // sueltos). Pero esos nodos NO son tareas de fabricación (no llevan
+    // trabajador, horario ni "Estado tarea" -- ver TIPOS_SIN_ASIGNACION),
+    // así que aquí se excluyen: "Fechas en cascada" solo debe repartir
+    // tiempo entre piezas de verdad, nunca entre sus marcadores de
+    // documentación ocultos.
     function idsSeleccionadosEnOrdenVisual() {
       return [...document.querySelectorAll('li.nodo')]
         .map(li => li.id.replace(/^li-/, ''))
-        .filter(id => nodosSeleccionados.has(id));
+        .filter(id => nodosSeleccionados.has(id))
+        .filter(id => !TIPOS_SIN_ASIGNACION.has(mapaNodoPorId[id]?.tipo));
     }
 
     async function abrirModalFechasCascada() {
-      document.getElementById('fc-contador').textContent = `Se aplicará a ${nodosSeleccionados.size} tarea(s) seleccionada(s), en el orden en que aparecen en el árbol.`;
-
       // Si la primera tarea (en orden visual) ya tiene una fecha de inicio
       // prevista guardada (p.ej. se está reasignando el horario a tareas
       // que ya tenían fecha), se precarga como valor de partida -- sigue
       // siendo editable, solo ahorra tener que volver a mirarla y
       // escribirla a mano.
       const idsActuales = idsSeleccionadosEnOrdenVisual();
+      document.getElementById('fc-contador').textContent = `Se aplicará a ${idsActuales.length} tarea(s) seleccionada(s) (no cuenta los nodos de documentación tipo Modelo/Plano de corte/Windchill), en el orden en que aparecen en el árbol.`;
       const primerNodo = idsActuales.length ? mapaNodoPorId[idsActuales[0]] : null;
       document.getElementById('fc-inicio').value = primerNodo?.fecha_inicio_prevista
         ? formatearDatetimeLocalInput(new Date(primerNodo.fecha_inicio_prevista))
