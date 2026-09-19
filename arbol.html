@@ -108,7 +108,7 @@
       width: 100%; padding: 7px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 16px;
     }
     .overlay-botones { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
-    .estado-msg { font-size: 12px; margin-top: 8px; }
+    .estado-msg { font-size: 12px; margin-top: 8px; white-space: pre-line; }
     .error { color: #dc3545; }
     .ok { color: #218838; }
     .fila-doble { display: flex; gap: 8px; }
@@ -4646,10 +4646,14 @@
       }
       if (!await mostrarConfirmacion(`¿Generar la estructura mínima dentro de "${nodo.codigo} - ${nodo.nombre}"? Se crean varios nodos nuevos de golpe (sin números en el código, salvo Planchas/Perfiles).`)) return;
 
+      // Se crea TODO en una sola llamada a la base de datos (función
+      // generar_estructura_minima, ver estructura_generar_minima_atomico.sql)
+      // en vez de un nodo por petición como antes -- así, si algo falla a
+      // mitad, no se queda ninguna rama a medio crear: o se crea entera, o
+      // no se crea nada y se avisa con el error real.
       try {
-        for (let i = 0; i < hijos.length; i++) {
-          await crearRamaMinima(hijos[i], nodeId, i);
-        }
+        const { error } = await supabaseClient.rpc('generar_estructura_minima', { p_node_id: nodeId });
+        if (error) throw new Error(error.message);
         registrarLog('CREAR_LOTE', `Generó la estructura mínima dentro de "${nodo.codigo}"`, nodeId);
         nodosAbiertos.add(nodeId);
         await cargarArbol();
@@ -4829,8 +4833,12 @@
       }
       if (!nombre) nombre = codigo;
 
-      // Crea ~25 nodos en cascada, uno por uno -- tarda unos segundos.
-      // Se avisa explícitamente para que no parezca que no ha pasado nada.
+      // Se crea el Bloque Y toda su estructura mínima en una sola llamada a
+      // la base de datos (función crear_bloque_minimo, ver
+      // estructura_generar_minima_atomico.sql) -- todo dentro de una única
+      // transacción: o se crea el Bloque completo, o (si algo falla) no se
+      // crea nada, en vez de quedar a medias como antes con ~25 peticiones
+      // sueltas una detrás de otra.
       btn.disabled = true;
       const textoOriginalBtn = btn.textContent;
       btn.textContent = 'Creando...';
@@ -4838,19 +4846,16 @@
       estadoEl.className = 'estado-msg';
 
       try {
-        const nuevoBloque = await crearRamaMinima(
-          { tipo: 'BLOQUE', codigo, nombre, hijos: ESTRUCTURA_MINIMA_POR_TIPO.BLOQUE },
-          buqueId, orden
-        );
-        if (descripcion) {
-          await supabaseClient.from('nodes').update({ descripcion }).eq('id', nuevoBloque.id);
-        }
-        registrarLog('CREAR_LOTE', `Generó el Bloque "${codigo}" con su estructura mínima dentro de "${mapaNodoPorId[buqueId]?.codigo || ''}"`, nuevoBloque.id);
+        const { data: nuevoBloqueId, error } = await supabaseClient.rpc('crear_bloque_minimo', {
+          p_buque_id: buqueId, p_codigo: codigo, p_nombre: nombre, p_descripcion: descripcion || null, p_orden: orden
+        });
+        if (error) throw new Error(error.message);
+        registrarLog('CREAR_LOTE', `Generó el Bloque "${codigo}" con su estructura mínima dentro de "${mapaNodoPorId[buqueId]?.codigo || ''}"`, nuevoBloqueId);
         btn.disabled = false;
         btn.textContent = textoOriginalBtn;
         cerrarModalNodo();
         nodosAbiertos.add(buqueId);
-        nodosAbiertos.add(nuevoBloque.id);
+        nodosAbiertos.add(nuevoBloqueId);
         await cargarArbol();
         mostrarAvisoModal(`Bloque "${codigo}" creado con su estructura mínima dentro de "${mapaNodoPorId[buqueId]?.codigo || ''}".`);
       } catch (e) {
@@ -5145,18 +5150,34 @@
         return !padre || padre.activo;
       });
 
-      let hechos = 0, fallos = 0;
+      let hechos = 0;
+      const errores = [];
       for (const nodo of raices) {
-        estadoEl.textContent = `Eliminando (${hechos + fallos + 1}/${raices.length})...`;
+        estadoEl.textContent = `Eliminando (${hechos + errores.length + 1}/${raices.length})...`;
         const { error } = await supabaseClient.rpc('eliminar_nodo_definitivo', { p_node_id: nodo.id });
-        if (error) { fallos++; console.warn(`Error al eliminar ${nodo.codigo}:`, error.message); }
+        // Antes, un error aquí solo se dejaba en la consola (console.warn) --
+        // invisible para quien está delante de la pantalla: el modal se
+        // cerraba igual y parecía que "no había pasado nada" o que se había
+        // borrado todo cuando en realidad se habían quedado varias ramas sin
+        // eliminar. Ahora el motivo real se guarda y se enseña abajo.
+        if (error) { errores.push(`${nodo.codigo}: ${traducirError(error.message)}`); console.warn(`Error al eliminar ${nodo.codigo}:`, error.message); }
         else hechos++;
       }
 
-      registrarLog('ELIMINAR_DEFINITIVO', `Eliminó toda la papelera: ${hechos} rama(s) borrada(s) de ${raices.length}${fallos ? `, ${fallos} con error` : ''}`);
+      registrarLog('ELIMINAR_DEFINITIVO', `Eliminó toda la papelera: ${hechos} rama(s) borrada(s) de ${raices.length}${errores.length ? `, ${errores.length} con error` : ''}`);
 
-      cerrarModalEliminar();
       await cargarPapelera();
+
+      if (errores.length > 0) {
+        // No se cierra el modal solo -- se deja el aviso a la vista con el
+        // motivo exacto de cada fallo, para poder decidir qué hacer (y para
+        // que se pueda copiar el mensaje si hace falta reportarlo).
+        estadoEl.textContent = `Se eliminaron ${hechos} de ${raices.length}. No se pudieron eliminar ${errores.length}:\n` + errores.join('\n');
+        estadoEl.className = 'estado-msg error';
+        mostrarAvisoModal(`Se eliminaron ${hechos} de ${raices.length} rama(s) de la papelera. ${errores.length} no se pudieron eliminar -- revisa el detalle bajo el botón "Eliminar todo".`);
+      } else {
+        cerrarModalEliminar();
+      }
     }
 
     function confirmarEliminarDefinitivo(nodeId) {
