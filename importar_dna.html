@@ -64,9 +64,10 @@
         <code>DNA</code>, con una ruta completa por fila, p.ej.
         <code>SEC261/SB1/UA1/GR1/UL01/NL801/B221-0001-S</code>. El primer tramo es el Bloque, cada "/" es
         un nivel más, y el tipo de cada tramo se reconoce solo: por su prefijo de letras (SB, UA, GR,
-        UL, NL...), o como pieza numerada de Plancha/Perfil si es un número puro (usando la columna
-        <code>Tipo de pieza</code>: "PL" o "PR", ya que el número solo no dice de cuál es), o como
-        Componente especial si no encaja en nada de lo anterior. Si existe la columna
+        UL, NL...), o como pieza numerada de Plancha/Perfil si es un número puro (la familia se decide
+        por su primera cifra: 1/2/3 → Plancha 1000/2000/3000, 5 → chapa especial PL5000, 8 → chapa
+        especial PL8000, 4/6/7 → Perfil 4000/6000/7000 — igual que la creación manual de piezas en el
+        árbol), o como Componente especial si no encaja en nada de lo anterior. Si existe la columna
         <code>Anidación</code>, su valor se guarda como descripción del nodo. Lo que ya exista en el
         árbol no se toca ni se duplica — si una fila entera ya existe, se salta sin más.
       </p>
@@ -231,9 +232,12 @@
     // Busca la celda cuya cabecera es exactamente "DNA" en cualquier
     // fila/columna de la única hoja (no asumimos que esté en la fila 1
     // ni en una columna fija). En esa misma fila de cabecera busca también,
-    // si existen, "Tipo de pieza" (PL/PR -- de qué familia es una pieza
-    // numerada, ya que el número solo no basta para saberlo) y "Anidación"
-    // (código del lote de anidado, si lo hay, se guarda como descripción).
+    // si existe, "Anidación" (código del lote de anidado, si lo hay, se
+    // guarda como descripción). La familia de una pieza numerada
+    // (Plancha/Perfil) se decide por su primera cifra (ver
+    // FAMILIA_SEGUN_CIFRA más abajo) -- ya no hace falta ninguna columna
+    // "Tipo de pieza" para esto, para que la Excel coincida siempre con
+    // el mismo criterio que ya usa la creación manual en el árbol.
     // Devuelve todo lo que hay debajo de la cabecera DNA hasta el final del
     // rango usado de la hoja, saltando huecos sin cortar la lectura ahí.
     let filasExcel = [];
@@ -255,12 +259,11 @@
       }
       if (colDNA === null) return { error: 'No se ha encontrado ninguna columna con la cabecera exacta "DNA" en esta hoja.' };
 
-      let colTipoPieza = null, colAnidacion = null;
+      let colAnidacion = null;
       for (let c = rango.s.c; c <= rango.e.c; c++) {
         const celda = hoja[XLSX.utils.encode_cell({ r: filaCabecera, c })];
         if (!celda || typeof celda.v !== 'string') continue;
         const texto = celda.v.trim();
-        if (texto === 'Tipo de pieza') colTipoPieza = c;
         if (texto === 'Anidación' || texto === 'Anidacion') colAnidacion = c;
       }
 
@@ -278,14 +281,10 @@
         if (dna === null) continue;
         filas.push({
           dna,
-          tipoPieza: colTipoPieza !== null ? (valorCelda(f, colTipoPieza) || '').toUpperCase() : null,
           anidacion: colAnidacion !== null ? valorCelda(f, colAnidacion) : null
         });
       }
-      return {
-        filas,
-        avisoTipoPieza: colTipoPieza === null ? 'Aviso: no se ha encontrado la columna "Tipo de pieza" -- cualquier tramo numérico (Plancha/Perfil) dará error, porque sin esa columna no se puede saber de qué familia es.' : null
-      };
+      return { filas };
     }
 
     function manejarArchivoSubido(e) {
@@ -309,8 +308,8 @@
         }
 
         filasExcel = resultado.filas;
-        estadoEl.textContent = `Leídas ${filasExcel.length} filas bajo la columna "DNA".` + (resultado.avisoTipoPieza ? '\n' + resultado.avisoTipoPieza : '');
-        estadoEl.className = resultado.avisoTipoPieza ? 'estado-msg error' : 'estado-msg ok';
+        estadoEl.textContent = `Leídas ${filasExcel.length} filas bajo la columna "DNA".`;
+        estadoEl.className = 'estado-msg ok';
         document.getElementById('card-preview').style.display = 'block';
         procesarFilas();
       };
@@ -322,21 +321,23 @@
       'SB', 'SBE', 'SBL', 'CS', 'UA', 'GR', 'UL', 'NL', 'UP', 'NP',
       'PS', 'PT', 'PE', 'PM', 'UC', 'NC', 'PI'
     ]);
-    // Familia por defecto dentro de cada tipo de pieza (Plancha/Perfil).
-    // El Excel dice si es Plancha (PL) o Perfil (PR) mediante la columna
-    // "Tipo de pieza", pero no dice la sub-familia exacta (1000/2000/3000 o
-    // 4000/6000/7000) -- se usa la primera de cada grupo como valor por
-    // defecto; si hiciera falta distinguir sub-familias, se puede corregir
-    // más adelante desde el propio árbol (son el mismo tipo de nodo, solo
-    // cambia bajo qué "cajón" de Anidados queda archivado).
-    const FAMILIA_POR_TIPO_PIEZA = { PL: 'PLANCHA_1000', PR: 'PERFIL_4000' };
+    // Familia de una pieza numerada según su primera cifra -- exactamente
+    // el mismo criterio que usa la creación manual de piezas en arbol.html
+    // (FAMILIA_SEGUN_CIFRA), para que Excel y árbol nunca discrepen. Ya NO
+    // se usa ninguna columna del Excel ("Tipo de pieza") para esto: la
+    // cifra manda sola.
+    const FAMILIA_SEGUN_CIFRA = {
+      '1': 'PLANCHA_1000', '2': 'PLANCHA_2000', '3': 'PLANCHA_3000',
+      '5': 'PL5000', '8': 'PL8000',
+      '4': 'PERFIL_4000', '6': 'PERFIL_6000', '7': 'PERFIL_7000'
+    };
 
-    function tipoDeSegmento(segmento, esRaiz, tipoPiezaColumna) {
+    function tipoDeSegmento(segmento, esRaiz) {
       if (esRaiz) return { tipo: 'BLOQUE', codigo: segmento };
       if (/^[0-9]+$/.test(segmento)) {
-        const familia = FAMILIA_POR_TIPO_PIEZA[tipoPiezaColumna];
+        const familia = FAMILIA_SEGUN_CIFRA[segmento.charAt(0)];
         if (familia) return { tipo: familia, codigo: segmento };
-        return { tipo: null, codigo: segmento, error: `Es un número ("${segmento}") pero la columna "Tipo de pieza" de esta fila vale "${tipoPiezaColumna || '(vacío)'}" -- solo se reconocen "PL" (Plancha) o "PR" (Perfil)` };
+        return { tipo: null, codigo: segmento, error: `Es un número ("${segmento}") pero no se reconoce ninguna familia para la cifra inicial "${segmento.charAt(0)}" (solo se reconocen 1,2,3,4,5,6,7,8)` };
       }
       const m = segmento.match(/^([A-Za-zÁÉÍÓÚÑ]+)/);
       const prefijo = m ? m[1].toUpperCase() : '';
@@ -401,7 +402,7 @@
         for (let i = 0; i < segmentos.length; i++) {
           const esRaiz = i === 0;
           const esHoja = i === segmentos.length - 1;
-          const { tipo, codigo, error: errSeg } = tipoDeSegmento(segmentos[i], esRaiz, filaExcel.tipoPieza);
+          const { tipo, codigo, error: errSeg } = tipoDeSegmento(segmentos[i], esRaiz);
           if (errSeg) { error = errSeg; break; }
           const rutaNueva = rutaAcumulada ? `${rutaAcumulada}/${codigo}` : codigo;
 
