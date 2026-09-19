@@ -4584,7 +4584,7 @@
     // (ver estructura_eliminar_producto_intermedio.sql, que además corrige
     // los buques ya existentes en la base de datos).
     const ESTRUCTURA_MINIMA_POR_TIPO_DEFECTO = {
-      BLOQUE:   [ RAMA_ANIDADOS, RAMA_SB, { tipo: 'PM' }, { tipo: 'PS' }, RAMA_UC ],
+      BLOQUE:   [ RAMA_ANIDADOS, RAMA_SB, { tipo: 'PM' }, { tipo: 'PS' }, RAMA_UC, { tipo: 'SBE' }, { tipo: 'SBL' } ],
       ANIDADOS: RAMA_ANIDADOS.hijos,
       SB:       RAMA_SB.hijos,
       UA:       RAMA_UA.hijos,
@@ -4595,7 +4595,9 @@
       PT:       [],
       PE:       [],
       UC:       RAMA_UC.hijos,
-      NC:       []
+      NC:       [],
+      SBE:      [],
+      SBL:      []
     };
     let ESTRUCTURA_MINIMA_POR_TIPO = ESTRUCTURA_MINIMA_POR_TIPO_DEFECTO;
     async function cargarEstructuraMinimaPersonalizada() {
