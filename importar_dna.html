@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESTRUCTURA - Importar desde Excel DNA</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 1000px; margin: 20px auto; padding: 0 20px; color: #333; }
+    h1 { font-size: 20px; margin: 0; }
+    @media (max-width: 480px) {
+      body { margin: 10px auto; padding: 0 8px; box-sizing: border-box; }
+      h1 { font-size: 17px; }
+    }
+    .subtitulo { color: #666; font-size: 13px; margin-top: 2px; }
+    .header-bar { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+    .card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    button { padding: 7px 14px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; }
+    button.secundario { background: #6c757d; }
+    button.secundario:hover { background: #5a6268; }
+    button.peligro { background: #dc3545; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    select, input[type="file"] { padding: 7px; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; }
+    label { display: block; font-weight: bold; font-size: 12px; margin: 10px 0 4px; }
+    .estado-msg { font-size: 13px; margin-top: 8px; white-space: pre-line; }
+    .error { color: #dc3545; }
+    .ok { color: #218838; }
+    .resumen-cifras { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; font-size: 13px; }
+    .resumen-cifras span { background: white; border: 1px solid #ddd; border-radius: 6px; padding: 4px 10px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; background: white; font-size: 12px; }
+    th, td { padding: 6px; text-align: left; border-bottom: 1px solid #eee; }
+    th { background: #1c6e8c; color: white; }
+    .contenedor-preview { max-height: 420px; overflow-y: auto; overflow-x: auto; border: 1px solid #ddd; border-radius: 6px; }
+    .contenedor-preview table { min-width: 620px; }
+    .fila-error { background: #fdecea; }
+    .fila-ok { background: #eafaf1; }
+    .fila-duplicada { background: #fff8e1; }
+    .fila-creado { background: #eafaf1; }
+    code { background: #eee; padding: 1px 5px; border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+  <div class="header-bar">
+    <div>
+      <h1>📥 Importar estructura desde Excel (ruta DNA)</h1>
+      <div class="subtitulo" id="texto-usuario"></div>
+    </div>
+    <div>
+      <button class="secundario" onclick="location.href='index.html'">🏠 Inicio</button>
+      <button class="secundario" onclick="location.href='arbol.html'">🌳 Árbol</button>
+      <button class="peligro" onclick="cerrarPagina()">❌ Cerrar</button>
+    </div>
+  </div>
+
+  <div id="sin-permiso" style="display:none; color:#dc3545; font-weight:bold; text-align:center; margin-top:60px;">
+    Solo ADMIN puede importar estructura.
+  </div>
+
+  <div id="panel" style="display:none;">
+    <div class="card">
+      <h2 style="margin-top:0; font-size:15px;">1. ¿Qué es esto?</h2>
+      <p style="font-size:13px; color:#555;">
+        Importa el Excel de Windchill tal cual viene: una única columna cuya cabecera dice exactamente
+        <code>DNA</code>, con una ruta completa por fila, p.ej.
+        <code>SEC261/SB1/UA1/GR1/UL01/NL801/B221-0001-S</code>. El primer tramo es el Bloque, cada "/" es
+        un nivel más, y el tipo de cada tramo se reconoce solo (por su prefijo de letras, o como pieza
+        numerada de Plancha/Perfil si es un número, o como Componente especial si no encaja en nada de
+        lo anterior). Lo que ya exista en el árbol no se toca ni se duplica — si una fila entera ya existe,
+        se salta sin más.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0; font-size:15px;">2. Elige el Buque destino</h2>
+      <label for="sel-destino">El Bloque de cada ruta se creará (o se reutilizará si ya existe) colgando de este Buque</label>
+      <select id="sel-destino"></select>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0; font-size:15px;">3. Sube el Excel</h2>
+      <input type="file" id="input-excel" accept=".xlsx,.xls">
+      <div class="estado-msg" id="estado-carga"></div>
+    </div>
+
+    <div class="card" id="card-preview" style="display:none;">
+      <h2 style="margin-top:0; font-size:15px;">4. Revisa antes de importar</h2>
+      <div class="resumen-cifras" id="resumen-cifras"></div>
+      <div class="contenedor-preview">
+        <table>
+          <thead>
+            <tr><th>Fila</th><th>Ruta (DNA)</th><th>Estado</th><th>Mensaje</th></tr>
+          </thead>
+          <tbody id="tabla-preview"></tbody>
+        </table>
+      </div>
+      <div class="estado-msg" id="estado-importar"></div>
+      <div style="margin-top:12px; display:flex; gap:8px;">
+        <button id="btn-importar" onclick="ejecutarImportacionDNA()">✔ Importar todo</button>
+        <button class="secundario" onclick="location.reload()">✕ Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script>
+    const SUPABASE_URL = 'https://wuarkraddnndmgvfnkmm.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // -------------------- Registro de comunicaciones (log_comunicaciones.html) --------------------
+    function redactarCuerpoComunicacion(cuerpoTexto) {
+      if (!cuerpoTexto) return null;
+      try {
+        const limpiar = (o) => {
+          if (Array.isArray(o)) return o.map(limpiar);
+          if (o && typeof o === 'object') {
+            const copia = {};
+            Object.keys(o).forEach(k => { copia[k] = /password|contrase/i.test(k) ? '***' : limpiar(o[k]); });
+            return copia;
+          }
+          return o;
+        };
+        return JSON.stringify(limpiar(JSON.parse(cuerpoTexto))).slice(0, 4000);
+      } catch (e) {
+        return String(cuerpoTexto).slice(0, 4000);
+      }
+    }
+    (function () {
+      const _fetchOriginal = window.fetch.bind(window);
+      window.fetch = async function (input, init) {
+        const inicio = performance.now();
+        const url = typeof input === 'string' ? input : (input && input.url) || '';
+        const metodo = (init && init.method) || (typeof input === 'object' && input && input.method) || 'GET';
+        if (url.indexOf('/comunicaciones_log') !== -1) return _fetchOriginal(input, init);
+        let respuesta, errorMsg = null;
+        try {
+          respuesta = await _fetchOriginal(input, init);
+          return respuesta;
+        } catch (e) {
+          errorMsg = e.message;
+          throw e;
+        } finally {
+          const duracionMs = Math.round(performance.now() - inicio);
+          const cuerpo = init && init.body && typeof init.body === 'string' ? redactarCuerpoComunicacion(init.body) : null;
+          supabaseClient.from('comunicaciones_log').insert({
+            metodo, url, cuerpo, duracion_ms: duracionMs,
+            status_code: respuesta ? respuesta.status : null, error: errorMsg
+          }).then(() => {}, () => {});
+        }
+      };
+    })();
+
+    async function comprobarMantenimiento(rol) {
+      if (rol === 'ADMIN') return false;
+      try {
+        const { data } = await supabaseClient.from('app_mantenimiento').select('activo').eq('id', 1).single();
+        if (data && data.activo) { window.location.href = 'mantenimiento.html'; return true; }
+      } catch (e) { /* si falla la comprobación, no se bloquea la app por eso */ }
+      return false;
+    }
+
+    let miPerfil = null;
+    let filasPlan = [];      // resultado por fila (para pintar la tabla)
+    let nodosACrear = [];    // nodos pendientes de crear, en orden válido (padres antes que hijos)
+
+    async function registrarLog(accion, descripcion, nodeId) {
+      try {
+        await supabaseClient.from('audit_log').insert({ accion, descripcion, node_id: nodeId || null, user_agent: navigator.userAgent });
+      } catch (e) {
+        console.warn('No se pudo registrar el log:', e);
+      }
+    }
+
+    async function cerrarSesion() {
+      await registrarLog('LOGOUT', `Cerró sesión (${miPerfil?.username || ''})`);
+      await supabaseClient.auth.signOut();
+      window.location.href = 'login.html';
+    }
+
+    function cerrarPagina() {
+      window.location.href = 'arbol.html';
+    }
+
+    async function iniciar() {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (!session) { window.location.href = 'login.html?next=importar_dna.html'; return; }
+
+      const { data: perfil, error } = await supabaseClient
+        .from('profiles').select('*').eq('id', session.user.id).single();
+
+      if (error || !perfil || !perfil.activo || perfil.rol !== 'ADMIN') {
+        document.getElementById('sin-permiso').style.display = 'block';
+        return;
+      }
+
+      miPerfil = perfil;
+      if (await comprobarMantenimiento(perfil.rol)) return;
+      document.getElementById('texto-usuario').textContent = `${perfil.nombre_completo} (${perfil.username}) — ADMIN`;
+      document.getElementById('panel').style.display = 'block';
+
+      await cargarBuquesDestino();
+
+      document.getElementById('input-excel').addEventListener('change', manejarArchivoSubido);
+      document.getElementById('sel-destino').addEventListener('change', () => {
+        if (filasDNACrudas.length > 0) procesarFilas();
+      });
+    }
+
+    async function cargarBuquesDestino() {
+      const { data } = await supabaseClient
+        .from('nodes').select('id, codigo, nombre').eq('activo', true).eq('tipo', 'BUQUE').order('codigo');
+      const sel = document.getElementById('sel-destino');
+      sel.innerHTML = '<option value="">— Elige un Buque —</option>' +
+        (data || []).map(n => `<option value="${n.id}">${n.codigo} - ${n.nombre || ''}</option>`).join('');
+    }
+
+    // -------------------- Lectura del Excel --------------------
+    // Busca la celda cuya cabecera es exactamente "DNA" en cualquier
+    // fila/columna de la única hoja (no asumimos que esté en la fila 1
+    // ni en una columna fija), y devuelve todo lo que hay debajo de ella
+    // en esa misma columna, hasta el final del rango usado de la hoja.
+    let filasDNACrudas = [];
+
+    function extraerColumnaDNA(hoja) {
+      const ref = hoja['!ref'];
+      if (!ref) return [];
+      const rango = XLSX.utils.decode_range(ref);
+
+      let filaCabecera = null, colCabecera = null;
+      for (let f = rango.s.r; f <= rango.e.r && colCabecera === null; f++) {
+        for (let c = rango.s.c; c <= rango.e.c; c++) {
+          const celda = hoja[XLSX.utils.encode_cell({ r: f, c })];
+          if (celda && typeof celda.v === 'string' && celda.v.trim() === 'DNA') {
+            filaCabecera = f; colCabecera = c;
+            break;
+          }
+        }
+      }
+      if (colCabecera === null) return { error: 'No se ha encontrado ninguna columna con la cabecera exacta "DNA" en esta hoja.' };
+
+      const valores = [];
+      for (let f = filaCabecera + 1; f <= rango.e.r; f++) {
+        const celda = hoja[XLSX.utils.encode_cell({ r: f, c: colCabecera })];
+        if (celda && celda.v !== undefined && celda.v !== null && String(celda.v).trim() !== '') {
+          valores.push(String(celda.v));
+        }
+      }
+      return { valores };
+    }
+
+    function manejarArchivoSubido(e) {
+      const archivo = e.target.files[0];
+      if (!archivo) return;
+      const estadoEl = document.getElementById('estado-carga');
+
+      const lector = new FileReader();
+      lector.onload = (ev) => {
+        const datos = new Uint8Array(ev.target.result);
+        const libro = XLSX.read(datos, { type: 'array' });
+        const hoja = libro.Sheets[libro.SheetNames[0]];
+        const resultado = extraerColumnaDNA(hoja);
+
+        if (resultado.error) {
+          estadoEl.textContent = resultado.error;
+          estadoEl.className = 'estado-msg error';
+          filasDNACrudas = [];
+          document.getElementById('card-preview').style.display = 'none';
+          return;
+        }
+
+        filasDNACrudas = resultado.valores;
+        estadoEl.textContent = `Leídas ${filasDNACrudas.length} filas bajo la columna "DNA".`;
+        estadoEl.className = 'estado-msg ok';
+        document.getElementById('card-preview').style.display = 'block';
+        procesarFilas();
+      };
+      lector.readAsArrayBuffer(archivo);
+    }
+
+    // -------------------- Reconocimiento de tipo por tramo --------------------
+    const TIPOS_CONOCIDOS_PREFIJO = new Set([
+      'SB', 'SBE', 'SBL', 'CS', 'UA', 'GR', 'UL', 'NL', 'UP', 'NP',
+      'PS', 'PT', 'PE', 'PM', 'UC', 'NC', 'PI'
+    ]);
+    const FAMILIA_SEGUN_CIFRA = {
+      '1': 'PLANCHA_1000', '2': 'PLANCHA_2000', '3': 'PLANCHA_3000',
+      '4': 'PERFIL_4000', '6': 'PERFIL_6000', '7': 'PERFIL_7000'
+    };
+
+    function tipoDeSegmento(segmento, esRaiz) {
+      if (esRaiz) return { tipo: 'BLOQUE', codigo: segmento };
+      if (/^[0-9]+$/.test(segmento)) {
+        const familia = FAMILIA_SEGUN_CIFRA[segmento.charAt(0)];
+        if (familia) return { tipo: familia, codigo: segmento };
+        return { tipo: null, codigo: segmento, error: `No se reconoce a qué familia pertenece el número "${segmento}" (debería empezar por 1, 2, 3, 4, 6 o 7)` };
+      }
+      const m = segmento.match(/^([A-Za-zÁÉÍÓÚÑ]+)/);
+      const prefijo = m ? m[1].toUpperCase() : '';
+      if (prefijo && TIPOS_CONOCIDOS_PREFIJO.has(prefijo)) return { tipo: prefijo, codigo: segmento };
+      return { tipo: 'CE', codigo: segmento };
+    }
+
+    function segmentarDNA(ruta) {
+      return (ruta || '').toString().split('/').map(s => s.trim()).filter(Boolean);
+    }
+
+    // -------------------- Planificación (misma lógica ya probada aparte) --------------------
+
+    // Para cada nodo activo, calcula su ruta relativa al destino elegido
+    // (p.ej. "SEC261/SB1/UA1") -- se usa tanto para planificar (saber qué ya
+    // existe) como, más tarde, para saber bajo qué id real hay que colgar
+    // cada nodo nuevo (por eso se guarda también su id, no solo su tipo).
+    function construirMapaRutasExistentes(nodosExistentes, destinoId) {
+      const mapaPorId = {};
+      nodosExistentes.forEach(n => { mapaPorId[n.id] = n; });
+
+      const nodoPorRuta = {};
+      function calcularRuta(id) {
+        if (id === destinoId) return '';
+        const n = mapaPorId[id];
+        if (!n || n.parent_id == null) return null;
+        const rutaPadre = n.parent_id === destinoId ? '' : calcularRuta(n.parent_id);
+        if (rutaPadre === null) return null;
+        return rutaPadre ? `${rutaPadre}/${n.codigo}` : n.codigo;
+      }
+      nodosExistentes.forEach(n => {
+        const ruta = calcularRuta(n.id);
+        if (ruta !== null) nodoPorRuta[ruta] = { id: n.id, tipo: n.tipo };
+      });
+      return nodoPorRuta;
+    }
+
+    function planificarImportacion(nodosExistentes, destinoId, filas, hijosValidosPorTipo) {
+      const nodoPorRuta = construirMapaRutasExistentes(nodosExistentes, destinoId);
+
+      const porCrear = [];
+      const resultadosFila = [];
+      const rutasVistasEnExcel = new Set();
+      let contadorTemporal = 0;
+
+      filas.forEach((rutaCruda, indiceFila) => {
+        const segmentos = segmentarDNA(rutaCruda);
+        if (segmentos.length === 0) {
+          resultadosFila.push({ fila: indiceFila, ruta: rutaCruda, estado: 'vacia', mensaje: 'Celda vacía' });
+          return;
+        }
+
+        const rutaCompletaTexto = segmentos.join('/');
+        const eraDuplicadaEnExcel = rutasVistasEnExcel.has(rutaCompletaTexto);
+        rutasVistasEnExcel.add(rutaCompletaTexto);
+
+        let rutaAcumulada = '';
+        let error = null;
+        let ultimoTipoPadre = null;
+
+        for (let i = 0; i < segmentos.length; i++) {
+          const esRaiz = i === 0;
+          const { tipo, codigo, error: errSeg } = tipoDeSegmento(segmentos[i], esRaiz);
+          if (errSeg) { error = errSeg; break; }
+          const rutaNueva = rutaAcumulada ? `${rutaAcumulada}/${codigo}` : codigo;
+
+          const existente = nodoPorRuta[rutaNueva];
+          if (existente) {
+            if (existente.tipo !== tipo) {
+              error = `"${rutaNueva}" ya existe en el árbol como tipo ${existente.tipo}, pero la ruta del Excel dice que debería ser ${tipo}`;
+              break;
+            }
+            rutaAcumulada = rutaNueva;
+            ultimoTipoPadre = tipo;
+            continue;
+          }
+
+          if (i > 0) {
+            const permitidos = hijosValidosPorTipo[ultimoTipoPadre];
+            if (!permitidos || !permitidos.has(tipo)) {
+              error = `"${tipo}" (tramo "${segmentos[i]}") no puede ir dentro de "${ultimoTipoPadre}" (regla no permitida)`;
+              break;
+            }
+          }
+
+          let plan = porCrear.find(p => p.rutaCompleta === rutaNueva);
+          if (!plan) {
+            plan = { id: `NUEVO_${contadorTemporal++}`, rutaCompleta: rutaNueva, parentRuta: rutaAcumulada, tipo, codigo };
+            porCrear.push(plan);
+            nodoPorRuta[rutaNueva] = { id: plan.id, tipo };
+          }
+          rutaAcumulada = rutaNueva;
+          ultimoTipoPadre = tipo;
+        }
+
+        if (error) {
+          resultadosFila.push({ fila: indiceFila, ruta: rutaCruda, estado: 'error', mensaje: error });
+        } else if (eraDuplicadaEnExcel) {
+          resultadosFila.push({ fila: indiceFila, ruta: rutaCruda, estado: 'duplicada', mensaje: 'Ruta idéntica a otra fila anterior del Excel -- no se crea dos veces' });
+        } else {
+          resultadosFila.push({ fila: indiceFila, ruta: rutaCruda, estado: 'ok', mensaje: '' });
+        }
+      });
+
+      return { porCrear, resultadosFila };
+    }
+
+    // Trae TODOS los nodos activos (para poder calcular rutas relativas al
+    // destino elegido, igual que hace importar.html).
+    async function cargarTodosLosNodos() {
+      const { data } = await supabaseClient.from('nodes').select('id, parent_id, tipo, codigo').eq('activo', true);
+      return data || [];
+    }
+
+    async function cargarReglasTipos() {
+      const { data } = await supabaseClient.from('node_type_rules').select('parent_type, child_type');
+      const hijosValidosPorTipo = {};
+      (data || []).forEach(r => {
+        if (!hijosValidosPorTipo[r.parent_type]) hijosValidosPorTipo[r.parent_type] = new Set();
+        hijosValidosPorTipo[r.parent_type].add(r.child_type);
+      });
+      return hijosValidosPorTipo;
+    }
+
+    async function procesarFilas() {
+      const destinoId = document.getElementById('sel-destino').value;
+      const estadoEl = document.getElementById('estado-importar');
+      if (!destinoId) {
+        estadoEl.textContent = 'Elige primero un Buque destino arriba.';
+        estadoEl.className = 'estado-msg error';
+        pintarPreview([], {});
+        return;
+      }
+
+      estadoEl.textContent = 'Comprobando el árbol existente...';
+      estadoEl.className = 'estado-msg';
+
+      const [todosLosNodos, hijosValidosPorTipo] = await Promise.all([cargarTodosLosNodos(), cargarReglasTipos()]);
+
+      const { porCrear, resultadosFila } = planificarImportacion(todosLosNodos, destinoId, filasDNACrudas, hijosValidosPorTipo);
+      nodosACrear = porCrear;
+      filasPlan = resultadosFila;
+
+      pintarPreview(resultadosFila, resumirPorEstado(resultadosFila));
+
+      const conError = resultadosFila.filter(r => r.estado === 'error').length;
+      estadoEl.textContent = conError > 0
+        ? `Hay ${conError} fila(s) con error -- no se tocan al importar; el resto (${porCrear.length} nodo(s) nuevo(s)) se puede importar igualmente.`
+        : `Todo listo -- se crearán ${porCrear.length} nodo(s) nuevo(s).`;
+      estadoEl.className = conError > 0 ? 'estado-msg error' : 'estado-msg ok';
+    }
+
+    function resumirPorEstado(resultadosFila) {
+      const resumen = { ok: 0, duplicada: 0, error: 0, vacia: 0 };
+      resultadosFila.forEach(r => { resumen[r.estado] = (resumen[r.estado] || 0) + 1; });
+      return resumen;
+    }
+
+    function pintarPreview(resultadosFila, resumen) {
+      document.getElementById('resumen-cifras').innerHTML = `
+        <span>📄 Filas leídas: ${resultadosFila.length}</span>
+        <span>🌱 Nodos nuevos a crear: ${nodosACrear.length}</span>
+        <span>✔ Filas OK: ${resumen.ok || 0}</span>
+        <span>♻️ Duplicadas en el Excel: ${resumen.duplicada || 0}</span>
+        <span>✘ Con error: ${resumen.error || 0}</span>
+      `;
+      const tbody = document.getElementById('tabla-preview');
+      tbody.innerHTML = resultadosFila.map(r => `
+        <tr class="fila-${r.estado === 'error' ? 'error' : (r.estado === 'duplicada' ? 'duplicada' : (r.estado === 'creado' ? 'creado' : ''))}">
+          <td>${r.fila + 2}</td>
+          <td style="font-family:monospace; font-size:11px;">${r.ruta}</td>
+          <td>${etiquetaEstado(r.estado)}</td>
+          <td>${r.mensaje || ''}</td>
+        </tr>
+      `).join('');
+    }
+
+    function etiquetaEstado(estado) {
+      return {
+        ok: '✔ Pendiente de crear lo que falte',
+        duplicada: '♻️ Duplicada (se ignora)',
+        error: '✘ Error',
+        vacia: '— Vacía',
+        creado: '✔ Importado'
+      }[estado] || estado;
+    }
+
+    // -------------------- Ejecutar la importación de verdad --------------------
+    async function ejecutarImportacionDNA() {
+      const btn = document.getElementById('btn-importar');
+      const estadoEl = document.getElementById('estado-importar');
+      const destinoId = document.getElementById('sel-destino').value;
+      if (!destinoId) { alert('Elige un Buque destino.'); return; }
+      if (nodosACrear.length === 0) { estadoEl.textContent = 'No hay nada nuevo que crear.'; estadoEl.className = 'estado-msg ok'; return; }
+
+      btn.disabled = true;
+
+      // Se siembra con TODO lo que ya existía de antes en el árbol (no solo
+      // con lo que se vaya creando ahora) -- si no, el primer nodo nuevo que
+      // cuelga de una rama ya existente ("SEC261/SB1/UA1") no encontraría a
+      // su padre real.
+      const todosLosNodosAhora = await cargarTodosLosNodos();
+      const mapaExistente = construirMapaRutasExistentes(todosLosNodosAhora, destinoId);
+      const idPorRuta = {}; // rutaCompleta -> id real (ya existente o recién creado)
+      Object.keys(mapaExistente).forEach(ruta => { idPorRuta[ruta] = mapaExistente[ruta].id; });
+
+      let creados = 0, fallados = 0;
+
+      for (let i = 0; i < nodosACrear.length; i++) {
+        const plan = nodosACrear[i];
+        const parentIdReal = plan.parentRuta ? idPorRuta[plan.parentRuta] : destinoId;
+        if (!parentIdReal) {
+          fallados++;
+          registrarLog('INTENTO_FALLIDO', `Importación DNA: no se pudo crear "${plan.codigo}" (${plan.tipo}) porque su padre no llegó a crearse`, destinoId);
+          continue;
+        }
+
+        estadoEl.textContent = `Creando ${plan.codigo} (${i + 1}/${nodosACrear.length})...`;
+
+        const { data: nuevo, error } = await supabaseClient.from('nodes').insert({
+          parent_id: parentIdReal, tipo: plan.tipo, codigo: plan.codigo, nombre: plan.codigo, orden: 0
+        }).select().single();
+
+        if (error) {
+          fallados++;
+          registrarLog('INTENTO_FALLIDO', `Importación DNA: error creando "${plan.codigo}" (${plan.tipo}): ${error.message}`, destinoId);
+        } else {
+          idPorRuta[plan.rutaCompleta] = nuevo.id;
+          creados++;
+        }
+      }
+
+      registrarLog('IMPORTAR_EXCEL_DNA', `Importó estructura DNA: ${creados} nodos creados, ${fallados} con error, sobre ${filasDNACrudas.length} filas leídas`, destinoId);
+
+      estadoEl.textContent = `Terminado: ${creados} nodo(s) creado(s), ${fallados} con error.`;
+      estadoEl.className = fallados > 0 ? 'estado-msg error' : 'estado-msg ok';
+      btn.disabled = false;
+    }
+
+    iniciar();
+  </script>
+</body>
+</html>
