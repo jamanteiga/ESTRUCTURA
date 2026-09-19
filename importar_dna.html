@@ -64,12 +64,19 @@
         <code>DNA</code>, con una ruta completa por fila, p.ej.
         <code>SEC261/SB1/UA1/GR1/UL01/NL801/B221-0001-S</code>. El primer tramo es el Bloque, cada "/" es
         un nivel más, y el tipo de cada tramo se reconoce solo: por su prefijo de letras (SB, UA, GR,
-        UL, NL...), o como pieza numerada de Plancha/Perfil si es un número puro (la familia se decide
-        por su primera cifra: 1/2/3 → Plancha 1000/2000/3000, 5 → chapa especial PL5000, 8 → chapa
-        especial PL8000, 4/6/7 → Perfil 4000/6000/7000 — igual que la creación manual de piezas en el
-        árbol), o como Componente especial si no encaja en nada de lo anterior. Si existe la columna
+        UL, NL...), o como Componente especial si no encaja en nada de lo anterior. Si existe la columna
         <code>Anidación</code>, su valor se guarda como descripción del nodo. Lo que ya exista en el
         árbol no se toca ni se duplica — si una fila entera ya existe, se salta sin más.
+      </p>
+      <p style="font-size:13px; color:#555;">
+        <strong>Piezas numeradas de Plancha/Perfil</strong> (el último tramo, si es un número puro):
+        no cuelgan literalmente de la ruta del Excel. Igual que al crearlas a mano en el árbol, primero
+        se asegura dentro del Bloque la rama Anidados → PL/PERF → familia (PL1000, PL2000, PL3000, PL5000,
+        PL8000, PERF4000, PERF6000, PERF7000 — creándola si todavía no existe), la pieza se crea ahí
+        dentro (familia según su primera cifra: 1/2/3→Plancha 1000/2000/3000, 5→chapa especial PL5000,
+        8→chapa especial PL8000, 4/6/7→Perfil 4000/6000/7000), y el tramo anterior de la ruta (su
+        "ubicación real", p.ej. NL801) se queda solo con un enlace hacia ella — el mismo mecanismo de
+        "📦 Piezas usadas aquí" que ya usa el árbol para las piezas creadas a mano.
       </p>
     </div>
 
@@ -349,6 +356,51 @@
       return (ruta || '').toString().split('/').map(s => s.trim()).filter(Boolean);
     }
 
+    // -------------------- Esqueleto Anidados > PL/PERF > familias --------------------
+    // Una pieza de Plancha/Perfil no cuelga de su tramo de la ruta del
+    // Excel -- cuelga de esta rama fija dentro del Bloque (igual que la
+    // creación manual en el árbol), y el tramo de la ruta se queda solo
+    // con un enlace (ubicacion_id). Aquí se asegura que la rama exista
+    // (reutilizándola si ya está, o añadiéndola al plan si falta) una
+    // sola vez por Bloque.
+    const ESQUELETO_FAMILIAS_PL = [
+      { tipo: 'PLANCHA_1000', codigo: 'PL1000' },
+      { tipo: 'PLANCHA_2000', codigo: 'PL2000' },
+      { tipo: 'PLANCHA_3000', codigo: 'PL3000' },
+      { tipo: 'PL5000', codigo: 'PL5000' },
+      { tipo: 'PL8000', codigo: 'PL8000' }
+    ];
+    const ESQUELETO_FAMILIAS_PERF = [
+      { tipo: 'PERFIL_4000', codigo: 'PERF4000' },
+      { tipo: 'PERFIL_6000', codigo: 'PERF6000' },
+      { tipo: 'PERFIL_7000', codigo: 'PERF7000' }
+    ];
+    const FAMILIA_INFO = {};
+    ESQUELETO_FAMILIAS_PL.forEach(f => { FAMILIA_INFO[f.tipo] = { grupoCodigo: 'PL', codigoFamilia: f.codigo }; });
+    ESQUELETO_FAMILIAS_PERF.forEach(f => { FAMILIA_INFO[f.tipo] = { grupoCodigo: 'PERF', codigoFamilia: f.codigo }; });
+
+    function asegurarEsqueletoAnidados(codigoBloque, nodoPorRuta, porCrear, contadorRef, bloquesConEsqueleto) {
+      if (bloquesConEsqueleto.has(codigoBloque)) return;
+      bloquesConEsqueleto.add(codigoBloque);
+
+      function asegurar(rutaNueva, parentRuta, tipo, codigo) {
+        if (nodoPorRuta[rutaNueva]) return;
+        if (porCrear.some(p => p.rutaCompleta === rutaNueva)) return;
+        const plan = { id: `NUEVO_${contadorRef.n++}`, rutaCompleta: rutaNueva, parentRuta, tipo, codigo, descripcion: null };
+        porCrear.push(plan);
+        nodoPorRuta[rutaNueva] = { id: plan.id, tipo };
+      }
+
+      const rutaAnidados = `${codigoBloque}/ANIDADOS`;
+      asegurar(rutaAnidados, codigoBloque, 'ANIDADOS', 'ANIDADOS');
+      const rutaPL = `${rutaAnidados}/PL`;
+      const rutaPERF = `${rutaAnidados}/PERF`;
+      asegurar(rutaPL, rutaAnidados, 'PL', 'PL');
+      asegurar(rutaPERF, rutaAnidados, 'PERF', 'PERF');
+      ESQUELETO_FAMILIAS_PL.forEach(f => asegurar(`${rutaPL}/${f.codigo}`, rutaPL, f.tipo, f.codigo));
+      ESQUELETO_FAMILIAS_PERF.forEach(f => asegurar(`${rutaPERF}/${f.codigo}`, rutaPERF, f.tipo, f.codigo));
+    }
+
     // -------------------- Planificación (misma lógica ya probada aparte) --------------------
 
     // Para cada nodo activo, calcula su ruta relativa al destino elegido
@@ -381,7 +433,8 @@
       const porCrear = [];
       const resultadosFila = [];
       const rutasVistasEnExcel = new Set();
-      let contadorTemporal = 0;
+      const bloquesConEsqueleto = new Set();
+      const contadorRef = { n: 0 };
 
       filas.forEach((filaExcel, indiceFila) => {
         const rutaCruda = filaExcel.dna;
@@ -395,7 +448,10 @@
         const eraDuplicadaEnExcel = rutasVistasEnExcel.has(rutaCompletaTexto);
         rutasVistasEnExcel.add(rutaCompletaTexto);
 
-        let rutaAcumulada = '';
+        // rutaUbicacion acumula solo tramos "de verdad" del árbol (Bloque,
+        // Subbloque, UA, GR, UL, NL...) -- una pieza de Plancha/Perfil NO
+        // se añade a esta acumulación, porque no cuelga ahí de verdad.
+        let rutaUbicacion = '';
         let error = null;
         let ultimoTipoPadre = null;
 
@@ -404,7 +460,40 @@
           const esHoja = i === segmentos.length - 1;
           const { tipo, codigo, error: errSeg } = tipoDeSegmento(segmentos[i], esRaiz);
           if (errSeg) { error = errSeg; break; }
-          const rutaNueva = rutaAcumulada ? `${rutaAcumulada}/${codigo}` : codigo;
+
+          if (FAMILIA_INFO[tipo]) {
+            // Pieza de Plancha/Perfil: vive dentro de Anidados > PL/PERF >
+            // familia de este Bloque, con un enlace (ubicacion_id) hacia el
+            // tramo anterior (rutaUbicacion), en vez de colgar de él.
+            asegurarEsqueletoAnidados(segmentos[0], nodoPorRuta, porCrear, contadorRef, bloquesConEsqueleto);
+            const { grupoCodigo, codigoFamilia } = FAMILIA_INFO[tipo];
+            const rutaFamilia = `${segmentos[0]}/ANIDADOS/${grupoCodigo}/${codigoFamilia}`;
+            const rutaPieza = `${rutaFamilia}/${codigo}`;
+
+            const existente = nodoPorRuta[rutaPieza];
+            if (existente && existente.tipo !== tipo) {
+              error = `"${rutaPieza}" ya existe en el árbol como tipo ${existente.tipo}, pero la ruta del Excel dice que debería ser ${tipo}`;
+              break;
+            }
+            if (!existente) {
+              let plan = porCrear.find(p => p.rutaCompleta === rutaPieza);
+              if (!plan) {
+                plan = {
+                  id: `NUEVO_${contadorRef.n++}`, rutaCompleta: rutaPieza, parentRuta: rutaFamilia, tipo, codigo,
+                  ubicacionRuta: rutaUbicacion || null,
+                  descripcion: (esHoja && filaExcel.anidacion) ? `Anidación: ${filaExcel.anidacion}` : null
+                };
+                porCrear.push(plan);
+                nodoPorRuta[rutaPieza] = { id: plan.id, tipo };
+              }
+            }
+            rutaUbicacion = rutaPieza;
+            ultimoTipoPadre = tipo;
+            continue;
+          }
+
+          // Tramo normal (ubicación real dentro del árbol): igual que antes.
+          const rutaNueva = rutaUbicacion ? `${rutaUbicacion}/${codigo}` : codigo;
 
           const existente = nodoPorRuta[rutaNueva];
           if (existente) {
@@ -412,7 +501,7 @@
               error = `"${rutaNueva}" ya existe en el árbol como tipo ${existente.tipo}, pero la ruta del Excel dice que debería ser ${tipo}`;
               break;
             }
-            rutaAcumulada = rutaNueva;
+            rutaUbicacion = rutaNueva;
             ultimoTipoPadre = tipo;
             continue;
           }
@@ -428,7 +517,7 @@
           let plan = porCrear.find(p => p.rutaCompleta === rutaNueva);
           if (!plan) {
             plan = {
-              id: `NUEVO_${contadorTemporal++}`, rutaCompleta: rutaNueva, parentRuta: rutaAcumulada, tipo, codigo,
+              id: `NUEVO_${contadorRef.n++}`, rutaCompleta: rutaNueva, parentRuta: rutaUbicacion, tipo, codigo,
               // El código del lote de anidado (si lo hay) solo tiene sentido
               // en el nodo hoja de esta fila -- se guarda como descripción.
               descripcion: (esHoja && filaExcel.anidacion) ? `Anidación: ${filaExcel.anidacion}` : null
@@ -436,7 +525,7 @@
             porCrear.push(plan);
             nodoPorRuta[rutaNueva] = { id: plan.id, tipo };
           }
-          rutaAcumulada = rutaNueva;
+          rutaUbicacion = rutaNueva;
           ultimoTipoPadre = tipo;
         }
 
@@ -564,9 +653,21 @@
 
         estadoEl.textContent = `Creando ${plan.codigo} (${i + 1}/${nodosACrear.length})...`;
 
-        const { data: nuevo, error } = await supabaseClient.from('nodes').insert({
+        // Si esta pieza (Plancha/Perfil) tiene un tramo "de ubicación" real
+        // en la ruta del Excel (p.ej. NL801), se guarda como ubicacion_id
+        // -- el mismo mecanismo de "📦 Piezas usadas aquí" que ya usa la
+        // creación manual en el árbol (ver guardarNodoNuevo en arbol.html).
+        // Si esa ubicación aún no tiene id real (no se creó o falló antes),
+        // se crea igualmente la pieza, pero sin el enlace.
+        const insertPayload = {
           parent_id: parentIdReal, tipo: plan.tipo, codigo: plan.codigo, nombre: plan.codigo, descripcion: plan.descripcion || null, orden: 0
-        }).select().single();
+        };
+        if (plan.ubicacionRuta) {
+          const ubicacionIdReal = idPorRuta[plan.ubicacionRuta];
+          if (ubicacionIdReal) insertPayload.ubicacion_id = ubicacionIdReal;
+        }
+
+        const { data: nuevo, error } = await supabaseClient.from('nodes').insert(insertPayload).select().single();
 
         if (error) {
           fallados++;
