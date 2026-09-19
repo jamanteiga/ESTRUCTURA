@@ -678,10 +678,22 @@
     <div class="overlay-caja" style="max-width:440px;">
       <h3>📅 Fechas previstas en cascada</h3>
       <p id="fc-contador" style="font-size:12px; color:#666; margin-top:-8px;"></p>
-      <p style="font-size:12px; color:#666;">Se aplican en el mismo orden en que aparecen ahora mismo en el árbol: la primera tarea empieza en la fecha/hora que pongas abajo, y cada una de las siguientes empieza justo cuando termina la anterior.</p>
+      <p style="font-size:12px; color:#666;">Se reparten por orden, respetando el horario laboral (invierno/verano, descansos, fin de semana, festivos y ausencias): la primera tarea empieza en la fecha/hora que pongas abajo, y cada una de las siguientes empieza justo cuando termina la anterior dentro de su jornada -- si una no cabe entera en el día, sigue al principio del siguiente día laborable.</p>
+      <div id="fc-horario-usuario" style="display:none; background:#f4f8ff; border:1px solid #cfe2ff; border-radius:6px; padding:8px; margin:6px 0; font-size:12px;">
+        <p style="margin:0 0 6px; color:#555;">Horario laboral de <strong id="fc-horario-nombre"></strong> (se guarda como su valor por defecto):</p>
+        <label style="display:inline-block; margin-right:14px;">Hora de entrada
+          <input type="time" id="fc-hora-entrada" style="width:auto;">
+        </label>
+        <label style="display:inline-block;">Jornada
+          <select id="fc-modo-jornada" style="width:auto;">
+            <option value="TALLER">Taller</option>
+            <option value="OFICINA">Oficina (salida mínima 16:00, L-J en invierno)</option>
+          </select>
+        </label>
+      </div>
       <label>Inicio previsto de la primera tarea</label>
       <input type="datetime-local" id="fc-inicio">
-      <label>Duración de cada tarea</label>
+      <label>Duración efectiva de cada tarea</label>
       <select id="fc-duracion">
         <option value="5">0:05 h</option>
         <option value="10">0:10 h</option>
@@ -2756,6 +2768,7 @@
           <div class="fila-nodo ${bloqueadoWindchill ? 'fila-doc-bloqueada' : ''}"
                title="${bloqueadoWindchill ? 'Bloqueado: Modelo y Plano de corte deben estar Aprobados' : tituloTipo}"
                oncontextmenu="mostrarMenuContextual(event, '${nodo.id}'); return false;"
+               onclick="manejarClicFila(event, '${nodo.id}')"
                ${tieneHijos ? `ondblclick="toggleNodo('${nodo.id}')"` : ''}
                ${esGestor() ? `draggable="true" ondragstart="iniciarArrastre(event, '${nodo.id}')" ondragend="finalizarArrastre(event)"` : ''}
                ondragover="sobreArrastre(event, '${nodo.id}')"
@@ -4046,30 +4059,87 @@
         .filter(id => nodosSeleccionados.has(id));
     }
 
-    function abrirModalFechasCascada() {
+    async function abrirModalFechasCascada() {
       document.getElementById('fc-contador').textContent = `Se aplicará a ${nodosSeleccionados.size} tarea(s) seleccionada(s), en el orden en que aparecen en el árbol.`;
-      document.getElementById('fc-inicio').value = '';
+
+      // Si la primera tarea (en orden visual) ya tiene una fecha de inicio
+      // prevista guardada (p.ej. se está reasignando el horario a tareas
+      // que ya tenían fecha), se precarga como valor de partida -- sigue
+      // siendo editable, solo ahorra tener que volver a mirarla y
+      // escribirla a mano.
+      const idsActuales = idsSeleccionadosEnOrdenVisual();
+      const primerNodo = idsActuales.length ? mapaNodoPorId[idsActuales[0]] : null;
+      document.getElementById('fc-inicio').value = primerNodo?.fecha_inicio_prevista
+        ? formatearDatetimeLocalInput(new Date(primerNodo.fecha_inicio_prevista))
+        : '';
+
       document.getElementById('fc-duracion').value = '45';
       document.getElementById('fc-previsualizacion').style.display = 'none';
       document.getElementById('fc-estado').textContent = '';
+
+      // Horario laboral (hora de entrada / oficina-taller) del trabajador
+      // de la primera tarea -- se puede ajustar aquí mismo y se guarda como
+      // su valor por defecto (también editable luego desde Usuarios).
+      const cajaHorario = document.getElementById('fc-horario-usuario');
+      if (primerNodo?.trabajador_id) {
+        const { data: perfilTrabajador } = await supabaseClient
+          .from('profiles').select('nombre_completo, hora_entrada, modo_jornada')
+          .eq('id', primerNodo.trabajador_id).maybeSingle();
+        document.getElementById('fc-horario-nombre').textContent = perfilTrabajador?.nombre_completo || primerNodo.trabajador_nombre || 'este trabajador';
+        document.getElementById('fc-hora-entrada').value = (perfilTrabajador?.hora_entrada || '08:00').slice(0, 5);
+        document.getElementById('fc-modo-jornada').value = perfilTrabajador?.modo_jornada || 'TALLER';
+        cajaHorario.style.display = 'block';
+      } else {
+        cajaHorario.style.display = 'none';
+      }
+
       document.getElementById('modal-fechas-cascada').style.display = 'flex';
       document.getElementById('fc-inicio').oninput = actualizarPrevisualizacionFechasCascada;
       document.getElementById('fc-duracion').onchange = actualizarPrevisualizacionFechasCascada;
+      actualizarPrevisualizacionFechasCascada();
     }
 
     function cerrarModalFechasCascada() {
       document.getElementById('modal-fechas-cascada').style.display = 'none';
     }
 
+    // La previsualización y el reparto real usan el mismo motor de horario
+    // laboral que la base de datos (invierno/verano, descansos, fin de
+    // semana/festivos/ausencias) -- calcular_fechas_cascada() es de solo
+    // lectura, así que sirve para "probar" el resultado antes de guardar
+    // nada. Se usa el horario laboral de quien tenga asignada la PRIMERA
+    // tarea seleccionada (misma tarea cuya fecha ya se precarga al abrir
+    // el modal).
+    let debounceFechasCascadaPreview = null;
     function actualizarPrevisualizacionFechasCascada() {
+      clearTimeout(debounceFechasCascadaPreview);
       const previa = document.getElementById('fc-previsualizacion');
       const inicioVal = document.getElementById('fc-inicio').value;
-      const n = nodosSeleccionados.size;
+      const ids = idsSeleccionadosEnOrdenVisual();
+      const n = ids.length;
       if (!inicioVal || n === 0) { previa.style.display = 'none'; return; }
       const duracionMin = parseInt(document.getElementById('fc-duracion').value, 10);
-      const finUltima = new Date(new Date(inicioVal).getTime() + duracionMin * n * 60000);
-      previa.textContent = `La última de las ${n} terminará el ${formatearFechaHora(formatearDatetimeLocalInput(finUltima))}.`;
+      const primerNodo = mapaNodoPorId[ids[0]];
+      if (!primerNodo?.trabajador_id) {
+        previa.textContent = 'La primera tarea seleccionada no tiene trabajador asignado: asígnalo antes para poder calcular el horario laboral.';
+        previa.style.display = 'block';
+        return;
+      }
+      previa.textContent = 'Calculando según el horario laboral...';
       previa.style.display = 'block';
+      debounceFechasCascadaPreview = setTimeout(async () => {
+        const { data, error } = await supabaseClient.rpc('calcular_fechas_cascada', {
+          p_usuario_id: primerNodo.trabajador_id,
+          p_inicio: inicioVal,
+          p_duraciones_min: new Array(n).fill(duracionMin)
+        });
+        if (error || !data || data.length === 0) {
+          previa.textContent = 'No se ha podido calcular la previsualización.';
+          return;
+        }
+        const ultima = data[data.length - 1];
+        previa.textContent = `La última de las ${n} terminará el ${formatearFechaHora(ultima.fin)} (según el horario laboral de ${primerNodo.trabajador_nombre || 'quien la tenga asignada'}).`;
+      }, 300);
     }
 
     async function confirmarFechasCascada() {
@@ -4090,27 +4160,48 @@
 
       const btn = document.querySelector('#modal-fechas-cascada .overlay-botones button:last-child');
       btn.disabled = true;
-      let cursor = new Date(inicioVal);
-      let hechos = 0;
-      const errores = [];
+      estadoEl.textContent = 'Aplicando (según el horario laboral, puede repartirse entre varios días)...';
+      estadoEl.className = 'estado-msg';
 
-      for (const id of ids) {
-        const nodo = mapaNodoPorId[id];
-        const inicioStr = formatearDatetimeLocalInput(cursor);
-        const finCursor = new Date(cursor.getTime() + duracionMin * 60000);
-        const finStr = formatearDatetimeLocalInput(finCursor);
-        estadoEl.textContent = `Aplicando (${hechos + errores.length + 1}/${ids.length})...`;
-        const { error } = await supabaseClient.rpc('establecer_fechas_previstas', {
-          p_node_id: id, p_fecha_inicio: inicioStr, p_fecha_fin: finStr,
-          p_motivo_categoria: null, p_motivo_detalle: null
+      // Si se ha tocado el horario laboral del trabajador de la primera
+      // tarea, se guarda antes como su valor por defecto -- así el reparto
+      // que sigue ya lo usa, y queda guardado para la próxima vez.
+      const primerNodoConfirmar = mapaNodoPorId[ids[0]];
+      if (primerNodoConfirmar?.trabajador_id && document.getElementById('fc-horario-usuario').style.display !== 'none') {
+        const horaEntradaVal = document.getElementById('fc-hora-entrada').value || null;
+        const modoJornadaVal = document.getElementById('fc-modo-jornada').value || null;
+        const { error: errorHorario } = await supabaseClient.rpc('actualizar_horario_usuario', {
+          p_usuario_id: primerNodoConfirmar.trabajador_id, p_hora_entrada: horaEntradaVal, p_modo_jornada: modoJornadaVal
         });
-        if (error) errores.push(`${nodo?.codigo || id}: ${traducirError(error.message)}`);
-        else hechos++;
-        cursor = finCursor;
+        if (errorHorario) {
+          btn.disabled = false;
+          estadoEl.textContent = 'Error al guardar el horario laboral: ' + traducirError(errorHorario.message);
+          estadoEl.className = 'estado-msg error';
+          return;
+        }
       }
 
+      // El reparto entero (invierno/verano, descansos, fin de semana,
+      // festivos y ausencias) lo calcula la base de datos en una sola
+      // llamada -- aplicar_fechas_cascada() usa el horario laboral del
+      // trabajador de la primera tarea para las demás también.
+      const { data, error: errorRpc } = await supabaseClient.rpc('aplicar_fechas_cascada', {
+        p_node_ids: ids, p_inicio: inicioVal, p_duracion_min: duracionMin
+      });
+
       btn.disabled = false;
-      registrarLog('FECHAS_PREVISTAS', `Fechas previstas en cascada sobre ${ids.length} tarea(s) desde ${inicioVal} (${duracionMin} min c/u) — ${hechos} ok${errores.length ? `, ${errores.length} fallaron` : ''}`);
+
+      if (errorRpc) {
+        estadoEl.textContent = 'Error: ' + traducirError(errorRpc.message);
+        estadoEl.className = 'estado-msg error';
+        return;
+      }
+
+      const filas = data || [];
+      const hechos = filas.filter(r => !r.error).length;
+      const errores = filas.filter(r => r.error).map(r => `${mapaNodoPorId[r.node_id]?.codigo || r.node_id}: ${traducirError(r.error)}`);
+
+      registrarLog('FECHAS_PREVISTAS', `Fechas previstas en cascada sobre ${ids.length} tarea(s) desde ${inicioVal} (${duracionMin} min efectivos c/u, según horario laboral) — ${hechos} ok${errores.length ? `, ${errores.length} fallaron` : ''}`);
 
       if (errores.length > 0) {
         estadoEl.innerHTML = `Hecho ${hechos} de ${ids.length}. Fallaron ${errores.length}:<br>` + errores.map(e => `• ${e}`).join('<br>');
@@ -4445,23 +4536,25 @@
     // -------------------- Generar estructura mínima --------------------
 
     // Ramas reutilizables: cada una es el fragmento que cuelga de un tipo concreto.
+    // Dentro de UL lo único que va es NL -- PS/PT/PM van colgando de GR
+    // directamente (no de UL), igual que UC y UP.
     const RAMA_UL = { tipo: 'UL', hijos: [
-        { tipo: 'NL' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' }
+        { tipo: 'NL' }
     ]};
-    // UP (Unidad plana fabricada) tiene las mismas propiedades que UL --
-    // mismos huecos donde puede ir, mismos hijos PS/PT/PM -- pero con NP
-    // (Panel plano) en vez de NL como su panel propio.
+    // UP (Unidad plana fabricada): mismo caso que UL, pero con NP (Panel
+    // plano) en vez de NL como su panel propio.
     const RAMA_UP = { tipo: 'UP', hijos: [
-        { tipo: 'NP' }, { tipo: 'PS' }, { tipo: 'PT' }, { tipo: 'PM' }
+        { tipo: 'NP' }
     ]};
     const RAMA_UC = { tipo: 'UC', hijos: [ { tipo: 'NC' } ] };
-    // "Generar estructura mínima" en GR crea tanto la rama de UL como la de
-    // UC (con NC dentro) -- UP se sigue creando a mano (como UL) donde el
-    // usuario quiera, y una vez creado tiene su propia "Generar estructura
-    // mínima" (ver ESTRUCTURA_MINIMA_POR_TIPO.UP más abajo) para no generar
-    // de golpe una UL y una UP juntas sin que se haya pedido.
-    const RAMA_GR = { tipo: 'GR', hijos: [ RAMA_UL, RAMA_UC ] };
-    const RAMA_UA = { tipo: 'UA', hijos: [ RAMA_GR, { tipo: 'PS' }, { tipo: 'PM' } ] };
+    // GR (Grupo) admite directamente: PS, UL (con NL dentro), PM, UC (con NC
+    // dentro) y UP (con NP dentro) -- "Generar estructura mínima" en GR los
+    // crea todos de golpe.
+    const RAMA_GR = { tipo: 'GR', hijos: [
+        { tipo: 'PS' }, RAMA_UL, { tipo: 'PM' }, RAMA_UC, RAMA_UP
+    ]};
+    // Dentro de UA solo va GR -- nada más cuelga directamente de UA.
+    const RAMA_UA = { tipo: 'UA', hijos: [ RAMA_GR ] };
     const RAMA_SB = { tipo: 'SB', hijos: [ RAMA_UA ] };
     const RAMA_PL = { tipo: 'PL', hijos: [
         { tipo: 'PLANCHA_1000', codigo: 'PL1000' },
@@ -5540,6 +5633,18 @@
       event.stopPropagation();
       const nodo = mapaNodoPorId[nodeId];
       if (!nodo || TIPOS_SIN_ASIGNACION.has(nodo.tipo)) return;
+
+      // Si hay varias tareas seleccionadas a la vez (selección múltiple) y
+      // la tarea sobre la que se hace doble clic es una de ellas, el
+      // cambio de estado se aplica en cascada a todas las seleccionadas de
+      // golpe (mejora Usuario), cada una según su propio estado. Con una
+      // sola tarea seleccionada (o sin selección múltiple activa) sigue
+      // funcionando igual que siempre, solo sobre esta tarea.
+      if (modoSeleccion && nodosSeleccionados.size > 1 && nodosSeleccionados.has(nodeId)) {
+        await manejarDobleClicEstadoCascada();
+        return;
+      }
+
       const estado = calcularEstadoConsenso(nodo);
       if (estado === 'asignada_sin_empezar') {
         await accionMarcarEnTrabajo(nodeId);
@@ -5550,6 +5655,112 @@
         const eleccion = await elegirAprobadoRechazado(nodo.codigo);
         if (eleccion === 'aprobado') await accionRevisar(nodeId, true);
         else if (eleccion === 'rechazado') await accionRevisar(nodeId, false);
+      }
+    }
+
+    // Doble clic con varias tareas seleccionadas: cada una avanza un paso
+    // en su propio estado, todas a la vez --
+    //   Pendiente de hacer -> En proceso (sin preguntar nada, igual que el
+    //     doble clic de una sola tarea).
+    //   En proceso -> Pendiente de revisión (una única confirmación para
+    //     todo el grupo, en vez de repetir el aviso de tiempo trabajado
+    //     tarea por tarea).
+    //   Pendiente de revisión -> Aprobado o Rechazado: se pregunta una
+    //     sola vez para todo el grupo que esté en ese estado (solo si
+    //     quien hace el doble clic es un revisor). Aprobado admite un
+    //     comentario opcional único para todas; Rechazado pide un único
+    //     motivo general que se guarda igual en todas, en vez de un
+    //     motivo distinto por cada tarea.
+    // Pendiente de dudas y Pendiente de cambios de modelo quedan siempre
+    // fuera de la cascada: esas dos solo se cambian de estado una a una.
+    async function manejarDobleClicEstadoCascada() {
+      const ids = idsSeleccionadosEnOrdenVisual();
+      const grupoEmpezar = [];
+      const grupoTerminar = [];
+      const grupoRevisar = [];
+      let excluidos = 0;
+
+      ids.forEach(id => {
+        const nodo = mapaNodoPorId[id];
+        if (!nodo || TIPOS_SIN_ASIGNACION.has(nodo.tipo)) return;
+        const estado = calcularEstadoConsenso(nodo);
+        if (estado === 'asignada_sin_empezar') grupoEmpezar.push(id);
+        else if (estado === 'en_proceso') grupoTerminar.push(id);
+        else if (estado === 'pendiente_revision') grupoRevisar.push(id);
+        else if (estado === 'pendiente_dudas' || estado === 'pendiente_cambios_modelo') excluidos++;
+      });
+
+      if (grupoEmpezar.length === 0 && grupoTerminar.length === 0 && grupoRevisar.length === 0) {
+        mostrarAvisoModal(excluidos > 0
+          ? 'Las tareas seleccionadas en Pendiente de dudas o Pendiente de cambios de modelo solo se pueden cambiar de estado una a una.'
+          : 'Ninguna de las tareas seleccionadas tiene un estado que se pueda cambiar con doble clic.');
+        return;
+      }
+
+      let decisionRevision = null; // 'aprobado' | 'rechazado' | null (no aplica o se canceló)
+      let comentarioGeneral = null;
+      if (grupoRevisar.length > 0) {
+        if (!esGestor()) {
+          mostrarAvisoModal(`Solo un revisor puede aprobar o rechazar tareas: las ${grupoRevisar.length} pendientes de revisión se omiten de este cambio en cascada.`);
+        } else {
+          const eleccion = await elegirAprobadoRechazado(`${grupoRevisar.length} tarea(s) pendientes de revisión`);
+          if (eleccion === 'aprobado') {
+            const comentario = await pedirTexto('Comentario opcional para todas (déjalo en blanco si no quieres añadir nada):');
+            if (comentario !== null) { decisionRevision = 'aprobado'; comentarioGeneral = comentario.trim() || null; }
+          } else if (eleccion === 'rechazado') {
+            const motivo = await pedirMotivoRechazo(`${grupoRevisar.length} tareas seleccionadas`);
+            if (motivo) { decisionRevision = 'rechazado'; comentarioGeneral = motivo; }
+          }
+        }
+      }
+
+      const totalAAplicar = grupoEmpezar.length + grupoTerminar.length + (decisionRevision ? grupoRevisar.length : 0);
+      if (totalAAplicar === 0) return;
+
+      let mensajeConfirm = `Se aplicará en cascada a ${totalAAplicar} tarea(s) seleccionada(s):`;
+      if (grupoEmpezar.length) mensajeConfirm += `\n• ${grupoEmpezar.length} pasarán de Pendiente de hacer a En proceso.`;
+      if (grupoTerminar.length) mensajeConfirm += `\n• ${grupoTerminar.length} pasarán de En proceso a Pendiente de revisión.`;
+      if (decisionRevision) mensajeConfirm += `\n• ${grupoRevisar.length} pasarán a ${decisionRevision === 'aprobado' ? 'Aprobado' : 'Rechazado'}.`;
+      if (excluidos > 0) mensajeConfirm += `\n\n(${excluidos} en Pendiente de dudas o Pendiente de cambios de modelo se dejan igual: solo se cambian una a una.)`;
+      if (!await mostrarConfirmacion(mensajeConfirm)) return;
+
+      let hechos = 0;
+      const errores = [];
+
+      for (const id of grupoEmpezar) {
+        const nodo = mapaNodoPorId[id];
+        const { error } = await supabaseClient.rpc('marcar_en_trabajo', { p_node_id: id });
+        if (error) errores.push(`${nodo?.codigo || id}: ${traducirError(error.message)}`);
+        else { hechos++; registrarLog('EMPEZAR', `Empezó "${nodo?.codigo}" (cascada)`, id); }
+      }
+      for (const id of grupoTerminar) {
+        const nodo = mapaNodoPorId[id];
+        const { error } = await supabaseClient.rpc('marcar_terminado', { p_node_id: id });
+        if (error) errores.push(`${nodo?.codigo || id}: ${traducirError(error.message)}`);
+        else { hechos++; registrarLog('FINALIZAR', `Finalizó "${nodo?.codigo}" (cascada, pasa a Pendiente de revisión)`, id); }
+      }
+      const idsRevisarOk = [];
+      if (decisionRevision) {
+        const aprobado = decisionRevision === 'aprobado';
+        for (const id of grupoRevisar) {
+          const nodo = mapaNodoPorId[id];
+          const { error } = await supabaseClient.rpc('revisar_nodo', { p_node_id: id, p_aprobado: aprobado, p_comentario: comentarioGeneral });
+          if (error) {
+            errores.push(`${nodo?.codigo || id}: ${traducirError(error.message)}`);
+          } else {
+            hechos++;
+            idsRevisarOk.push(id);
+            registrarLog(aprobado ? 'APROBAR' : 'RECHAZAR', `${aprobado ? 'Aprobó' : 'Rechazó'} "${nodo?.codigo}" (cascada)${comentarioGeneral ? ` — ${aprobado ? 'comentario' : 'motivo'}: ${comentarioGeneral}` : ''}`, id);
+          }
+        }
+      }
+
+      await cargarArbol();
+      if (decisionRevision === 'aprobado') {
+        for (const id of idsRevisarOk) await comprobarBloqueListoTrasAprobar(id);
+      }
+      if (errores.length > 0) {
+        mostrarAvisoModal(`Hecho ${hechos} de ${totalAAplicar}. Fallaron ${errores.length}:\n` + errores.join('\n'));
       }
     }
 
@@ -5837,6 +6048,31 @@
     function toggleModoSeleccion() {
       modoSeleccion = document.getElementById('chk-modo-seleccion').checked;
       if (!modoSeleccion) nodosSeleccionados.clear();
+      actualizarBarraSeleccion();
+      renderizarArbolCompleto();
+    }
+
+    // Shift + clic izquierdo en cualquier parte de la fila (no hace falta
+    // acertar en la casillita) activa la selección múltiple sobre ese nodo
+    // y todo lo que cuelga de él hacia abajo en la estructura, igual que
+    // marcar su casilla a mano -- sin desactivar lo que ya hubiera
+    // seleccionado. Un clic normal (sin Shift) no hace nada aquí: cada
+    // elemento de la fila sigue teniendo su propio onclick de siempre.
+    function manejarClicFila(event, nodeId) {
+      if (!event.shiftKey) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const nodo = mapaNodoPorId[nodeId];
+      if (!nodo || TIPOS_SIN_ASIGNACION.has(nodo.tipo)) return;
+      const puedeMarcarEstaCasilla = puedeSeleccionar() || (puedeSeleccionarBasico() && (!nodo.trabajador_id || nodo.trabajador_id === miPerfil.id));
+      if (!puedeMarcarEstaCasilla) return;
+      if (!modoSeleccion) {
+        modoSeleccion = true;
+        const chk = document.getElementById('chk-modo-seleccion');
+        if (chk) chk.checked = true;
+      }
+      nodosSeleccionados.add(nodeId);
+      obtenerDescendientesIds(nodeId).forEach(id => nodosSeleccionados.add(id));
       actualizarBarraSeleccion();
       renderizarArbolCompleto();
     }
