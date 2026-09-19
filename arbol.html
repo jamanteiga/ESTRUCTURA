@@ -4998,7 +4998,14 @@
         : `¿Desactivar "${nodo.codigo} - ${nodo.nombre}"? No se borra, solo deja de aparecer.`;
       if (!await mostrarConfirmacion(mensaje)) return;
 
-      const { error } = await supabaseClient.from('nodes').update({ activo: false }).in('id', ids);
+      // Antes se mandaban TODOS los ids (nodo + descendientes) metidos en la
+      // URL de la petición (.in('id', [...])) -- con un Bloque grande (varios
+      // cientos de nodos entre piezas y fichas de documentación) esa URL se
+      // hace tan larga que el servidor la rechaza con un "Bad Request" antes
+      // de llegar a la base de datos. Ahora se manda solo el id de la raíz a
+      // una función (activar_rama) que hace la cascada ella misma, sin límite
+      // de tamaño.
+      const { error } = await supabaseClient.rpc('activar_rama', { p_node_id: nodeId, p_activo: false });
       if (error) {
         mostrarAvisoModal('Error: ' + traducirError(error.message));
         registrarLog('INTENTO_FALLIDO', `Intento de desactivar "${nodo.codigo}" denegado: ${error.message}`, nodeId);
@@ -5034,9 +5041,11 @@
     async function reactivarNodo(nodeId) {
       const nodo = mapaNodoPorId[nodeId] || mapaTodoParaPapelera[nodeId];
       const descendientes = obtenerDescendientesIdsCompleto(nodeId);
-      const ids = [nodeId, ...descendientes];
 
-      const { error } = await supabaseClient.from('nodes').update({ activo: true }).in('id', ids);
+      // Mismo motivo que en desactivarNodo: con una rama grande, mandar
+      // todos los ids en la URL puede dar "Bad Request" antes de llegar a la
+      // base de datos. Se usa la misma función (activar_rama) para reactivar.
+      const { error } = await supabaseClient.rpc('activar_rama', { p_node_id: nodeId, p_activo: true });
       if (error) {
         mostrarAvisoModal('Error: ' + traducirError(error.message));
         registrarLog('INTENTO_FALLIDO', `Intento de reactivar "${nodo?.codigo || nodeId}" denegado: ${error.message}`, nodeId);
@@ -5128,7 +5137,7 @@
     function confirmarEliminarTodaPapelera() {
       const inactivos = Object.values(mapaTodoParaPapelera).filter(n => !n.activo);
       document.getElementById('modal-eliminar-texto').textContent =
-        `¿Eliminar definitivamente TODO lo que hay en la papelera (${inactivos.length} nodos, contando ramas enteras)? No se puede deshacer.`;
+        `¿Eliminar definitivamente TODO lo que hay en la papelera (${inactivos.length} nodos, contando ramas enteras)? Se borra entero aunque alguna rama tenga restos marcados como activos por dentro. No se puede deshacer.`;
       document.getElementById('modal-eliminar-estado').textContent = '';
       nodoAEliminarDefinitivo = '__todo__';
       document.getElementById('modal-eliminar').style.display = 'flex';
@@ -5136,46 +5145,32 @@
 
     async function eliminarTodaPapelera() {
       const estadoEl = document.getElementById('modal-eliminar-estado');
-      const todos = Object.values(mapaTodoParaPapelera).filter(n => !n.activo);
 
-      // Solo se eliminan las "raíces" de cada rama inactiva (nodos cuyo padre
-      // ya está activo, o no tienen padre) — sus descendientes inactivos se
-      // borran solos en cascada al eliminar la raíz, evitando intentar borrar
-      // dos veces lo mismo.
-      const raices = todos.filter(n => {
-        if (!n.parent_id) return true;
-        const padre = mapaTodoParaPapelera[n.parent_id];
-        return !padre || padre.activo;
-      });
+      // "Eliminar todo" ya no borra raíz por raíz con eliminar_nodo_definitivo
+      // (que rechazaba cualquier rama con algo activo colgando dentro, aunque
+      // fuesen restos sueltos de una desactivación antigua -- ver Buques
+      // BUQ1/BUQ2). Ahora se hace todo en una sola llamada (vaciar_papelera_
+      // definitivo) que borra la papelera ENTERA de golpe, sin comprobar esa
+      // marca -- solo lo que ya cuelga de una raíz desactivada, nunca nada
+      // fuera de eso, y sin tocar nunca "profiles".
+      estadoEl.textContent = 'Vaciando la papelera...';
+      estadoEl.className = 'estado-msg';
 
-      let hechos = 0;
-      const errores = [];
-      for (const nodo of raices) {
-        estadoEl.textContent = `Eliminando (${hechos + errores.length + 1}/${raices.length})...`;
-        const { error } = await supabaseClient.rpc('eliminar_nodo_definitivo', { p_node_id: nodo.id });
-        // Antes, un error aquí solo se dejaba en la consola (console.warn) --
-        // invisible para quien está delante de la pantalla: el modal se
-        // cerraba igual y parecía que "no había pasado nada" o que se había
-        // borrado todo cuando en realidad se habían quedado varias ramas sin
-        // eliminar. Ahora el motivo real se guarda y se enseña abajo.
-        if (error) { errores.push(`${nodo.codigo}: ${traducirError(error.message)}`); console.warn(`Error al eliminar ${nodo.codigo}:`, error.message); }
-        else hechos++;
-      }
+      const { data, error } = await supabaseClient.rpc('vaciar_papelera_definitivo');
 
-      registrarLog('ELIMINAR_DEFINITIVO', `Eliminó toda la papelera: ${hechos} rama(s) borrada(s) de ${raices.length}${errores.length ? `, ${errores.length} con error` : ''}`);
-
-      await cargarPapelera();
-
-      if (errores.length > 0) {
-        // No se cierra el modal solo -- se deja el aviso a la vista con el
-        // motivo exacto de cada fallo, para poder decidir qué hacer (y para
-        // que se pueda copiar el mensaje si hace falta reportarlo).
-        estadoEl.textContent = `Se eliminaron ${hechos} de ${raices.length}. No se pudieron eliminar ${errores.length}:\n` + errores.join('\n');
+      if (error) {
+        estadoEl.textContent = 'Error: ' + traducirError(error.message);
         estadoEl.className = 'estado-msg error';
-        mostrarAvisoModal(`Se eliminaron ${hechos} de ${raices.length} rama(s) de la papelera. ${errores.length} no se pudieron eliminar -- revisa el detalle bajo el botón "Eliminar todo".`);
-      } else {
-        cerrarModalEliminar();
+        registrarLog('INTENTO_FALLIDO', `Intento de vaciar la papelera denegado: ${error.message}`);
+        return;
       }
+
+      const nodosEliminados = data?.nodos_eliminados ?? 0;
+      registrarLog('ELIMINAR_DEFINITIVO', `Vació la papelera entera: ${nodosEliminados} nodo(s) eliminados para siempre`);
+
+      cerrarModalEliminar();
+      await cargarPapelera();
+      mostrarAvisoModal(`Papelera vaciada: ${nodosEliminados} nodo(s) eliminados para siempre.`);
     }
 
     function confirmarEliminarDefinitivo(nodeId) {
