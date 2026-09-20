@@ -383,9 +383,14 @@
       if (bloquesConEsqueleto.has(codigoBloque)) return;
       bloquesConEsqueleto.add(codigoBloque);
 
+      // nodoPorRuta[ruta] se guarda en el mismo momento en que se añade el
+      // plan a porCrear (aquí y en planificarImportacion), así que
+      // consultar nodoPorRuta ya basta para saber si una ruta está
+      // pendiente de crear -- no hace falta además recorrer porCrear
+      // entero (con Excel grandes, esa segunda comprobación es la que
+      // hace que importar miles de filas se note lento).
       function asegurar(rutaNueva, parentRuta, tipo, codigo) {
         if (nodoPorRuta[rutaNueva]) return;
-        if (porCrear.some(p => p.rutaCompleta === rutaNueva)) return;
         const plan = { id: `NUEVO_${contadorRef.n++}`, rutaCompleta: rutaNueva, parentRuta, tipo, codigo, descripcion: null };
         porCrear.push(plan);
         nodoPorRuta[rutaNueva] = { id: plan.id, tipo };
@@ -476,16 +481,18 @@
               break;
             }
             if (!existente) {
-              let plan = porCrear.find(p => p.rutaCompleta === rutaPieza);
-              if (!plan) {
-                plan = {
-                  id: `NUEVO_${contadorRef.n++}`, rutaCompleta: rutaPieza, parentRuta: rutaFamilia, tipo, codigo,
-                  ubicacionRuta: rutaUbicacion || null,
-                  descripcion: (esHoja && filaExcel.anidacion) ? `Anidación: ${filaExcel.anidacion}` : null
-                };
-                porCrear.push(plan);
-                nodoPorRuta[rutaPieza] = { id: plan.id, tipo };
-              }
+              // nodoPorRuta ya dice si esta ruta está pendiente de crear
+              // (se guarda a la vez que se añade a porCrear, ver más abajo)
+              // -- no hace falta además recorrer porCrear entero buscándola
+              // (con Excel de miles de filas, ese recorrido repetido es lo
+              // que hacía lento el "Comprobando..." antes de la vista previa).
+              const plan = {
+                id: `NUEVO_${contadorRef.n++}`, rutaCompleta: rutaPieza, parentRuta: rutaFamilia, tipo, codigo,
+                ubicacionRuta: rutaUbicacion || null,
+                descripcion: (esHoja && filaExcel.anidacion) ? `Anidación: ${filaExcel.anidacion}` : null
+              };
+              porCrear.push(plan);
+              nodoPorRuta[rutaPieza] = { id: plan.id, tipo };
             }
             rutaUbicacion = rutaPieza;
             ultimoTipoPadre = tipo;
@@ -514,17 +521,16 @@
             }
           }
 
-          let plan = porCrear.find(p => p.rutaCompleta === rutaNueva);
-          if (!plan) {
-            plan = {
-              id: `NUEVO_${contadorRef.n++}`, rutaCompleta: rutaNueva, parentRuta: rutaUbicacion, tipo, codigo,
-              // El código del lote de anidado (si lo hay) solo tiene sentido
-              // en el nodo hoja de esta fila -- se guarda como descripción.
-              descripcion: (esHoja && filaExcel.anidacion) ? `Anidación: ${filaExcel.anidacion}` : null
-            };
-            porCrear.push(plan);
-            nodoPorRuta[rutaNueva] = { id: plan.id, tipo };
-          }
+          // (mismo motivo que arriba: nodoPorRuta ya basta, no hace falta
+          // recorrer porCrear con .find())
+          const plan = {
+            id: `NUEVO_${contadorRef.n++}`, rutaCompleta: rutaNueva, parentRuta: rutaUbicacion, tipo, codigo,
+            // El código del lote de anidado (si lo hay) solo tiene sentido
+            // en el nodo hoja de esta fila -- se guarda como descripción.
+            descripcion: (esHoja && filaExcel.anidacion) ? `Anidación: ${filaExcel.anidacion}` : null
+          };
+          porCrear.push(plan);
+          nodoPorRuta[rutaNueva] = { id: plan.id, tipo };
           rutaUbicacion = rutaNueva;
           ultimoTipoPadre = tipo;
         }
@@ -541,10 +547,32 @@
       return { porCrear, resultadosFila };
     }
 
+    // Supabase corta cualquier select() en un máximo de filas por defecto
+    // (el "Max Rows" del proyecto, normalmente 1000) SIN avisar con error.
+    // Con el árbol ya creciendo por encima de eso, hay que traer la tabla
+    // entera pidiéndola por páginas -- si no, este import podría no "ver"
+    // nodos ya existentes y crearlos duplicados, o el árbol podría no
+    // mostrar luego todo lo que se acaba de importar (ver arbol.html,
+    // misma función). order('id') es el desempate único imprescindible
+    // para que el corte entre páginas sea siempre el mismo.
+    async function paginarSelect(factoriaQuery, tamPagina = 1000) {
+      let desde = 0;
+      let todos = [];
+      while (true) {
+        const { data, error } = await factoriaQuery().range(desde, desde + tamPagina - 1);
+        if (error) return { data: null, error };
+        todos = todos.concat(data || []);
+        if (!data || data.length < tamPagina) break;
+        desde += tamPagina;
+      }
+      return { data: todos, error: null };
+    }
+
     // Trae TODOS los nodos activos (para poder calcular rutas relativas al
     // destino elegido, igual que hace importar.html).
     async function cargarTodosLosNodos() {
-      const { data } = await supabaseClient.from('nodes').select('id, parent_id, tipo, codigo').eq('activo', true);
+      const { data } = await paginarSelect(() =>
+        supabaseClient.from('nodes').select('id, parent_id, tipo, codigo').eq('activo', true).order('id', { ascending: true }));
       return data || [];
     }
 

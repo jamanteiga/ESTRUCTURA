@@ -227,9 +227,29 @@
       });
     }
 
+    // Supabase corta cualquier select() en un máximo de filas por defecto
+    // (el "Max Rows" del proyecto, normalmente 1000) SIN avisar con error.
+    // Con el árbol ya creciendo por encima de eso, hay que traer tablas
+    // grandes pidiéndolas por páginas -- si no, este import podría no "ver"
+    // nodos ya existentes (y crearlos duplicados) o dejar destinos fuera
+    // del desplegable. order('id') es el desempate único imprescindible
+    // para que el corte entre páginas sea siempre el mismo.
+    async function paginarSelect(factoriaQuery, tamPagina = 1000) {
+      let desde = 0;
+      let todos = [];
+      while (true) {
+        const { data, error } = await factoriaQuery().range(desde, desde + tamPagina - 1);
+        if (error) return { data: null, error };
+        todos = todos.concat(data || []);
+        if (!data || data.length < tamPagina) break;
+        desde += tamPagina;
+      }
+      return { data: todos, error: null };
+    }
+
     async function cargarNodosDestino() {
-      const { data } = await supabaseClient
-        .from('nodes').select('id, codigo, nombre, tipo, parent_id').eq('activo', true).order('codigo');
+      const { data } = await paginarSelect(() => supabaseClient
+        .from('nodes').select('id, codigo, nombre, tipo, parent_id').eq('activo', true).order('codigo', { ascending: true }).order('id', { ascending: true }));
 
       const mapa = {};
       (data || []).forEach(n => { mapa[n.id] = n; });
@@ -306,7 +326,8 @@
     // -- así una fila del Excel puede colgar de una rama que ya existía de
     // antes en el árbol, no solo de una fila anterior del mismo fichero.
     async function calcularRutasExistentes(destinoId) {
-      const { data } = await supabaseClient.from('nodes').select('id, parent_id, tipo, codigo').eq('activo', true);
+      const { data } = await paginarSelect(() =>
+        supabaseClient.from('nodes').select('id, parent_id, tipo, codigo').eq('activo', true).order('id', { ascending: true }));
       const mapa = {};
       (data || []).forEach(n => { mapa[n.id] = n; });
 

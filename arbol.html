@@ -1809,10 +1809,43 @@
       }
     }
 
-    async function cargarArbol() {
-      let query = supabaseClient.from('v_nodes_with_workflow').select('*').order('orden', { ascending: true });
-      if (!mostrarDesactivados) query = query.eq('activo', true);
+    // Supabase corta cualquier select() en un máximo de filas por defecto
+    // (el "Max Rows" del proyecto, normalmente 1000) SIN avisar con error --
+    // simplemente devuelve menos filas de las que hay. Con el árbol ya
+    // creciendo por encima de eso, un select('*') suelto se queda corto y
+    // desaparecen nodos al azar (los que caen justo detrás del corte), sin
+    // que se note nada raro salvo que "faltan cosas" (bloques, buques...).
+    // Esta función trae la tabla entera pidiéndola por páginas con .range()
+    // hasta que una página vuelve incompleta. factoriaQuery debe devolver
+    // CADA VEZ una consulta nueva (no reutilizar un query ya usado) que
+    // termine en un .order(...) con un desempate único (normalmente 'id') --
+    // imprescindible para que el corte entre páginas sea siempre el mismo;
+    // sin un desempate único, el orden entre filas empatadas (p.ej. todas
+    // las que tengan orden=0) no está garantizado entre una página y la
+    // siguiente, y se podrían colar huecos o duplicados.
+    async function paginarSelect(factoriaQuery, tamPagina = 1000) {
+      let desde = 0;
+      let todos = [];
+      while (true) {
+        const { data, error } = await factoriaQuery().range(desde, desde + tamPagina - 1);
+        if (error) return { data: null, error };
+        todos = todos.concat(data || []);
+        if (!data || data.length < tamPagina) break;
+        desde += tamPagina;
+      }
+      return { data: todos, error: null };
+    }
 
+    function cargarNodosPaginado() {
+      return paginarSelect(() => {
+        let q = supabaseClient.from('v_nodes_with_workflow').select('*')
+          .order('orden', { ascending: true }).order('id', { ascending: true });
+        if (!mostrarDesactivados) q = q.eq('activo', true);
+        return q;
+      });
+    }
+
+    async function cargarArbol() {
       const raiz = document.getElementById('arbol-raiz');
       const banner = document.getElementById('banner-modo-ligero');
       let data, error;
@@ -1824,7 +1857,7 @@
       if (modoLigero) {
         try {
           const [resultado] = await Promise.race([
-            Promise.all([query, cargarEstadoComentariosModelo(), cargarNotasDudas()]),
+            Promise.all([cargarNodosPaginado(), cargarEstadoComentariosModelo(), cargarNotasDudas()]),
             new Promise((_, reject) => setTimeout(() => reject(new Error('timeout_modo_ligero')), 10000))
           ]);
           ({ data, error } = resultado);
@@ -1846,7 +1879,7 @@
           }
         }
       } else {
-        const [resultado] = await Promise.all([query, cargarEstadoComentariosModelo(), cargarNotasDudas()]);
+        const [resultado] = await Promise.all([cargarNodosPaginado(), cargarEstadoComentariosModelo(), cargarNotasDudas()]);
         ({ data, error } = resultado);
         if (banner) banner.style.display = 'none';
       }
@@ -1996,6 +2029,22 @@
       'festivos', 'ausencias', 'hitos', 'historial_fechas_previstas', 'profiles'
     ];
 
+    // Columna para desempatar el orden entre páginas al traer una tabla
+    // entera paginada (ver paginarSelect) -- solo las que tiene confirmadas.
+    // Las que faltan (node_comentarios_modelo, node_dependencias, festivos,
+    // ausencias, hitos) se traen sin paginar: son tablas mucho más pequeñas
+    // (no una fila por pieza), así que el riesgo de que ya superen el
+    // límite de filas de Supabase es bajo.
+    const COLUMNA_DESEMPATE_POR_TABLA = {
+      nodes: 'id', node_workflow: 'node_id', historial_fechas_previstas: 'id', profiles: 'id'
+    };
+
+    function seleccionarTablaCompleta(tabla) {
+      const columna = COLUMNA_DESEMPATE_POR_TABLA[tabla];
+      if (!columna) return supabaseClient.from(tabla).select('*');
+      return paginarSelect(() => supabaseClient.from(tabla).select('*').order(columna, { ascending: true }));
+    }
+
     function actualizarSubmenuBackup() {
       const cont = document.getElementById('submenu-backup');
       if (!cont) return;
@@ -2086,7 +2135,7 @@
     async function descargarCopiaSeguridad() {
       cerrarMenu();
       const resultados = await Promise.all(
-        TABLAS_COPIA_SEGURIDAD.map(tabla => supabaseClient.from(tabla).select('*'))
+        TABLAS_COPIA_SEGURIDAD.map(tabla => seleccionarTablaCompleta(tabla))
       );
       const errorTabla = resultados.findIndex(r => r.error);
       if (errorTabla !== -1) {
@@ -2109,7 +2158,8 @@
       const buque = mapaNodoPorId[buqueId];
       if (!buque) return;
 
-      const { data: todosNodosCrudos, error: errorNodos } = await supabaseClient.from('nodes').select('id, parent_id');
+      const { data: todosNodosCrudos, error: errorNodos } = await paginarSelect(() =>
+        supabaseClient.from('nodes').select('id, parent_id').order('id', { ascending: true }));
       if (errorNodos) { mostrarAvisoModal(`Error al leer "nodes": ${traducirError(errorNodos.message)}`); return; }
 
       const hijosPorPadre = {};
@@ -2127,14 +2177,19 @@
       }
       const idsBuqueSet = new Set(idsBuque);
 
+      // node_comentarios_modelo y node_dependencias se dejan sin paginar --
+      // no tengo confirmada la columna con la que desempatar el orden entre
+      // páginas en esas dos tablas, y forzar una que no exista rompería la
+      // copia entera; son tablas mucho más pequeñas (no una por pieza), así
+      // que el riesgo de que ya superen el límite de filas es bajo.
       const [rNodos, rWorkflow, rComentarios, rDependencias, rHitos, rHistorial, rProfiles] = await Promise.all([
-        supabaseClient.from('nodes').select('*'),
-        supabaseClient.from('node_workflow').select('*'),
+        paginarSelect(() => supabaseClient.from('nodes').select('*').order('id', { ascending: true })),
+        paginarSelect(() => supabaseClient.from('node_workflow').select('*').order('node_id', { ascending: true })),
         supabaseClient.from('node_comentarios_modelo').select('*'),
         supabaseClient.from('node_dependencias').select('*'),
         supabaseClient.from('hitos').select('*').eq('buque_id', buqueId),
-        supabaseClient.from('historial_fechas_previstas').select('*'),
-        supabaseClient.from('profiles').select('*')
+        paginarSelect(() => supabaseClient.from('historial_fechas_previstas').select('*').order('id', { ascending: true })),
+        paginarSelect(() => supabaseClient.from('profiles').select('*').order('id', { ascending: true }))
       ]);
       const resultados = [rNodos, rWorkflow, rComentarios, rDependencias, rHitos, rHistorial, rProfiles];
       const errorResultado = resultados.find(r => r.error);
@@ -2406,7 +2461,7 @@
         const permiso = await handleCarpetaBackupAuto.queryPermission({ mode: 'readwrite' });
         if (permiso !== 'granted') return; // hace falta que el admin pulse "Reactivar permiso" a mano
 
-        const resultados = await Promise.all(TABLAS_COPIA_SEGURIDAD.map(tabla => supabaseClient.from(tabla).select('*')));
+        const resultados = await Promise.all(TABLAS_COPIA_SEGURIDAD.map(tabla => seleccionarTablaCompleta(tabla)));
         if (resultados.some(r => r.error)) return; // se reintenta en el siguiente ciclo (cada 5 min)
 
         const copia = { generado_en: new Date().toISOString(), generado_por: miPerfil?.username || null, automatico: true };
@@ -2587,7 +2642,8 @@
     }
 
     async function exportarArbolExcel() {
-      const { data, error } = await supabaseClient.from('nodes').select('*').eq('activo', true).order('orden', { ascending: true });
+      const { data, error } = await paginarSelect(() =>
+        supabaseClient.from('nodes').select('*').eq('activo', true).order('orden', { ascending: true }).order('id', { ascending: true }));
       if (error) { mostrarAvisoModal('Error: ' + traducirError(error.message)); return; }
 
       const mapaPorId = {};
@@ -5108,7 +5164,7 @@
       const raiz = document.getElementById('arbol-raiz');
       raiz.innerHTML = '<li><span class="spinner-carga"></span>Cargando papelera...</li>';
 
-      const { data, error } = await supabaseClient.from('nodes').select('*');
+      const { data, error } = await paginarSelect(() => supabaseClient.from('nodes').select('*').order('id', { ascending: true }));
       if (error) { raiz.innerHTML = `<li style="color:red;">Error: ${error.message}</li>`; return; }
 
       mapaTodoParaPapelera = {};
