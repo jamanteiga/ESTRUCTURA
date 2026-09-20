@@ -92,6 +92,13 @@
     .hijos { display: none; }
     .hijos.abierto { display: block; }
     .fila-nodo.inactivo { opacity: 0.45; }
+    /* "Espejo" de solo lectura de una Plancha/Perfil en su ubicación
+       (PS/PT/PM/NL/NC/NP) -- se distingue del resto para que quede claro
+       que no es un nodo editable de por sí, sino un reflejo de la pieza
+       real que vive dentro de Anidados. */
+    .fila-nodo.fila-referencia { background: repeating-linear-gradient(135deg, rgba(0,0,0,0.03) 0px, rgba(0,0,0,0.03) 6px, transparent 6px, transparent 12px); cursor: default; }
+    .fila-nodo.fila-referencia .codigo { font-style: italic; }
+    .icono-referencia { opacity: 0.75; }
     #wrap-mis-tareas.visible, #wrap-desactivados.visible { display: flex !important; }
     mark { background: #fff3a3; padding: 0 1px; }
 
@@ -1878,6 +1885,28 @@
       return compararCodigosNatural(a.codigo, b.codigo);
     }
 
+    // Construye los nodos "espejo" (ver cargarArbol): función pura, sin
+    // efectos secundarios, para poder probarla sola. Por cada nodo con
+    // ubicacion_id apuntando a un PS/PT/PM/NL/NC/NP que sí está cargado,
+    // devuelve un clon de solo lectura de esa pieza, colgando de esa
+    // ubicación. No toca mapaNodoPorId ni mapaHijosPorPadre -- eso lo hace
+    // quien la llama.
+    function construirEspejosDeUbicacion(todosLosNodos, mapaNodoPorId, tiposUbicacion) {
+      const espejos = [];
+      todosLosNodos.forEach(n => {
+        if (!n.ubicacion_id) return;
+        const ubicacion = mapaNodoPorId[n.ubicacion_id];
+        if (!ubicacion || !tiposUbicacion.has(ubicacion.tipo)) return;
+        espejos.push(Object.assign({}, n, {
+          id: 'espejo::' + n.ubicacion_id + '::' + n.id,
+          parent_id: n.ubicacion_id,
+          esReferencia: true,
+          piezaRealId: n.id
+        }));
+      });
+      return espejos;
+    }
+
     function cargarNodosPaginado() {
       return paginarSelect(() => {
         let q = supabaseClient.from('v_nodes_with_workflow').select('*')
@@ -1937,6 +1966,24 @@
         const clave = n.parent_id || '__raiz__';
         if (!mapaHijosPorPadre[clave]) mapaHijosPorPadre[clave] = [];
         mapaHijosPorPadre[clave].push(n);
+      });
+
+      // "Espejos" de solo lectura: una Plancha/Perfil numerado (2007...)
+      // vive de verdad UNA sola vez, colgando de su familia dentro de
+      // Anidados -- pero además guarda en "ubicacion_id" el PS/PT/PM/NL/
+      // NC/NP del Subbloque desde el que se generó (así se sabe de dónde
+      // salió). Para que el usuario, estado y fechas de esa pieza también
+      // se vean desde esa ubicación (SEC261/SBL/2007, por ejemplo) sin
+      // duplicar ninguna fila en la base de datos, se añade aquí -- solo
+      // en memoria, para pintar el árbol -- un nodo "espejo" colgando de
+      // esa ubicación, con los mismos datos de seguimiento que la pieza
+      // real. No es un nodo nuevo de verdad: "esReferencia" lo marca para
+      // que se pinte como solo lectura y su menú contextual avise de que
+      // hay que editar la pieza real en Anidados en vez de aquí.
+      construirEspejosDeUbicacion(todosLosNodos, mapaNodoPorId, TIPOS_UBICACION_PIEZAS).forEach(espejo => {
+        mapaNodoPorId[espejo.id] = espejo;
+        if (!mapaHijosPorPadre[espejo.parent_id]) mapaHijosPorPadre[espejo.parent_id] = [];
+        mapaHijosPorPadre[espejo.parent_id].push(espejo);
       });
 
       // Los hermanos con el mismo "orden" (por ejemplo, todos los nodos
@@ -2677,7 +2724,11 @@
       const propioEstado = calcularEstadoPropio(nodo);
       const tieneTrabajoPropio = propioEstado !== 'sin_asignar';
 
-      const hijos = mapaHijosPorPadre[nodo.id] || [];
+      // Los "espejos" (ver cargarArbol) no cuentan aquí: son la MISMA
+      // pieza que ya se está contando de verdad dentro de Anidados, así
+      // que si sumaran también en el consenso/avance de su ubicación,
+      // esa pieza pesaría el doble en el % del Bloque hacia arriba.
+      const hijos = (mapaHijosPorPadre[nodo.id] || []).filter(h => !h.esReferencia);
       if (hijos.length === 0) return propioEstado;
       if (tieneTrabajoPropio) return propioEstado;
 
@@ -2690,6 +2741,12 @@
       const resultado = [];
       const hijos = mapaHijosPorPadre[nodeId] || [];
       hijos.forEach(h => {
+        // Los "espejos" no son un nodo real en la base de datos (su id no
+        // es un uuid válido) -- si se colaran aquí, cualquier acción
+        // masiva (asignar, cambiar estado, fechas en cascada...) sobre un
+        // Bloque entero fallaría entera al intentar actualizar un id que
+        // no existe.
+        if (h.esReferencia) return;
         resultado.push(h.id);
         resultado.push(...obtenerDescendientesIds(h.id));
       });
@@ -2867,18 +2924,22 @@
         acciones += `<button class="boton-rama" onclick="encogerRama('${nodo.id}')" title="Encoger esta rama">⏫</button>`;
       }
 
-      const notaDudasExtra = notasDudasPorNodo[nodo.id];
+      // Un "espejo" (ver cargarArbol) reutiliza para estas dos notas el id
+      // de la pieza real -- esos mapas se cargan aparte, con las piezas de
+      // verdad, y nunca conocerán el id sintético del espejo.
+      const idParaNotas = nodo.esReferencia ? nodo.piezaRealId : nodo.id;
+      const notaDudasExtra = notasDudasPorNodo[idParaNotas];
       const notaDudas = (!sinAsignacion && !vistaSimplificada && nodo.trabajo_estado === 'PENDIENTE_DUDAS')
         ? `<div class="motivo-rechazo" style="color:rgb(0,176,240);">❓ Pendiente de dudas${notaDudasExtra?.nota ? ' — ' + notaDudasExtra.nota : ''}${notaDudasExtra?.foto_url ? ` · <a href="${notaDudasExtra.foto_url}" target="_blank" rel="noopener">📷 Ver foto</a>` : ''}</div>` : '';
 
       const notaCambiosModelo = (!sinAsignacion && !vistaSimplificada && nodo.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO')
         ? (() => {
-            const estadoOrigenes = estadoComentariosPorNodo[nodo.id] || {};
+            const estadoOrigenes = estadoComentariosPorNodo[idParaNotas] || {};
             const estiloGhe = estadoOrigenes.GHE ? ' style="color:rgb(146,208,80); font-weight:bold;"' : '';
             const estiloNav = estadoOrigenes.NAV ? ' style="color:rgb(146,208,80); font-weight:bold;"' : '';
             return `<div class="motivo-rechazo" style="color:rgb(255,192,0);">🛠 Pendiente cambios en modelo —
-             <span class="link-comentarios"${estiloGhe} onclick="event.stopPropagation(); accionAbrirComentariosModelo('${nodo.id}','GHE');">Ghenova</span> ·
-             <span class="link-comentarios"${estiloNav} onclick="event.stopPropagation(); accionAbrirComentariosModelo('${nodo.id}','NAV');">Navantia</span>
+             <span class="link-comentarios"${estiloGhe} onclick="event.stopPropagation(); accionAbrirComentariosModelo('${idParaNotas}','GHE');">Ghenova</span> ·
+             <span class="link-comentarios"${estiloNav} onclick="event.stopPropagation(); accionAbrirComentariosModelo('${idParaNotas}','NAV');">Navantia</span>
            </div>`;
           })() : '';
 
@@ -2905,39 +2966,43 @@
       // Un gestor puede seleccionar cualquier tarea; un usuario normal solo
       // las que están sin asignar (para tomarlas de golpe) o las suyas
       // propias (para cambiarles de golpe el estado) -- nunca las de otro.
+      // Un "espejo" nunca se puede seleccionar: su id no es un uuid real,
+      // así que cualquier acción masiva sobre él fallaría.
       const puedeMarcarEstaCasilla = puedeSeleccionar() || (puedeSeleccionarBasico() && (!nodo.trabajador_id || nodo.trabajador_id === miPerfil.id));
-      const checkboxSeleccion = (modoSeleccion && puedeMarcarEstaCasilla && !sinAsignacion)
+      const checkboxSeleccion = (modoSeleccion && puedeMarcarEstaCasilla && !sinAsignacion && !nodo.esReferencia)
         ? `<input type="checkbox" class="chk-seleccion" ${nodosSeleccionados.has(nodo.id) ? 'checked' : ''} onclick="toggleSeleccionNodo('${nodo.id}', event)">`
         : '';
 
-      const tituloTipo = ETIQUETAS_TIPO[nodo.tipo] || nodo.tipo;
+      const tituloTipo = nodo.esReferencia
+        ? `Referencia de solo lectura: esta pieza vive de verdad dentro de Anidados. Clic derecho para ir allí.`
+        : (ETIQUETAS_TIPO[nodo.tipo] || nodo.tipo);
 
       return `
         <li class="nodo" id="li-${nodo.id}">
-          <div class="fila-nodo ${bloqueadoWindchill ? 'fila-doc-bloqueada' : ''}"
+          <div class="fila-nodo ${bloqueadoWindchill ? 'fila-doc-bloqueada' : ''} ${nodo.esReferencia ? 'fila-referencia' : ''}"
                title="${bloqueadoWindchill ? 'Bloqueado: Modelo y Plano de corte deben estar Aprobados' : tituloTipo}"
                oncontextmenu="mostrarMenuContextual(event, '${nodo.id}'); return false;"
                onclick="manejarClicFila(event, '${nodo.id}')"
                ${tieneHijos ? `ondblclick="toggleNodo('${nodo.id}')"` : ''}
-               ${esGestor() ? `draggable="true" ondragstart="iniciarArrastre(event, '${nodo.id}')" ondragend="finalizarArrastre(event)"` : ''}
-               ondragover="sobreArrastre(event, '${nodo.id}')"
-               ondragleave="salirArrastre(event)"
-               ondrop="soltarArrastre(event, '${nodo.id}')"
+               ${(esGestor() && !nodo.esReferencia) ? `draggable="true" ondragstart="iniciarArrastre(event, '${nodo.id}')" ondragend="finalizarArrastre(event)"` : ''}
+               ${nodo.esReferencia ? '' : `ondragover="sobreArrastre(event, '${nodo.id}')" ondragleave="salirArrastre(event)" ondrop="soltarArrastre(event, '${nodo.id}')"`}
                ontouchstart="iniciarPulsacionLarga(event, '${nodo.id}')"
                ontouchend="cancelarPulsacionLarga()"
                ontouchmove="cancelarPulsacionLarga()">
             ${checkboxSeleccion}
             <span class="toggle ${tieneHijos ? '' : 'vacio'}" onclick="toggleNodo('${nodo.id}')">${abierto ? '▼' : '▶'}</span>
-            ${!sinAsignacion ? `<span class="candado" title="${nodo.bloqueado ? 'Bloqueado — clic para desbloquear' : 'Desbloqueado — clic para bloquear'}" onclick="event.stopPropagation(); accionAlternarBloqueoDesdeIcono('${nodo.id}')">${nodo.bloqueado ? '🔒' : '🔓'}</span>` : ''}
-            ${(!sinAsignacion && miPerfil.rol === 'TRABAJADOR') ? `<span class="favorito-estrella" title="${esFavorito(nodo.id) ? 'Quitar de favoritas' : 'Marcar como favorita'}" onclick="event.stopPropagation(); alternarFavorito('${nodo.id}')">${esFavorito(nodo.id) ? '⭐' : '☆'}</span>` : ''}
+            ${(!sinAsignacion && !nodo.esReferencia) ? `<span class="candado" title="${nodo.bloqueado ? 'Bloqueado — clic para desbloquear' : 'Desbloqueado — clic para bloquear'}" onclick="event.stopPropagation(); accionAlternarBloqueoDesdeIcono('${nodo.id}')">${nodo.bloqueado ? '🔒' : '🔓'}</span>` : ''}
+            ${(!sinAsignacion && !nodo.esReferencia && miPerfil.rol === 'TRABAJADOR') ? `<span class="favorito-estrella" title="${esFavorito(nodo.id) ? 'Quitar de favoritas' : 'Marcar como favorita'}" onclick="event.stopPropagation(); alternarFavorito('${nodo.id}')">${esFavorito(nodo.id) ? '⭐' : '☆'}</span>` : ''}
             ${(!sinAsignacion && nodo.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO') ? '<span class="cuadro-cambios-modelo" title="Pendiente de cambios en modelo"></span>' : ''}
             ${(!sinAsignacion && nodoRetrasado(nodo)) ? `<span class="icono-retraso" title="Retrasada — prevista para ${formatearFechaHora(nodo.fecha_fin_prevista)}">⏰</span>` : ''}
             ${nodo.tipo === 'BLOQUE' && nodo.congelado ? '<span title="Bloque congelado por un Supervisor/Admin — nadie puede cambiar el estado de lo que cuelga de él" style="cursor:help;">🧊</span>' : (nodo.tipo !== 'BLOQUE' && estaBajoBloqueCongelado(nodo) ? '<span title="Dentro de un Bloque congelado — no se puede cambiar el estado hasta que lo descongelen" style="cursor:help; opacity:0.7;">🧊</span>' : '')}
-            <span class="flecha ${claseColor}" title="${estado}" ondblclick="manejarDobleClicEstado(event, '${nodo.id}')">${simboloFlecha}</span>
+            <span class="flecha ${claseColor}" title="${estado}" ${nodo.esReferencia ? '' : `ondblclick="manejarDobleClicEstado(event, '${nodo.id}')"`}>${simboloFlecha}</span>
             ${bloqueadoWindchill ? '<span title="Bloqueado: Modelo y Plano de corte deben estar Aprobados">🔒</span>' : ''}
+            ${nodo.esReferencia ? '<span class="icono-referencia" title="Referencia de solo lectura a la pieza real, dentro de Anidados">🔗</span>' : ''}
             <span class="codigo">${resaltarCoincidencia(etiquetaCodigoVisible(nodo))}</span>
             ${nombreEsRedundante(nodo.codigo, nodo.nombre) ? '' : `<span>${resaltarCoincidencia(nodo.nombre)}</span>`}
             <span class="tipo-tag">${etiquetaCortaTipo(nodo.tipo)}</span>
+            ${nodo.esReferencia ? '<span class="tipo-tag" style="opacity:.75;" title="Esta fila solo refleja la pieza real de Anidados; no se edita desde aquí">↩ referencia</span>' : ''}
             ${badgeAvance}
             ${asignadosTexto ? `<span class="asignados">${asignadosTexto}</span>` : ''}
             ${badgeTiempos}
@@ -3374,8 +3439,10 @@
     function mostrarMenuContextual(evento, nodeId) {
       evento.preventDefault();
       evento.stopPropagation();
-      registrarNodoReciente(nodeId);
       const nodo = mapaNodoPorId[nodeId];
+      if (!nodo) return;
+      if (nodo.esReferencia) { mostrarMenuContextualReferencia(evento, nodo); return; }
+      registrarNodoReciente(nodeId);
       const sinAsignacion = TIPOS_SIN_ASIGNACION.has(nodo.tipo);
       const esMio = nodo.trabajador_id === miPerfil.id;
       const puedeOperar = esGestor() || esMio;
@@ -3665,6 +3732,15 @@
       while (items.length && items[items.length - 1].separador) items.pop();
       if (items.length === 0) return;
 
+      pintarMenuContextual(items, evento);
+    }
+
+    // Construye y posiciona el menú contextual a partir de una lista de
+    // items ya decidida -- extraído de mostrarMenuContextual para que el
+    // menú de solo lectura de un "espejo" (ver mostrarMenuContextualReferencia)
+    // pueda reutilizar exactamente el mismo pintado, sin duplicar HTML ni
+    // el posicionamiento.
+    function pintarMenuContextual(items, evento) {
       if (esInvitado()) {
         const avisoInvitado = () => mostrarAvisoModal('Eres un usuario Invitado: solo puedes consultar la aplicación, no puedes realizar cambios.');
         const anularRecursivo = (lista) => {
@@ -3720,6 +3796,29 @@
       menu.style.maxHeight = (window.innerHeight - 20) + 'px';
       menu.style.overflowY = 'auto';
       menu.style.display = 'block';
+    }
+
+    // Menú contextual de un "espejo" (ver cargarArbol): en vez de todas las
+    // acciones normales, solo un aviso de que es una referencia de solo
+    // lectura y un acceso directo a la pieza real en Anidados -- así, si
+    // alguien intenta "cambiar algo" desde la ubicación (SEC261/SBL/2007),
+    // lo único que encuentra es el aviso y el camino a donde sí se edita.
+    function mostrarMenuContextualReferencia(evento, nodo) {
+      const real = mapaNodoPorId[nodo.piezaRealId];
+      const dondeVive = real ? `${etiquetaCortaTipo(real.tipo)} ${real.codigo}` : 'Anidados';
+      const items = [
+        {
+          label: '🔗 Referencia de solo lectura',
+          tip: `"${nodo.codigo}" no es una pieza aparte: es un reflejo de la pieza real, que vive dentro de Anidados (${dondeVive}). Su usuario, estado y fechas se editan solo desde allí.`,
+          soloLectura: true
+        },
+        {
+          label: `📍 Ir a la pieza real (${real ? real.codigo : nodo.codigo})`,
+          tip: 'Abre la pieza de verdad dentro de Anidados, donde sí se puede cambiar su estado.',
+          fn: () => irANodoEnArbol(nodo.piezaRealId)
+        }
+      ];
+      pintarMenuContextual(items, evento);
     }
 
     // nivel 1 = primer flyout (a la derecha del menú principal), nivel 2 = segundo
@@ -3866,7 +3965,7 @@
     // aviso claro; el RPC vuelve a comprobarlo igualmente en el servidor.
     function accionAlternarBloqueoDesdeIcono(nodeId) {
       const nodo = mapaNodoPorId[nodeId];
-      if (!nodo) return;
+      if (!nodo || nodo.esReferencia) return;
       if (!puedeBloquearNodo(nodo)) {
         mostrarAvisoModal('Solo el usuario asignado a esta tarea, o un ADMIN/REVISOR, puede bloquearla o desbloquearla.');
         return;
@@ -5819,7 +5918,7 @@
     async function manejarDobleClicEstado(event, nodeId) {
       event.stopPropagation();
       const nodo = mapaNodoPorId[nodeId];
-      if (!nodo || TIPOS_SIN_ASIGNACION.has(nodo.tipo)) return;
+      if (!nodo || nodo.esReferencia || TIPOS_SIN_ASIGNACION.has(nodo.tipo)) return;
 
       // Si hay varias tareas seleccionadas a la vez (selección múltiple) y
       // la tarea sobre la que se hace doble clic es una de ellas, el
@@ -6250,7 +6349,7 @@
       event.preventDefault();
       event.stopPropagation();
       const nodo = mapaNodoPorId[nodeId];
-      if (!nodo || TIPOS_SIN_ASIGNACION.has(nodo.tipo)) return;
+      if (!nodo || nodo.esReferencia || TIPOS_SIN_ASIGNACION.has(nodo.tipo)) return;
       const puedeMarcarEstaCasilla = puedeSeleccionar() || (puedeSeleccionarBasico() && (!nodo.trabajador_id || nodo.trabajador_id === miPerfil.id));
       if (!puedeMarcarEstaCasilla) return;
       if (!modoSeleccion) {
@@ -6266,6 +6365,7 @@
 
     function toggleSeleccionNodo(nodeId, event) {
       event.stopPropagation();
+      if (mapaNodoPorId[nodeId]?.esReferencia) return;
       const descendientes = obtenerDescendientesIds(nodeId);
       if (nodosSeleccionados.has(nodeId)) {
         nodosSeleccionados.delete(nodeId);
