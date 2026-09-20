@@ -728,6 +728,32 @@
     </div>
   </div>
 
+  <div class="overlay" id="modal-desviacion-bloque">
+    <div class="overlay-caja" style="max-width:440px;">
+      <h3>📌 Desviación de entrega del Bloque</h3>
+      <p id="db-bloque-info" style="font-size:12px; color:#666; margin-top:-8px;"></p>
+      <p style="font-size:12px; color:#666;">La fecha fin fijada desde Hitos para este Bloque no cambia aquí — esto solo registra, para las métricas de planificado vs. real, que la entrega real se espera en otra fecha y por qué.</p>
+      <p id="db-ultima" style="font-size:12px; color:#8a6d00; background:#fff8e6; border:1px solid #ffe6a3; border-radius:6px; padding:8px; display:none; white-space:pre-line;"></p>
+      <label>Nueva fecha de entrega estimada</label>
+      <input type="datetime-local" id="db-fecha-revisada">
+      <label>Motivo</label>
+      <select id="db-motivo-categoria">
+        <option value="">Elige una categoría...</option>
+        <option value="FALTA_MATERIAL">Falta de material</option>
+        <option value="CAMBIO_DISENO">Cambio de diseño / cambios en modelo</option>
+        <option value="AUSENCIA_PERSONAL">Ausencia de personal</option>
+        <option value="DEPENDENCIA_EXTERNA">Dependencia externa (otra tarea, proveedor...)</option>
+        <option value="OTRO">Otro</option>
+      </select>
+      <input type="text" id="db-motivo-detalle" placeholder="Detalle (opcional)">
+      <div class="estado-msg" id="db-estado"></div>
+      <div class="overlay-botones">
+        <button class="secundario" onclick="cerrarModalDesviacionBloque()">Cancelar</button>
+        <button onclick="confirmarDesviacionBloque()">Registrar</button>
+      </div>
+    </div>
+  </div>
+
   <div class="overlay" id="modal-dependencias">
     <div class="overlay-caja" style="max-width:480px;">
       <h3>🔗 Dependencias</h3>
@@ -3628,6 +3654,11 @@
               : 'Congela este Bloque: nadie (ni siquiera el usuario asignado) podrá cambiar el estado de ninguna tarea que cuelgue de él hasta que un Supervisor o Admin lo descongele.',
             fn: () => accionAlternarCongelacionBloque(nodeId, !nodo.congelado)
           });
+          items.push({
+            label: '📌 Registrar desviación de entrega',
+            tip: 'La fecha fin de este Bloque, fijada desde Hitos, no cambia con esto -- solo registra, para las métricas de planificado vs. real, que la entrega real se espera en otra fecha y por qué.',
+            fn: () => abrirModalDesviacionBloque(nodeId, null)
+          });
         }
         if (!sinAsignacion) {
           items.push({ label: '👤 Asignar usuario', tip: 'Asignación de tarea a un usuario.', fn: () => abrirModalAsignar(nodeId) });
@@ -4258,6 +4289,18 @@
         }
       }
 
+      // La fecha fin de un Bloque, fijada desde Hitos, es sagrada: si esta
+      // fecha se sale de ella, se avisa antes de guardar (se puede guardar
+      // igual -- es información para meter a más gente a trabajar en el
+      // Bloque, no un bloqueo).
+      const bloqueSuperado = comprobarTechoBloque(nodo, fin);
+      if (bloqueSuperado) {
+        const sigue = await mostrarConfirmacion(
+          `⚠️ Este fin previsto (${formatearFechaHora(fin)}) se sale de la fecha fin del Bloque "${bloqueSuperado.codigo}" (${formatearFechaHora(bloqueSuperado.fecha_fin_prevista)}), fijada desde Hitos -- esa es la que manda y no se mueve desde aquí.\n\nPara llegar a tiempo, valora meter a más gente a trabajar en paralelo en el Bloque o acortar duraciones.\n\n¿Guardar igualmente esta fecha?`
+        );
+        if (!sigue) return;
+      }
+
       const { error } = await supabaseClient.rpc('establecer_fechas_previstas', {
         p_node_id: nodoFechasPrevistasActual, p_fecha_inicio: inicio, p_fecha_fin: fin,
         p_motivo_categoria: motivoCategoria, p_motivo_detalle: motivoDetalle
@@ -4267,9 +4310,14 @@
         registrarLog('INTENTO_FALLIDO', `Intento de fijar fechas previstas de "${nodo?.codigo}" denegado: ${error.message}`, nodoFechasPrevistasActual);
         return;
       }
-      registrarLog('FECHAS_PREVISTAS', `Fijó fechas previstas de "${nodo?.codigo}": ${inicio || '—'} → ${fin || '—'}${motivoCategoria ? ` (motivo: ${ETIQUETAS_MOTIVO_RETRASO[motivoCategoria]})` : ''}`, nodoFechasPrevistasActual);
+      registrarLog('FECHAS_PREVISTAS', `Fijó fechas previstas de "${nodo?.codigo}": ${inicio || '—'} → ${fin || '—'}${motivoCategoria ? ` (motivo: ${ETIQUETAS_MOTIVO_RETRASO[motivoCategoria]})` : ''}${bloqueSuperado ? ` [supera fin de Bloque "${bloqueSuperado.codigo}"]` : ''}`, nodoFechasPrevistasActual);
       cerrarModalFechasPrevistas();
       await cargarArbol();
+
+      if (bloqueSuperado) {
+        const registrar = await mostrarConfirmacion(`¿Registrar ahora una desviación de entrega del Bloque "${bloqueSuperado.codigo}" con la nueva fecha estimada?`);
+        if (registrar) abrirModalDesviacionBloque(bloqueSuperado.id, fin);
+      }
     }
 
     async function accionReiniciarLineaBase() {
@@ -4419,6 +4467,41 @@
         return;
       }
 
+      // Antes de aplicar de verdad, se comprueba si alguna de las fechas fin
+      // resultantes se saldría de la fecha fin "sagrada" del Bloque que la
+      // contiene (fijada desde Hitos) -- calcular_fechas_cascada() es de
+      // solo lectura, así que sirve para "probar" el reparto sin tocar nada.
+      let bloquesSuperadosCascada = [];
+      const primerNodoParaTecho = mapaNodoPorId[ids[0]];
+      if (primerNodoParaTecho?.trabajador_id) {
+        const { data: previaTecho } = await supabaseClient.rpc('calcular_fechas_cascada', {
+          p_usuario_id: primerNodoParaTecho.trabajador_id,
+          p_inicio: inicioVal,
+          p_duraciones_min: new Array(ids.length).fill(duracionMin)
+        });
+        if (previaTecho) {
+          const bloquesMapa = new Map(); // bloqueId -> { bloque, finMasTardio }
+          previaTecho.forEach(fila => {
+            const nodoFila = mapaNodoPorId[ids[fila.idx - 1]];
+            if (!nodoFila) return;
+            const bloque = comprobarTechoBloque(nodoFila, fila.fin);
+            if (!bloque) return;
+            const actual = bloquesMapa.get(bloque.id);
+            if (!actual || fila.fin > actual.finMasTardio) bloquesMapa.set(bloque.id, { bloque, finMasTardio: fila.fin });
+          });
+          bloquesSuperadosCascada = [...bloquesMapa.values()];
+        }
+        if (bloquesSuperadosCascada.length > 0) {
+          const detalle = bloquesSuperadosCascada
+            .map(({ bloque, finMasTardio }) => `• Bloque "${bloque.codigo}": llegaría hasta ${formatearFechaHora(finMasTardio)} (fin fijado desde Hitos: ${formatearFechaHora(bloque.fecha_fin_prevista)})`)
+            .join('\n');
+          const sigueCascada = await mostrarConfirmacion(
+            `⚠️ Con este reparto, alguna tarea terminaría después del fin fijado desde Hitos del Bloque que la contiene (esa fecha es la que manda y no se mueve desde aquí):\n\n${detalle}\n\nPara llegar a tiempo, valora meter a más gente a trabajar en paralelo en esos Bloques.\n\n¿Aplicar igualmente estas fechas?`
+          );
+          if (!sigueCascada) return;
+        }
+      }
+
       const btn = document.querySelector('#modal-fechas-cascada .overlay-botones button:last-child');
       btn.disabled = true;
       estadoEl.textContent = 'Aplicando (según el horario laboral, puede repartirse entre varios días)...';
@@ -4478,6 +4561,110 @@
       document.getElementById('chk-modo-seleccion').checked = false;
       actualizarBarraSeleccion();
       await cargarArbol();
+
+      // Si el reparto afectó a más de un Bloque a la vez, se ofrece
+      // registrar la desviación solo del primero -- los demás se pueden
+      // registrar luego a mano desde su propio menú contextual.
+      if (bloquesSuperadosCascada.length > 0) {
+        const { bloque, finMasTardio } = bloquesSuperadosCascada[0];
+        const otros = bloquesSuperadosCascada.length > 1 ? ` (y ${bloquesSuperadosCascada.length - 1} Bloque(s) más -- regístralos luego desde su menú)` : '';
+        const registrar = await mostrarConfirmacion(`¿Registrar ahora una desviación de entrega del Bloque "${bloque.codigo}" con la nueva fecha estimada${otros}?`);
+        if (registrar) abrirModalDesviacionBloque(bloque.id, finMasTardio);
+      }
+    }
+
+    // -------------------- Fecha fin "sagrada" del Bloque (Hitos) --------------------
+    // El inicio/fin de un BLOQUE lo fija hitos.html -- nunca la cascada de
+    // fechas internas del árbol (ver estructura_bloque_fecha_sagrada.sql).
+    // Aquí solo se avisa cuando una fecha interna se saldría de ese límite
+    // y se ofrece registrar una desviación de entrega, para las métricas de
+    // planificado vs. real.
+
+    // Sube por los padres hasta el Bloque que contiene este nodo (o null si
+    // no cuelga de ningún Bloque -- p.ej. Buque, MPJ...).
+    function encontrarBloqueAncestro(nodo) {
+      let actual = nodo;
+      while (actual) {
+        if (actual.tipo === 'BLOQUE') return actual;
+        actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
+      }
+      return null;
+    }
+
+    // Si "nodo" (que no es él mismo un Bloque) cuelga de un Bloque cuya
+    // fecha fin ya está fijada desde Hitos, y "finPropuestoIso" se sale de
+    // ahí, devuelve ese Bloque -- si no, null. La fecha del propio Bloque
+    // nunca se compara contra sí misma (esa es la que manda).
+    function comprobarTechoBloque(nodo, finPropuestoIso) {
+      if (!finPropuestoIso || !nodo || nodo.tipo === 'BLOQUE') return null;
+      const bloque = encontrarBloqueAncestro(nodo);
+      if (!bloque || !bloque.fecha_fin_prevista) return null;
+      const finBloque = bloque.fecha_fin_prevista.slice(0, 16);
+      const finPropuesto = finPropuestoIso.slice(0, 16);
+      return finPropuesto > finBloque ? bloque : null;
+    }
+
+    let bloqueDesviacionActual = null;
+
+    // Abre el modal para registrar una desviación de entrega de un Bloque.
+    // "fechaSugeridaIso" (opcional) precarga la nueva fecha estimada, p.ej.
+    // cuando se ofrece justo después de avisar que una fecha interna se
+    // sale del fin fijado desde Hitos.
+    async function abrirModalDesviacionBloque(bloqueId, fechaSugeridaIso) {
+      bloqueDesviacionActual = bloqueId;
+      const bloque = mapaNodoPorId[bloqueId];
+      document.getElementById('db-bloque-info').textContent = bloque ? `${bloque.codigo} — ${bloque.nombre}` : '';
+      document.getElementById('db-fecha-revisada').value = fechaSugeridaIso ? fechaSugeridaIso.slice(0, 16) : '';
+      document.getElementById('db-motivo-categoria').value = '';
+      document.getElementById('db-motivo-detalle').value = '';
+      document.getElementById('db-estado').textContent = '';
+
+      const ultimaEl = document.getElementById('db-ultima');
+      ultimaEl.style.display = 'none';
+      const { data: ultima } = await supabaseClient
+        .from('v_bloque_ultima_desviacion').select('*').eq('bloque_id', bloqueId).maybeSingle();
+      if (ultima) {
+        const quien = perfilesCache.find(p => p.id === ultima.registrado_por)?.nombre_completo || 'alguien';
+        ultimaEl.textContent = `📌 Última desviación registrada: entrega revisada ${formatearFechaHora(ultima.fecha_entrega_revisada)} (fin fijado entonces: ${formatearFechaHora(ultima.fecha_fin_sagrada)}) — ${ETIQUETAS_MOTIVO_RETRASO[ultima.motivo_categoria] || ultima.motivo_categoria}${ultima.motivo_detalle ? `: ${ultima.motivo_detalle}` : ''}, por ${quien}.`;
+        ultimaEl.style.display = 'block';
+      }
+
+      document.getElementById('modal-desviacion-bloque').style.display = 'flex';
+    }
+
+    function cerrarModalDesviacionBloque() {
+      document.getElementById('modal-desviacion-bloque').style.display = 'none';
+      bloqueDesviacionActual = null;
+    }
+
+    async function confirmarDesviacionBloque() {
+      const estadoEl = document.getElementById('db-estado');
+      const fechaRevisada = document.getElementById('db-fecha-revisada').value || null;
+      const motivoCategoria = document.getElementById('db-motivo-categoria').value || null;
+      const motivoDetalle = document.getElementById('db-motivo-detalle').value.trim() || null;
+      if (!fechaRevisada) {
+        estadoEl.textContent = 'Indica la nueva fecha de entrega estimada.';
+        estadoEl.className = 'estado-msg error';
+        return;
+      }
+      if (!motivoCategoria) {
+        estadoEl.textContent = 'Elige un motivo.';
+        estadoEl.className = 'estado-msg error';
+        return;
+      }
+      const bloque = mapaNodoPorId[bloqueDesviacionActual];
+      const { error } = await supabaseClient.rpc('registrar_desviacion_entrega_bloque', {
+        p_bloque_id: bloqueDesviacionActual, p_fecha_entrega_revisada: fechaRevisada,
+        p_motivo_categoria: motivoCategoria, p_motivo_detalle: motivoDetalle
+      });
+      if (error) {
+        estadoEl.textContent = 'Error: ' + traducirError(error.message);
+        estadoEl.className = 'estado-msg error';
+        registrarLog('INTENTO_FALLIDO', `Intento de registrar desviación de entrega de "${bloque?.codigo}" denegado: ${error.message}`, bloqueDesviacionActual);
+        return;
+      }
+      registrarLog('DESVIACION_ENTREGA_BLOQUE', `Registró una desviación de entrega del Bloque "${bloque?.codigo}": nueva fecha estimada ${fechaRevisada} (motivo: ${ETIQUETAS_MOTIVO_RETRASO[motivoCategoria]})`, bloqueDesviacionActual);
+      cerrarModalDesviacionBloque();
     }
 
     // -------------------- Dependencias entre tareas --------------------
