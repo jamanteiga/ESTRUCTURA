@@ -1836,6 +1836,48 @@
       return { data: todos, error: null };
     }
 
+    // Compara dos códigos "en orden natural": separa cada uno en trozos de
+    // dígitos y de letras, y compara los trozos numéricos por su VALOR
+    // (2 antes que 10) en vez de como texto (donde "10" iría antes que
+    // "2"). Así SEC261..SEC265, GR1/GR3/GR4/GR5 o PL1000/PL2000/PL5000
+    // salen en el orden que espera cualquiera, sin depender de cuántos
+    // dígitos tenga cada código.
+    function partirEnFragmentos(codigo) {
+      return String(codigo || '').match(/\d+|\D+/g) || [];
+    }
+
+    function compararCodigosNatural(a, b) {
+      const fa = partirEnFragmentos(a);
+      const fb = partirEnFragmentos(b);
+      const n = Math.max(fa.length, fb.length);
+      for (let i = 0; i < n; i++) {
+        const xa = fa[i] || '';
+        const xb = fb[i] || '';
+        const esNumA = /^\d+$/.test(xa);
+        const esNumB = /^\d+$/.test(xb);
+        if (esNumA && esNumB) {
+          const diferencia = parseInt(xa, 10) - parseInt(xb, 10);
+          if (diferencia !== 0) return diferencia;
+        } else {
+          const cmp = xa.localeCompare(xb, 'es', { sensitivity: 'base' });
+          if (cmp !== 0) return cmp;
+        }
+      }
+      return 0;
+    }
+
+    // Orden real entre dos hermanos: el campo "orden" manda siempre (así
+    // el "subir/bajar" manual sigue funcionando igual que hasta ahora); si
+    // empatan (caso típico de una importación masiva), se desempata por el
+    // código en orden natural en vez de por el id (un uuid sin ningún
+    // significado de orden).
+    function compararNodosHermanos(a, b) {
+      const ordenA = a.orden || 0;
+      const ordenB = b.orden || 0;
+      if (ordenA !== ordenB) return ordenA - ordenB;
+      return compararCodigosNatural(a.codigo, b.codigo);
+    }
+
     function cargarNodosPaginado() {
       return paginarSelect(() => {
         let q = supabaseClient.from('v_nodes_with_workflow').select('*')
@@ -1896,6 +1938,18 @@
         if (!mapaHijosPorPadre[clave]) mapaHijosPorPadre[clave] = [];
         mapaHijosPorPadre[clave].push(n);
       });
+
+      // Los hermanos con el mismo "orden" (por ejemplo, todos los nodos
+      // creados por una importación masiva, que se guardan con orden=0)
+      // llegaban de la base de datos desempatados por "id" -- un uuid, así
+      // que sin querer salían en un orden prácticamente al azar (SEC265,
+      // SEC262, SEC264...) en vez del orden natural de su código. Aquí se
+      // reordenan una vez, en memoria: primero por "orden" (respeta el
+      // "subir/bajar" manual, que sí asigna valores distintos), y como
+      // desempate por el código en orden natural (SEC261 antes que SEC262,
+      // GR1 antes que GR3... y PL2000 antes que PL10000 aunque tengan
+      // distinta cantidad de dígitos).
+      Object.values(mapaHijosPorPadre).forEach(hijos => hijos.sort(compararNodosHermanos));
 
       abrirBuquesNuevosPorPrimeraVez();
       if (esGestor()) actualizarSelectorBuqueLeyenda();
