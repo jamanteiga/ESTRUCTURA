@@ -1897,10 +1897,44 @@
         mapaHijosPorPadre[clave].push(n);
       });
 
+      abrirBuquesNuevosPorPrimeraVez();
       if (esGestor()) actualizarSelectorBuqueLeyenda();
       if (miPerfil.rol === 'ADMIN') actualizarSubmenuBackup();
       renderizarArbolCompleto();
       if (esGestor()) actualizarBadgeAlertas();
+    }
+
+    // Un Buque colapsado no muestra sus hijos (aunque existan de verdad en
+    // la base de datos) hasta que alguien lo abre a mano -- y ese "abierto/
+    // cerrado" se guarda en localStorage por navegador, así que un Buque
+    // recién creado (por ejemplo, importando un Excel) siempre empieza
+    // cerrado, porque su id nunca ha estado en ese localStorage. Esto se
+    // confunde fácilmente con "los datos no se han importado bien". Para
+    // evitarlo: la primera vez que este navegador ve un Buque (su id no
+    // está en la lista de "ya vistos"), se abre solo -- a partir de ahí, si
+    // el usuario lo cierra a mano, se respeta esa decisión como siempre.
+    function claveBuquesVistos() { return 'estructura_buques_vistos_' + miPerfil.id; }
+
+    function abrirBuquesNuevosPorPrimeraVez() {
+      if (!miPerfil) return;
+      let vistos;
+      try { vistos = new Set(JSON.parse(localStorage.getItem(claveBuquesVistos()) || '[]')); }
+      catch (e) { vistos = new Set(); }
+
+      const buquesActuales = mapaHijosPorPadre['__raiz__'] || [];
+      let huboNuevos = false;
+      buquesActuales.forEach(b => {
+        if (!vistos.has(b.id)) {
+          vistos.add(b.id);
+          nodosAbiertos.add(b.id);
+          huboNuevos = true;
+        }
+      });
+
+      if (huboNuevos) {
+        try { localStorage.setItem(claveBuquesVistos(), JSON.stringify([...vistos])); } catch (e) {}
+        guardarEstadoAbiertos();
+      }
     }
 
     // Aviso in-app (badge "⚠️ Alertas" del menú) para el gestor: cuenta
