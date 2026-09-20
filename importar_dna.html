@@ -58,42 +58,19 @@
 
   <div id="panel" style="display:none;">
     <div class="card">
-      <h2 style="margin-top:0; font-size:15px;">1. ¿Qué es esto?</h2>
-      <p style="font-size:13px; color:#555;">
-        Importa el Excel de Windchill tal cual viene: una columna cuya cabecera dice exactamente
-        <code>DNA</code>, con una ruta completa por fila, p.ej.
-        <code>SEC261/SB1/UA1/GR1/UL01/NL801/B221-0001-S</code>. El primer tramo es el Bloque, cada "/" es
-        un nivel más, y el tipo de cada tramo se reconoce solo: por su prefijo de letras (SB, UA, GR,
-        UL, NL...), o como Componente especial si no encaja en nada de lo anterior. Si existe la columna
-        <code>Anidación</code>, su valor se guarda como descripción del nodo. Lo que ya exista en el
-        árbol no se toca ni se duplica — si una fila entera ya existe, se salta sin más.
-      </p>
-      <p style="font-size:13px; color:#555;">
-        <strong>Piezas numeradas de Plancha/Perfil</strong> (el último tramo, si es un número puro):
-        no cuelgan literalmente de la ruta del Excel. Igual que al crearlas a mano en el árbol, primero
-        se asegura dentro del Bloque la rama Anidados → PL/PERF → familia (PL1000, PL2000, PL3000, PL5000,
-        PL8000, PERF4000, PERF6000, PERF7000 — creándola si todavía no existe), la pieza se crea ahí
-        dentro (familia según su primera cifra: 1/2/3→Plancha 1000/2000/3000, 5→chapa especial PL5000,
-        8→chapa especial PL8000, 4/6/7→Perfil 4000/6000/7000), y el tramo anterior de la ruta (su
-        "ubicación real", p.ej. NL801) se queda solo con un enlace hacia ella — el mismo mecanismo de
-        "📦 Piezas usadas aquí" que ya usa el árbol para las piezas creadas a mano.
-      </p>
-    </div>
-
-    <div class="card">
-      <h2 style="margin-top:0; font-size:15px;">2. Elige el Buque destino</h2>
+      <h2 style="margin-top:0; font-size:15px;">1. Elige el Buque destino</h2>
       <label for="sel-destino">El Bloque de cada ruta se creará (o se reutilizará si ya existe) colgando de este Buque</label>
       <select id="sel-destino"></select>
     </div>
 
     <div class="card">
-      <h2 style="margin-top:0; font-size:15px;">3. Sube el Excel</h2>
+      <h2 style="margin-top:0; font-size:15px;">2. Sube el Excel</h2>
       <input type="file" id="input-excel" accept=".xlsx,.xls">
       <div class="estado-msg" id="estado-carga"></div>
     </div>
 
     <div class="card" id="card-preview" style="display:none;">
-      <h2 style="margin-top:0; font-size:15px;">4. Revisa antes de importar</h2>
+      <h2 style="margin-top:0; font-size:15px;">3. Revisa antes de importar</h2>
       <div class="resumen-cifras" id="resumen-cifras"></div>
       <div class="contenedor-preview">
         <table>
