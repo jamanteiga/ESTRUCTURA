@@ -712,6 +712,27 @@
       }
     }
 
+    // Supabase/PostgREST corta cada consulta a 1000 filas por defecto salvo
+    // que se pida por páginas -- con más de 1000 nodos activos en total (entre
+    // todos los buques), un único .select() sin paginar puede devolver el
+    // Buque pero dejarse fuera, al azar, buena parte de sus descendientes (ver
+    // diagnostico_limite_filas_nodes.sql, donde ya pasó lo mismo en el árbol:
+    // arbol.html se corrigió con este mismo patrón). Aquí venía sin paginar,
+    // así que un Buque cuyas tareas asignadas cayeran fuera de esa primera
+    // "página" aparecía como si no tuviese ninguna tarea.
+    async function paginarSelect(factoriaQuery, tamPagina = 1000) {
+      let desde = 0;
+      let todos = [];
+      while (true) {
+        const { data, error } = await factoriaQuery().range(desde, desde + tamPagina - 1);
+        if (error) return { data: null, error };
+        todos = todos.concat(data || []);
+        if (!data || data.length < tamPagina) break;
+        desde += tamPagina;
+      }
+      return { data: todos, error: null };
+    }
+
     async function cargarGantt() {
       const contenedor = document.getElementById('gantt-contenido');
       const mensajeVacio = document.getElementById('mensaje-vacio');
@@ -721,16 +742,22 @@
       const buqueSeleccionado = buques.find(b => b.id === buqueActualId);
       actualizarCabecera(buqueSeleccionado?.codigo || '');
 
-      const { data: filasCrudas, error } = await supabaseClient
+      const { data: filasCrudas, error } = await paginarSelect(() => supabaseClient
         .from('nodes')
         .select(`
           id, codigo, nombre, parent_id, tipo,
           node_workflow ( trabajador_id, revisor_id, asignado_en, trabajo_estado, trabajo_iniciado_en, trabajo_terminado_en, revisado_en, revision_estado, fecha_inicio_prevista, fecha_fin_prevista )
         `)
-        .eq('activo', true);
+        .eq('activo', true)
+        .order('id', { ascending: true })
+      );
 
       if (error) { mensajeVacio.style.display = 'block'; mensajeVacio.textContent = 'Error: ' + error.message; return; }
 
+      // node_dependencias se deja sin paginar -- no hay confirmada una columna
+      // con la que desempatar el orden entre páginas en esa tabla (igual que
+      // ya se documenta en arbol.html), y es una tabla mucho más pequeña (no
+      // una fila por pieza), así que el riesgo de superar ya el límite es bajo.
       const { data: depsCrudas } = await supabaseClient.from('node_dependencias').select('*');
       dependenciasCache = depsCrudas || [];
 

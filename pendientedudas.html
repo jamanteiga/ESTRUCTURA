@@ -520,8 +520,25 @@
       document.getElementById('contenido').innerHTML = renderPendientesDudas();
     }
 
+    // Supabase/PostgREST corta cada consulta a 1000 filas por defecto salvo
+    // que se pida por páginas -- con más de 1000 nodos activos en total,
+    // esta consulta sin paginar podía dejarse fuera, al azar, buena parte
+    // del árbol (mismo fallo ya corregido en arbol.html y gantt.html).
+    async function paginarSelect(factoriaQuery, tamPagina = 1000) {
+      let desde = 0;
+      let todos = [];
+      while (true) {
+        const { data, error } = await factoriaQuery().range(desde, desde + tamPagina - 1);
+        if (error) return { data: null, error };
+        todos = todos.concat(data || []);
+        if (!data || data.length < tamPagina) break;
+        desde += tamPagina;
+      }
+      return { data: todos, error: null };
+    }
+
     async function cargarYPintar() {
-      const { data: nodos, error } = await supabaseClient.from('v_nodes_with_workflow').select('*').eq('activo', true);
+      const { data: nodos, error } = await paginarSelect(() => supabaseClient.from('v_nodes_with_workflow').select('*').eq('activo', true).order('id', { ascending: true }));
       if (error) { document.getElementById('contenido').innerHTML = `<p style="color:red;">Error: ${error.message}</p>`; return; }
       mapaNodoPorId = {};
       nodos.forEach(n => { mapaNodoPorId[n.id] = n; });
