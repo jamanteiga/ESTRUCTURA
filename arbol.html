@@ -1395,6 +1395,9 @@
     let modoTiempos = false;
     let modoSeleccion = false;
     let nodosSeleccionados = new Set();
+    // Ancla para selección por rango (clic en la primera tarea, Shift+clic
+    // en la última -> se marca todo lo que hay visualmente entre medio).
+    let anclaSeleccionRango = null;
     let mapaTodoParaPapelera = {};
     let nodoAEliminarDefinitivo = null;
 
@@ -2996,7 +2999,7 @@
       // así que cualquier acción masiva sobre él fallaría.
       const puedeMarcarEstaCasilla = puedeSeleccionar() || (puedeSeleccionarBasico() && (!nodo.trabajador_id || nodo.trabajador_id === miPerfil.id));
       const checkboxSeleccion = (modoSeleccion && puedeMarcarEstaCasilla && !sinAsignacion && !nodo.esReferencia)
-        ? `<input type="checkbox" class="chk-seleccion" ${nodosSeleccionados.has(nodo.id) ? 'checked' : ''} onclick="toggleSeleccionNodo('${nodo.id}', event)">`
+        ? `<input type="checkbox" class="chk-seleccion" data-node-id="${nodo.id}" ${nodosSeleccionados.has(nodo.id) ? 'checked' : ''} onclick="toggleSeleccionNodo('${nodo.id}', event)">`
         : '';
 
       const tituloTipo = nodo.esReferencia
@@ -4412,6 +4415,29 @@
       document.getElementById('modal-fechas-cascada').style.display = 'none';
     }
 
+    // El campo "Inicio previsto" es un <input type="datetime-local"> nativo
+    // del navegador: su segmento de año se puede escribir a mano o subir/
+    // bajar con la rueda del ratón, y Chrome no le pone límite de dígitos
+    // mientras se edita -- un giro de rueda de más ahí (muy fácil de hacer
+    // sin darse cuenta) puede dejarlo en, p.ej., "92026" en vez de "2026".
+    // Ni la base de datos ni este código comprobaban antes que el año
+    // tuviera sentido: un año así de disparatado se guardaba tal cual en
+    // las tareas, y luego new Date(...) en el navegador no sabe interpretar
+    // un año que no sea de 4 cifras, así que todo lo que dependía de esa
+    // fecha (la previsualización, y las propias tareas ya guardadas) se
+    // veía como "NaN:NaN NaN/NaN/NaN". Este chequeo corta el problema de
+    // raíz, antes de calcular nada y antes de guardar nada.
+    function inicioCascadaEsRazonable(inicioVal) {
+      if (!inicioVal) return true; // que esté vacío lo comprueba ya el resto del código
+      const anio = parseInt(inicioVal.split('-')[0], 10);
+      if (!Number.isInteger(anio)) return false;
+      const actual = new Date().getFullYear();
+      // Margen generoso -- de un año atrás (regularizar algo con retraso) a
+      // 15 años vista -- para no molestar en ningún caso real de uso, pero
+      // sí atrapar un año mal escrito o la rueda del ratón desbocada.
+      return anio >= actual - 1 && anio <= actual + 15;
+    }
+
     // La previsualización y el reparto real usan el mismo motor de horario
     // laboral que la base de datos (invierno/verano, descansos, fin de
     // semana/festivos/ausencias) -- calcular_fechas_cascada() es de solo
@@ -4427,6 +4453,11 @@
       const ids = idsSeleccionadosEnOrdenVisual();
       const n = ids.length;
       if (!inicioVal || n === 0) { previa.style.display = 'none'; return; }
+      if (!inicioCascadaEsRazonable(inicioVal)) {
+        previa.textContent = 'El año de la fecha de inicio no parece correcto -- revísalo (¿se ha movido sin querer la rueda del ratón sobre el selector?) antes de continuar.';
+        previa.style.display = 'block';
+        return;
+      }
       const duracionMin = parseInt(document.getElementById('fc-duracion').value, 10);
       const primerNodo = mapaNodoPorId[ids[0]];
       if (!primerNodo?.trabajador_id) {
@@ -4456,6 +4487,11 @@
       const inicioVal = document.getElementById('fc-inicio').value;
       if (!inicioVal) {
         estadoEl.textContent = 'Indica la fecha/hora de inicio de la primera tarea.';
+        estadoEl.className = 'estado-msg error';
+        return;
+      }
+      if (!inicioCascadaEsRazonable(inicioVal)) {
+        estadoEl.textContent = 'El año de la fecha de inicio no parece correcto -- revísalo antes de aplicar (¿se ha movido sin querer la rueda del ratón sobre el selector de fecha?).';
         estadoEl.className = 'estado-msg error';
         return;
       }
@@ -4557,6 +4593,7 @@
       estadoEl.textContent = '';
       cerrarModalFechasCascada();
       nodosSeleccionados.clear();
+      anclaSeleccionRango = null;
       modoSeleccion = false;
       document.getElementById('chk-modo-seleccion').checked = false;
       actualizarBarraSeleccion();
@@ -6519,7 +6556,7 @@
 
     function toggleModoSeleccion() {
       modoSeleccion = document.getElementById('chk-modo-seleccion').checked;
-      if (!modoSeleccion) nodosSeleccionados.clear();
+      if (!modoSeleccion) { nodosSeleccionados.clear(); anclaSeleccionRango = null; }
       actualizarBarraSeleccion();
       renderizarArbolCompleto();
     }
@@ -6549,9 +6586,45 @@
       renderizarArbolCompleto();
     }
 
+    // Recorre las casillas de selección tal cual están hoy en el árbol (en
+    // el mismo orden visual en el que se ven en pantalla) y devuelve los ids
+    // de nodo de todas las que hay entre idInicio e idFin, ambos incluidos
+    // -- en cualquier orden en que se hayan clicado. Si alguno de los dos ya
+    // no está en pantalla (p.ej. se colapsó esa rama entre medio), no se
+    // puede calcular el rango y devuelve null.
+    function idsEntreCasillasVisibles(idInicio, idFin) {
+      const casillas = Array.from(document.querySelectorAll('#arbol-raiz .chk-seleccion'));
+      const ids = casillas.map(c => c.dataset.nodeId);
+      const iInicio = ids.indexOf(idInicio);
+      const iFin = ids.indexOf(idFin);
+      if (iInicio === -1 || iFin === -1) return null;
+      const [desde, hasta] = iInicio <= iFin ? [iInicio, iFin] : [iFin, iInicio];
+      return ids.slice(desde, hasta + 1);
+    }
+
     function toggleSeleccionNodo(nodeId, event) {
       event.stopPropagation();
       if (mapaNodoPorId[nodeId]?.esReferencia) return;
+
+      // Shift+clic sobre una casilla, habiendo ya clicado otra antes (la
+      // "ancla"): selecciona de golpe todas las tareas que hay entre esa
+      // ancla y esta, tal como se ven en pantalla -- para marcar muchas de
+      // golpe y asignarlas juntas, sin ir una a una. No arrastra hijos por
+      // su cuenta: si una rama está desplegada, sus piezas ya tienen su
+      // propia casilla dentro del rango; si está colapsada, no hace falta.
+      if (event.shiftKey && anclaSeleccionRango && anclaSeleccionRango !== nodeId) {
+        const idsRango = idsEntreCasillasVisibles(anclaSeleccionRango, nodeId);
+        if (idsRango) {
+          idsRango.forEach(id => nodosSeleccionados.add(id));
+          anclaSeleccionRango = nodeId;
+          actualizarBarraSeleccion();
+          renderizarArbolCompleto();
+          return;
+        }
+        // Si no se pudo calcular el rango (p.ej. la ancla ya no está
+        // visible), se sigue con el comportamiento normal de abajo.
+      }
+
       const descendientes = obtenerDescendientesIds(nodeId);
       if (nodosSeleccionados.has(nodeId)) {
         nodosSeleccionados.delete(nodeId);
@@ -6568,6 +6641,7 @@
         nodosSeleccionados.add(nodeId);
         descendientes.forEach(id => nodosSeleccionados.add(id));
       }
+      anclaSeleccionRango = nodeId;
       actualizarBarraSeleccion();
       renderizarArbolCompleto();
     }
@@ -6591,6 +6665,7 @@
 
     function cancelarSeleccion() {
       nodosSeleccionados.clear();
+      anclaSeleccionRango = null;
       actualizarBarraSeleccion();
       renderizarArbolCompleto();
     }
@@ -6615,6 +6690,7 @@
       }
 
       nodosSeleccionados.clear();
+      anclaSeleccionRango = null;
       modoSeleccion = false;
       document.getElementById('chk-modo-seleccion').checked = false;
       actualizarBarraSeleccion();
@@ -6648,6 +6724,7 @@
       }
 
       nodosSeleccionados.clear();
+      anclaSeleccionRango = null;
       modoSeleccion = false;
       document.getElementById('chk-modo-seleccion').checked = false;
       actualizarBarraSeleccion();
@@ -6684,6 +6761,7 @@
       }
 
       nodosSeleccionados.clear();
+      anclaSeleccionRango = null;
       modoSeleccion = false;
       document.getElementById('chk-modo-seleccion').checked = false;
       actualizarBarraSeleccion();
@@ -6719,6 +6797,7 @@
       }
 
       nodosSeleccionados.clear();
+      anclaSeleccionRango = null;
       modoSeleccion = false;
       document.getElementById('chk-modo-seleccion').checked = false;
       actualizarBarraSeleccion();
@@ -6788,6 +6867,7 @@
       estadoEl.textContent = '';
       cerrarModalTomarTarea();
       nodosSeleccionados.clear();
+      anclaSeleccionRango = null;
       modoSeleccion = false;
       document.getElementById('chk-modo-seleccion').checked = false;
       actualizarBarraSeleccion();
@@ -6854,6 +6934,7 @@
 
       cerrarModalAnadirMasivo();
       nodosSeleccionados.clear();
+      anclaSeleccionRango = null;
       modoSeleccion = false;
       document.getElementById('chk-modo-seleccion').checked = false;
       actualizarBarraSeleccion();
@@ -6945,6 +7026,7 @@
       estadoEl.textContent = '';
       cerrarModalAsignacionMasiva();
       nodosSeleccionados.clear();
+      anclaSeleccionRango = null;
       modoSeleccion = false;
       document.getElementById('chk-modo-seleccion').checked = false;
       actualizarBarraSeleccion();
@@ -7024,6 +7106,7 @@
       estadoEl.textContent = '';
       cerrarModalEstadoMasivo();
       nodosSeleccionados.clear();
+      anclaSeleccionRango = null;
       modoSeleccion = false;
       document.getElementById('chk-modo-seleccion').checked = false;
       actualizarBarraSeleccion();
