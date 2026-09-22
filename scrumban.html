@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESTRUCTURA - Scrumban</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#007bff">
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px auto; padding: 0 16px; color: #333; max-width: 1700px; }
+    h1 { font-size: 22px; }
+    h2 { font-size: 14px; }
+    body.tema-oscuro { background: #1a1d21; color: #e0e0e0; }
+    body.tema-oscuro .card, body.tema-oscuro .card-col { background: #24282e; border-color: #3a3f47; }
+    body.tema-oscuro .ficha { background: #2f343b; border-color: #444; color: #e0e0e0; }
+    body.tema-oscuro .ruta-nodo { color: #a0a0a0; }
+    body.tema-oscuro .overlay-caja { background: #24282e; color: #e0e0e0; }
+    body.tema-oscuro select, body.tema-oscuro input { background: #1a1d21; color: #e0e0e0; border-color: #4a4f57; }
+    body.tema-oscuro table { color: #e0e0e0; }
+    body.tema-oscuro th { background: #14395c; }
+    body.tema-oscuro td { border-color: #3a3f47; }
+    body.tema-oscuro .aviso-datos { background: #3a3320; border-color: #7a6a2e; color: #f0e0a0; }
+    .header-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+    button { padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; }
+    button.secundario { background: #6c757d; }
+    button.secundario:hover { background: #5a6268; }
+    .estado-msg { font-size: 13px; }
+    .card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 14px; margin-bottom: 14px; }
+
+    .filtros { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+    .filtros select, .filtros input[type="text"] { padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+    .filtros label { font-size: 12px; color: #666; display: flex; align-items: center; gap: 4px; }
+
+    .aviso-datos { display:none; border-left: 4px solid #ffc107; background: #fff8e1; border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px; }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; background: white; font-size: 12px; }
+    th, td { padding: 6px; text-align: left; border-bottom: 1px solid #ddd; }
+    th { background: #1c6e8c; color: white; font-size: 11px; position: sticky; top: 0; }
+    td.num { text-align: center; }
+    tr.fila-critica { background: #ffe1e1; }
+    body.tema-oscuro tr.fila-critica { background: #4a2020; }
+    .ruta-nodo { color: #777; font-size: 10px; }
+
+    .f-sin_asignar { color: rgb(191,191,191); }
+    .f-asignada_sin_empezar { color: #fff; -webkit-text-stroke: 1.5px #000; filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 1px #000); }
+    .f-en_proceso { color: rgb(255,255,0); filter: drop-shadow(0 0 1px #b3b300) drop-shadow(0 0 1px #b3b300); }
+    .f-pendiente_revision { color: rgb(209,239,251); filter: drop-shadow(0 0 1px #7bb6c9) drop-shadow(0 0 1px #7bb6c9); }
+    .f-pendiente_dudas { color: rgb(0,176,240); }
+    .f-pendiente_cambios_modelo { color: rgb(255,192,0); }
+    .f-aprobado { color: rgb(146,208,80); }
+    .f-rechazado { color: rgb(255,0,0); }
+
+    .badge { display:inline-block; font-size: 10px; padding: 2px 7px; border-radius: 10px; background: #eee; color: #444; margin-right: 4px; }
+    .badge-critico { background: #dc3545; color: #fff; }
+
+    .contadores { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+    .contador { flex: 1; min-width: 88px; text-align: center; padding: 7px 4px; border-radius: 8px; font-weight: bold; border: 1px solid rgba(0,0,0,0.1); }
+    .contador .numero { font-size: 16px; display: block; }
+    .contador .etiqueta { font-size: 9px; }
+    .c-sin_asignar { background: rgb(191,191,191); color: #222; }
+    .c-asignada_sin_empezar { background: #fff; color: #333; border: 1px solid #999; }
+    .c-en_proceso { background: rgb(255,255,0); color: #222; }
+    .c-pendiente_revision { background: rgb(209,239,251); color: #222; }
+    .c-pendiente_dudas { background: rgb(0,176,240); color: #fff; }
+    .c-pendiente_cambios_modelo { background: rgb(255,192,0); color: #222; }
+    .c-aprobado { background: rgb(146,208,80); color: #fff; }
+    .c-rechazado { background: rgb(255,0,0); color: #fff; }
+
+    ul.lista-nodos { list-style: none; padding: 0; margin: 8px 0 0; }
+    ul.lista-nodos li { padding: 7px; border-bottom: 1px solid #eee; font-size: 12px; display: flex; align-items: center; gap: 8px; }
+    body.tema-oscuro ul.lista-nodos li { border-color: #3a3f47; }
+    .flecha { font-size: 16px; flex-shrink: 0; width: 18px; text-align: center; }
+    .vacio-lista { color: #999; font-size: 12px; text-align: center; padding: 10px 0; }
+
+    .barra-progreso { height: 8px; background: #e9ecef; border-radius: 4px; overflow: hidden; margin: 4px 0; }
+    .barra-progreso .relleno { height: 100%; background: rgb(146,208,80); }
+    body.tema-oscuro .barra-progreso { background: #3a3f47; }
+
+    .overlay {
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.55); align-items: center; justify-content: center; z-index: 5000;
+    }
+    .overlay-caja { background: white; border-radius: 8px; padding: 22px; max-width: 400px; width: 90%; }
+    .overlay-botones { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+    @media (max-width: 480px) {
+      body { margin: 10px auto; padding: 0 8px; box-sizing: border-box; }
+      h1 { font-size: 18px; }
+    }
+    .tablero { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 10px; align-items: flex-start; margin-top: 10px; }
+    .card-col { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 10px; min-width: 230px; max-width: 270px; flex: 1 0 230px; }
+    body.tema-oscuro .card-col { background: #24282e; border-color: #3a3f47; }
+    .card-col.wip-superado { border: 2px solid #dc3545; }
+    .card-col h2 { font-size: 13px; margin: 0 0 8px; display: flex; justify-content: space-between; align-items: center; }
+    .card-col .contador-col { background: #dee2e6; border-radius: 10px; padding: 1px 8px; font-size: 11px; }
+    .card-col .contador-col.wip-mal { background: #dc3545; color: #fff; }
+    .col-sin_asignar { border-top: 4px solid rgb(191,191,191); }
+    .col-pendiente { border-top: 4px solid #adb5bd; }
+    .col-en_proceso { border-top: 4px solid rgb(255,255,0); }
+    .col-pendiente_revision { border-top: 4px solid rgb(0,123,255); }
+    .col-rechazado { border-top: 4px solid rgb(255,0,0); }
+    .col-aprobado { border-top: 4px solid rgb(146,208,80); }
+    .lista-fichas { max-height: 62vh; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; min-height: 30px; }
+    .ficha { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 7px; font-size: 12px; }
+    body.tema-oscuro .ficha { background: #2f343b; border-color: #444; }
+    .ficha .cod { font-weight: bold; }
+    .ficha .ruta-nodo { color: #777; font-size: 10px; margin-top: 2px; }
+  </style>
+</head>
+<body>
+
+  <div class="header-bar">
+    <h1>🔀 Scrumban</h1>
+    <div>
+      <span id="texto-usuario" class="estado-msg"></span>
+      <button class="secundario" onclick="alternarTema()">🌙/☀️</button>
+      <button class="secundario" onclick="location.href='index.html'">🏠 Inicio</button>
+      <button class="secundario" onclick="location.href='arbol.html'">🌳 Árbol</button>
+      <button class="secundario" onclick="location.href='resumen.html'">📊 Resumen</button>
+      <button class="secundario" onclick="location.href='kanban.html'">🗂️ Kanban</button>
+      <button class="secundario" onclick="cerrarSesion()">Cerrar sesión</button>
+      <button style="background:#dc3545;" onclick="cerrarPagina()">❌ Cerrar</button>
+    </div>
+  </div>
+
+
+  <div class="filtros">
+    <select id="sk-filtro-buque"><option value="">Todos los buques</option></select>
+    <select id="sk-filtro-usuario" style="display:none;"><option value="">Todos los usuarios</option></select>
+    <label id="sk-wrap-mis-tareas" style="display:none;"><input type="checkbox" id="sk-chk-mis-tareas"> Solo mis tareas</label>
+    <input type="text" id="sk-buscar" placeholder="🔍 Buscar por código o nombre...">
+  </div>
+
+  <div id="aviso-datos" class="aviso-datos"></div>
+
+  <div id="panel-sprint" class="card" style="display:none;"></div>
+
+  <div id="contenido">
+    <p>Cargando...</p>
+  </div>
+
+
+  <div class="overlay" id="modal-aviso">
+    <div class="overlay-caja" style="max-width:400px; text-align:center;">
+      <p id="modal-aviso-texto" style="font-size:14px; margin:10px 0 18px; white-space:pre-line;"></p>
+      <button onclick="document.getElementById('modal-aviso').style.display='none';">Aceptar</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+
+    const SUPABASE_URL = 'https://wuarkraddnndmgvfnkmm.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    async function comprobarMantenimiento(rol) {
+      if (rol === 'ADMIN') return false;
+      try {
+        const { data } = await supabaseClient.from('app_mantenimiento').select('activo').eq('id', 1).single();
+        if (data && data.activo) { window.location.href = 'mantenimiento.html'; return true; }
+      } catch (e) { /* si falla la comprobación, no se bloquea la app por eso */ }
+      return false;
+    }
+
+    let miPerfil = null;
+    let mapaNodoPorId = {};
+    let dependenciasCache = [];
+    let todosLosNodos = [];
+    let filtroBuqueId = '';
+
+    function esGestor() { return miPerfil.rol === 'ADMIN' || miPerfil.rol === 'REVISOR'; }
+    function esInvitado() { return miPerfil.rol === 'INVITADO'; }
+    function pareceGestor() { return esGestor() || esInvitado(); }
+
+    function aplicarTema(tema) {
+      document.body.classList.toggle('tema-oscuro', tema === 'oscuro');
+      localStorage.setItem('estructura_tema', tema);
+    }
+    function alternarTema() {
+      aplicarTema(document.body.classList.contains('tema-oscuro') ? 'claro' : 'oscuro');
+    }
+    aplicarTema(localStorage.getItem('estructura_tema') || 'claro');
+
+    function mostrarAvisoModal(mensaje) {
+      document.getElementById('modal-aviso-texto').textContent = mensaje;
+      document.getElementById('modal-aviso').style.display = 'flex';
+    }
+
+    async function registrarLog(accion, descripcion) {
+      try { await supabaseClient.from('audit_log').insert({ accion, descripcion, user_agent: navigator.userAgent }); }
+      catch (e) { console.warn('No se pudo registrar el log:', e); }
+    }
+    async function cerrarSesion() {
+      await registrarLog('LOGOUT', `Cerró sesión (${miPerfil?.username || ''})`);
+      await supabaseClient.auth.signOut();
+      window.location.href = 'login.html';
+    }
+    function cerrarPagina() { window.location.href = 'arbol.html'; }
+
+    function calcularEstadoPropio(nodo) {
+      if (nodo.revision_estado === 'APROBADO') return 'aprobado';
+      if (nodo.revision_estado === 'RECHAZADO') return 'rechazado';
+      if (nodo.revision_estado === 'PENDIENTE' || nodo.revision_estado === 'EN_REVISION') return 'pendiente_revision';
+      if (nodo.trabajo_estado === 'EN_TRABAJO') return 'en_proceso';
+      if (nodo.trabajo_estado === 'PENDIENTE_DUDAS') return 'pendiente_dudas';
+      if (nodo.trabajo_estado === 'PENDIENTE_CAMBIOS_MODELO') return 'pendiente_cambios_modelo';
+      if (nodo.trabajador_id) return 'asignada_sin_empezar';
+      return 'sin_asignar';
+    }
+    const ICONO_ESTADO = {
+      sin_asignar: '⬜', asignada_sin_empezar: '▫️', en_proceso: '🔧', pendiente_dudas: '❓',
+      pendiente_cambios_modelo: '🛠', pendiente_revision: '👀', rechazado: '✘', aprobado: '✔'
+    };
+    const TIPOS_SIN_ASIGNACION = new Set(['BUQUE']);
+
+    function rutaCompleta(nodo) {
+      const partes = [];
+      let actual = nodo;
+      while (actual) { partes.unshift(actual.codigo); actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null; }
+      return partes.join(' > ');
+    }
+    function buqueDeNodo(nodo) {
+      let actual = nodo;
+      while (actual) { if (actual.tipo === 'BUQUE') return actual; actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null; }
+      return null;
+    }
+
+    // Supabase/PostgREST corta cada consulta a 1000 filas por defecto salvo
+    // que se pida por páginas -- mismo parche ya aplicado en el resto de la app.
+    async function paginarSelect(factoriaQuery, tamPagina = 1000) {
+      let desde = 0;
+      let todos = [];
+      while (true) {
+        const { data, error } = await factoriaQuery().range(desde, desde + tamPagina - 1);
+        if (error) return { data: null, error };
+        todos = todos.concat(data || []);
+        if (!data || data.length < tamPagina) break;
+        desde += tamPagina;
+      }
+      return { data: todos, error: null };
+    }
+
+    async function cargarNodosYDependencias() {
+      const [{ data: nodos, error }, { data: deps }] = await Promise.all([
+        paginarSelect(() => supabaseClient.from('v_nodes_with_workflow').select('*').eq('activo', true).order('id', { ascending: true })),
+        supabaseClient.from('node_dependencias').select('*')
+      ]);
+      if (error) return { error };
+      dependenciasCache = deps || [];
+      mapaNodoPorId = {};
+      nodos.forEach(n => { mapaNodoPorId[n.id] = n; });
+      todosLosNodos = nodos;
+      return { error: null };
+    }
+
+    function opcionesBuqueEnSelect(selectEl) {
+      const actuales = new Set(Array.from(selectEl.options).map(o => o.value));
+      Object.values(mapaNodoPorId).filter(n => n.tipo === 'BUQUE').sort((a, b) => a.codigo.localeCompare(b.codigo, 'es')).forEach(b => {
+        if (!actuales.has(b.id)) selectEl.insertAdjacentHTML('beforeend', `<option value="${b.id}">${b.codigo} — ${b.nombre}</option>`);
+      });
+    }
+
+    async function iniciarBase(pagina) {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (!session) { window.location.href = 'login.html?next=' + pagina; return null; }
+      const { data: perfil, error } = await supabaseClient.from('profiles').select('*').eq('id', session.user.id).single();
+      if (error || !perfil || !perfil.activo) {
+        document.body.innerHTML = '<p style="color:red; font-weight:bold; margin-top:60px; text-align:center;">No tienes acceso.</p>';
+        return null;
+      }
+      miPerfil = perfil;
+      if (await comprobarMantenimiento(perfil.rol)) return null;
+      document.getElementById('texto-usuario').textContent =
+        `${perfil.nombre_completo} (${perfil.username}) — ${({TRABAJADOR:'Usuario',REVISOR:'Supervisor',ADMIN:'Admin',INVITADO:'Invitado',WINDCHILL:'Windchill'})[perfil.rol] || perfil.rol}`;
+      return perfil;
+    }
+
+
+// ---------------------------------------------------------------------
+// Núcleo de cálculo compartido por rutacritica.html, pert.html, Scrum.html,
+// scrumban.html, GantWF.html y lean.html. Este fichero se prueba aquí con
+// datos simulados (node) y luego su código se copia literalmente dentro de
+// cada página (misma convención que el resto de la app: cada .html es
+// autocontenido, sin imports compartidos).
+// ---------------------------------------------------------------------
+
+const UN_DIA_MS = 86400000;
+const UNA_HORA_MS = 3600000;
+
+// -------------------- CPM extendido (ES/EF/LS/LF/holgura + cadena crítica) --------------------
+// idsNodos: ids de las tareas (hojas) de un buque (o del conjunto que se
+// quiera analizar). mapaNodoPorId: id -> nodo (con fecha_inicio_prevista/
+// fecha_fin_prevista). dependencias: filas de node_dependencias
+// (predecesor_id/sucesor_id), de TODO el dataset (se filtran aquí).
+function calcularCPM(idsNodos, mapaNodoPorId, dependencias) {
+  const rango = {};
+  idsNodos.forEach(id => {
+    const n = mapaNodoPorId[id];
+    if (n && n.fecha_inicio_prevista && n.fecha_fin_prevista) {
+      rango[id] = { inicio: new Date(n.fecha_inicio_prevista), fin: new Date(n.fecha_fin_prevista) };
+    }
+  });
+  const ids = Object.keys(rango);
+  const excluidos = idsNodos.filter(id => !rango[id]);
+  if (ids.length === 0) {
+    return { ES: {}, EF: {}, LS: {}, LF: {}, holguras: new Map(), criticos: new Set(), cadenaCritica: [], excluidos, sinDependencias: true };
+  }
+
+  const sucesoresDe = {}, predecesoresDe = {};
+  ids.forEach(id => { sucesoresDe[id] = []; predecesoresDe[id] = []; });
+  let numDependenciasRelevantes = 0;
+  dependencias.forEach(d => {
+    if (rango[d.predecesor_id] && rango[d.sucesor_id]) {
+      sucesoresDe[d.predecesor_id].push(d.sucesor_id);
+      predecesoresDe[d.sucesor_id].push(d.predecesor_id);
+      numDependenciasRelevantes++;
+    }
+  });
+
+  const duracionMs = id => Math.max(rango[id].fin - rango[id].inicio, 0);
+  const EF = {};
+  function calcularEF(id, pila) {
+    if (EF[id] !== undefined) return EF[id];
+    if (pila.has(id)) return EF[id] = rango[id].fin; // ciclo: se corta aquí, no se cuelga
+    pila.add(id);
+    let inicioReal = rango[id].inicio;
+    predecesoresDe[id].forEach(pid => {
+      const ef = calcularEF(pid, pila);
+      if (ef > inicioReal) inicioReal = ef;
+    });
+    return EF[id] = new Date(inicioReal.getTime() + duracionMs(id));
+  }
+  ids.forEach(id => calcularEF(id, new Set()));
+
+  const finProyecto = new Date(Math.max(...ids.map(id => EF[id].getTime())));
+  const LS = {};
+  function calcularLS(id, pila) {
+    if (LS[id] !== undefined) return LS[id];
+    if (pila.has(id)) return LS[id] = finProyecto;
+    pila.add(id);
+    const sucs = sucesoresDe[id];
+    const finTardio = sucs.length === 0 ? finProyecto : new Date(Math.min(...sucs.map(sid => calcularLS(sid, pila).getTime())));
+    return LS[id] = new Date(finTardio.getTime() - duracionMs(id));
+  }
+  ids.forEach(id => calcularLS(id, new Set()));
+
+  const ES = {}, LF = {};
+  ids.forEach(id => {
+    ES[id] = new Date(EF[id].getTime() - duracionMs(id));
+    LF[id] = new Date(LS[id].getTime() + duracionMs(id));
+  });
+
+  const criticos = new Set();
+  const holguras = new Map();
+  ids.forEach(id => {
+    const holguraMs = LS[id].getTime() - ES[id].getTime();
+    holguras.set(id, Math.round(holguraMs / UN_DIA_MS));
+    if (Math.abs(holguraMs) < UNA_HORA_MS) criticos.add(id);
+  });
+
+  // Cadena crítica ordenada: partiendo de los nodos críticos sin predecesor
+  // crítico, se sigue por sucesores críticos hasta el final. Si hay varias
+  // ramas críticas (caso normal en un grafo real), se listan todas.
+  const cadenaCritica = [];
+  const inicios = ids.filter(id => criticos.has(id) && !predecesoresDe[id].some(p => criticos.has(p)));
+  const visitados = new Set();
+  function seguirCadena(id, cadenaActual) {
+    cadenaActual.push(id);
+    visitados.add(id);
+    const siguientesCriticos = sucesoresDe[id].filter(s => criticos.has(s));
+    if (siguientesCriticos.length === 0) {
+      cadenaCritica.push(cadenaActual.slice());
+    } else {
+      siguientesCriticos.forEach(s => {
+        if (!cadenaActual.includes(s)) seguirCadena(s, cadenaActual);
+        else cadenaCritica.push(cadenaActual.slice());
+      });
+    }
+    cadenaActual.pop();
+  }
+  inicios.forEach(id => seguirCadena(id, []));
+  // Nodos críticos aislados (sin dependencias) que no arrancan ninguna
+  // cadena porque ya están en otra rama: los que queden sueltos van solos.
+  ids.forEach(id => { if (criticos.has(id) && !visitados.has(id)) cadenaCritica.push([id]); });
+
+  return {
+    ES, EF, LS, LF, holguras, criticos, cadenaCritica, excluidos,
+    sinDependencias: numDependenciasRelevantes === 0
+  };
+}
+
+// -------------------- Sprints quincenales automáticos --------------------
+// nodos: tareas con fecha_inicio_prevista/fecha_fin_prevista (ya filtradas a
+// las que tengan ambas fechas). Devuelve la lista de sprints [{numero,
+// inicio, fin}] y una función para saber a qué sprint pertenece un nodo.
+function calcularSprints(nodos, duracionDias = 14) {
+  const conFecha = nodos.filter(n => n.fecha_inicio_prevista && n.fecha_fin_prevista);
+  if (conFecha.length === 0) return { sprints: [], indiceDeNodo: () => -1 };
+
+  const minInicio = new Date(Math.min(...conFecha.map(n => new Date(n.fecha_inicio_prevista).getTime())));
+  const maxFin = new Date(Math.max(...conFecha.map(n => new Date(n.fecha_fin_prevista).getTime())));
+  const anclaje = new Date(minInicio); anclaje.setHours(0, 0, 0, 0);
+  const duracionMs = duracionDias * UN_DIA_MS;
+  const numSprints = Math.max(1, Math.ceil(((maxFin.getTime() - anclaje.getTime()) || 1) / duracionMs));
+
+  const sprints = [];
+  for (let i = 0; i < numSprints; i++) {
+    const inicio = new Date(anclaje.getTime() + i * duracionMs);
+    const fin = new Date(anclaje.getTime() + (i + 1) * duracionMs - UN_DIA_MS);
+    sprints.push({ numero: i + 1, inicio, fin });
+  }
+
+  function indiceDeNodo(n) {
+    if (!n.fecha_inicio_prevista) return -1;
+    const f = new Date(n.fecha_inicio_prevista).getTime();
+    let idx = Math.floor((f - anclaje.getTime()) / duracionMs);
+    if (idx < 0) idx = 0;
+    if (idx > numSprints - 1) idx = numSprints - 1;
+    return idx;
+  }
+
+  return { sprints, indiceDeNodo };
+}
+
+// -------------------- Agregación de rango de fechas por Bloque (GantWF) --------------------
+// nodos: todos los nodos activos (con parent_id/tipo). Devuelve, para cada
+// nodo de tipo BLOQUE (o el "contenedor de segundo nivel" bajo un BUQUE si
+// no hay tipo BLOQUE), el rango [minInicio, maxFin] agregado de sus
+// descendientes con fechas, más el nº de tareas y cuántas aprobadas.
+function calcularRangoBloques(nodos, calcularEstadoPropioFn) {
+  const mapa = {};
+  nodos.forEach(n => { mapa[n.id] = n; });
+
+  function buqueDe(n) {
+    let a = n;
+    while (a) { if (a.tipo === 'BUQUE') return a; a = a.parent_id ? mapa[a.parent_id] : null; }
+    return null;
+  }
+  function bloqueDe(n) {
+    let a = n;
+    while (a) {
+      if (a.tipo === 'BLOQUE') return a;
+      a = a.parent_id ? mapa[a.parent_id] : null;
+    }
+    return null;
+  }
+
+  const porBloque = {};
+  nodos.forEach(n => {
+    if (n.tipo === 'BUQUE' || n.tipo === 'BLOQUE') return; // solo hojas/contenedores intermedios cuentan como "tarea"
+    const bloque = bloqueDe(n);
+    if (!bloque) return;
+    if (!porBloque[bloque.id]) {
+      porBloque[bloque.id] = { bloque, buque: buqueDe(bloque), inicio: null, fin: null, total: 0, aprobadas: 0 };
+    }
+    const acc = porBloque[bloque.id];
+    acc.total++;
+    if (calcularEstadoPropioFn(n) === 'aprobado') acc.aprobadas++;
+    if (n.fecha_inicio_prevista) {
+      const f = new Date(n.fecha_inicio_prevista);
+      if (!acc.inicio || f < acc.inicio) acc.inicio = f;
+    }
+    if (n.fecha_fin_prevista) {
+      const f = new Date(n.fecha_fin_prevista);
+      if (!acc.fin || f > acc.fin) acc.fin = f;
+    }
+  });
+
+  return Object.values(porBloque);
+}
+
+// -------------------- Métricas Lean: cycle time / lead time / throughput --------------------
+// nodos: tareas de un buque (u ficheros). Cycle time = fecha_fin_real -
+// fecha_inicio_real (solo tareas ya trabajadas de principio a fin). Lead
+// time = fecha_fin_real - fecha_inicio_prevista (desde que se planificó
+// hasta que se terminó). Throughput = nº de tareas con fecha_fin_real por
+// semana (agrupadas por semana ISO de esa fecha).
+function calcularMetricasLean(nodos) {
+  const completadas = nodos.filter(n => n.fecha_inicio_real && n.fecha_fin_real);
+  const cycleTimes = completadas.map(n => (new Date(n.fecha_fin_real) - new Date(n.fecha_inicio_real)) / UN_DIA_MS);
+  const leadTimes = nodos
+    .filter(n => n.fecha_inicio_prevista && n.fecha_fin_real)
+    .map(n => (new Date(n.fecha_fin_real) - new Date(n.fecha_inicio_prevista)) / UN_DIA_MS);
+
+  const media = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+
+  const porSemana = {};
+  completadas.forEach(n => {
+    const d = new Date(n.fecha_fin_real);
+    // Semana ISO simplificada: año + nº de semana desde el lunes más cercano.
+    const jueves = new Date(d); jueves.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
+    const primerEnero = new Date(jueves.getFullYear(), 0, 1);
+    const numSemana = Math.ceil((((jueves - primerEnero) / UN_DIA_MS) + 1) / 7);
+    const clave = `${jueves.getFullYear()}-S${String(numSemana).padStart(2, '0')}`;
+    porSemana[clave] = (porSemana[clave] || 0) + 1;
+  });
+
+  return {
+    cycleTimeMedioDias: media(cycleTimes),
+    leadTimeMedioDias: media(leadTimes),
+    throughputPorSemana: porSemana,
+    numCompletadas: completadas.length
+  };
+}
+
+
+    let filtroUsuarioId_sk = '';
+    let soloMisTareas_sk = false;
+    let filtroTexto_sk = '';
+    let perfilesCache_sk = [];
+
+    async function prepararFiltros_sk() {
+      if (miPerfil.rol === 'TRABAJADOR') {
+        document.getElementById('sk-wrap-mis-tareas').style.display = 'flex';
+        document.getElementById('sk-chk-mis-tareas').checked = true;
+        soloMisTareas_sk = true;
+      }
+      if (esGestor()) {
+        document.getElementById('sk-filtro-usuario').style.display = 'inline-block';
+        const { data: perfiles } = await supabaseClient.from('profiles').select('*').eq('activo', true);
+        perfilesCache_sk = (perfiles || []).sort((a, b) => (a.nombre_completo || '').localeCompare(b.nombre_completo || '', 'es'));
+        const sel = document.getElementById('sk-filtro-usuario');
+        perfilesCache_sk.filter(p => p.rol === 'TRABAJADOR').forEach(p => {
+          sel.insertAdjacentHTML('beforeend', `<option value="${p.id}">${p.nombre_completo}</option>`);
+        });
+      }
+      document.getElementById('sk-filtro-buque').addEventListener('change', (e) => { filtroBuqueId = e.target.value; pintar(); });
+      document.getElementById('sk-filtro-usuario').addEventListener('change', (e) => { filtroUsuarioId_sk = e.target.value; pintar(); });
+      document.getElementById('sk-chk-mis-tareas').addEventListener('change', (e) => { soloMisTareas_sk = e.target.checked; pintar(); });
+      document.getElementById('sk-buscar').addEventListener('input', (e) => { filtroTexto_sk = e.target.value.trim().toLowerCase(); pintar(); });
+    }
+
+    function coincideFiltros_sk(n) {
+      if (filtroBuqueId) { const b = buqueDeNodo(n); if (!b || b.id !== filtroBuqueId) return false; }
+      if (soloMisTareas_sk && n.trabajador_id !== miPerfil.id) return false;
+      if (filtroUsuarioId_sk && n.trabajador_id !== filtroUsuarioId_sk) return false;
+      if (filtroTexto_sk) {
+        const t = filtroTexto_sk;
+        if (!n.codigo.toLowerCase().includes(t) && !(n.nombre || '').toLowerCase().includes(t)) return false;
+      }
+      return true;
+    }
+
+
+    // Límites de WIP orientativos por columna (fijos; no hay tabla nueva
+    // para configurarlos por ahora). Se marcan en rojo si se superan.
+    const WIP_LIMITES = { en_proceso: 6, pendiente_revision: 4 };
+
+    function calcularColumna(nodo) {
+      const estado = calcularEstadoPropio(nodo);
+      if (estado === 'sin_asignar') return 'sin_asignar';
+      if (estado === 'asignada_sin_empezar') return 'pendiente';
+      if (estado === 'en_proceso' || estado === 'pendiente_dudas' || estado === 'pendiente_cambios_modelo') return 'en_proceso';
+      if (estado === 'pendiente_revision') return 'pendiente_revision';
+      if (estado === 'rechazado') return 'rechazado';
+      return 'aprobado';
+    }
+    const COLUMNAS = [
+      { clave: 'sin_asignar', titulo: '⬜ Sin asignar' },
+      { clave: 'pendiente', titulo: '📋 Por hacer' },
+      { clave: 'en_proceso', titulo: '🔧 En proceso' },
+      { clave: 'pendiente_revision', titulo: '👀 A revisar' },
+      { clave: 'rechazado', titulo: '✘ Rechazado' },
+      { clave: 'aprobado', titulo: '✔ Aprobado' }
+    ];
+
+    function nodosTarea() {
+      return todosLosNodos.filter(n => !TIPOS_SIN_ASIGNACION.has(n.tipo) && n.tipo !== 'BLOQUE');
+    }
+
+    function renderFicha(n) {
+      const asignado = n.trabajador_id ? (perfilesCache_sk.find(p => p.id === n.trabajador_id)?.nombre_completo || '') : '';
+      return `<div class="ficha"><div class="cod">${n.codigo}</div>${n.nombre || ''}<div class="ruta-nodo">${rutaCompleta(n)}${asignado ? ' · ' + asignado : ''}</div></div>`;
+    }
+
+    function pintarPanelSprint(todas) {
+      const panel = document.getElementById('panel-sprint');
+      const conFecha = todas.filter(n => n.fecha_inicio_prevista && n.fecha_fin_prevista);
+      const { sprints, indiceDeNodo } = calcularSprints(conFecha);
+      if (sprints.length === 0) { panel.style.display = 'none'; return; }
+      const hoyMs = Date.now();
+      const actual = sprints.find(s => hoyMs >= s.inicio.getTime() && hoyMs <= s.fin.getTime() + 86400000) || sprints[sprints.length - 1];
+      const nodosSprint = conFecha.filter(coincideFiltros_sk).filter(n => indiceDeNodo(n) === actual.numero - 1);
+      const aprobadas = nodosSprint.filter(n => calcularEstadoPropio(n) === 'aprobado').length;
+      const pct = nodosSprint.length ? Math.round(100 * aprobadas / nodosSprint.length) : 0;
+      panel.style.display = 'block';
+      panel.innerHTML = `<h2>🎯 Sprint actual: Sprint ${actual.numero} (${actual.inicio.toISOString().slice(0,10)} a ${actual.fin.toISOString().slice(0,10)})</h2>
+        <p style="font-size:13px; margin:4px 0;">${nodosSprint.length} tarea(s) en este sprint · ${aprobadas} aprobada(s) (${pct}%)</p>
+        <div class="barra-progreso"><div class="relleno" style="width:${pct}%;"></div></div>`;
+    }
+
+    function pintar() {
+      const todas = nodosTarea();
+      pintarPanelSprint(todas);
+      const filtradas = todas.filter(coincideFiltros_sk);
+
+      const cont = document.getElementById('contenido');
+      let html = '<div class="tablero">';
+      COLUMNAS.forEach(col => {
+        const nodosCol = filtradas.filter(n => calcularColumna(n) === col.clave);
+        const limite = WIP_LIMITES[col.clave];
+        const superado = limite && nodosCol.length > limite;
+        html += `<div class="card-col col-${col.clave} ${superado ? 'wip-superado' : ''}">
+          <h2>${col.titulo} <span class="contador-col ${superado ? 'wip-mal' : ''}">${nodosCol.length}${limite ? ' / ' + limite : ''}</span></h2>
+          <div class="lista-fichas">${nodosCol.length ? nodosCol.map(renderFicha).join('') : '<p class="vacio-lista">Sin tareas</p>'}</div>
+        </div>`;
+      });
+      html += '</div>';
+      cont.innerHTML = html;
+    }
+
+    async function iniciar() {
+      const perfil = await iniciarBase('scrumban.html');
+      if (!perfil) return;
+      const { error } = await cargarNodosYDependencias();
+      if (error) { document.getElementById('contenido').innerHTML = `<p style="color:red;">Error: ${error.message}</p>`; return; }
+      opcionesBuqueEnSelect(document.getElementById('sk-filtro-buque'));
+      await prepararFiltros_sk();
+      pintar();
+    }
+    iniciar();
+  </script>
+</body>
+</html>
