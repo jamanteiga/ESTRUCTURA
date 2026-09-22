@@ -312,7 +312,7 @@
     // cifra manda sola.
     const FAMILIA_SEGUN_CIFRA = {
       '1': 'PLANCHA_1000', '2': 'PLANCHA_2000', '3': 'PLANCHA_3000',
-      '5': 'PL5000', '8': 'PL8000',
+      '5': 'PL5000', '8': 'PERF8000',
       '4': 'PERFIL_4000', '6': 'PERFIL_6000', '7': 'PERFIL_7000'
     };
 
@@ -344,13 +344,13 @@
       { tipo: 'PLANCHA_1000', codigo: 'PL1000' },
       { tipo: 'PLANCHA_2000', codigo: 'PL2000' },
       { tipo: 'PLANCHA_3000', codigo: 'PL3000' },
-      { tipo: 'PL5000', codigo: 'PL5000' },
-      { tipo: 'PL8000', codigo: 'PL8000' }
+      { tipo: 'PL5000', codigo: 'PL5000' }
     ];
     const ESQUELETO_FAMILIAS_PERF = [
       { tipo: 'PERFIL_4000', codigo: 'PERF4000' },
       { tipo: 'PERFIL_6000', codigo: 'PERF6000' },
-      { tipo: 'PERFIL_7000', codigo: 'PERF7000' }
+      { tipo: 'PERFIL_7000', codigo: 'PERF7000' },
+      { tipo: 'PERF8000', codigo: 'PERF8000' }
     ];
     const FAMILIA_INFO = {};
     ESQUELETO_FAMILIAS_PL.forEach(f => { FAMILIA_INFO[f.tipo] = { grupoCodigo: 'PL', codigoFamilia: f.codigo }; });
