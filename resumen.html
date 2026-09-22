@@ -158,6 +158,17 @@
     </div>
   </div>
 
+  <div class="overlay" id="modal-elegir-revision-resumen" style="z-index:5000;">
+    <div class="overlay-caja" style="max-width:400px; text-align:center;">
+      <h3 id="elegir-revision-resumen-titulo">¿Aprobar o rechazar?</h3>
+      <div class="overlay-botones" style="justify-content:center;">
+        <button class="secundario" id="elegir-revision-resumen-cancelar">Cancelar</button>
+        <button id="elegir-revision-resumen-rechazado" style="background:#dc3545;">✘ Rechazar</button>
+        <button id="elegir-revision-resumen-aprobado" style="background:#28a745;">✔ Aprobar</button>
+      </div>
+    </div>
+  </div>
+
   <div class="overlay" id="modal-asignar-resumen">
     <div class="overlay-caja">
       <h3>Asignar usuario / supervisor</h3>
@@ -463,13 +474,22 @@
       `;
     }
 
+    // permitirAsignar también es, ahora mismo, la señal de "esta es la lista
+    // Detalle del panel de gestor" -- la única donde tiene sentido ofrecer
+    // casillas de selección múltiple y el doble clic de aprobar/rechazar
+    // (las otras listas de esta pantalla son de solo consulta).
     function renderListaNodos(nodos, vacio, permitirAsignar) {
       if (nodos.length === 0) return `<li>${vacio}</li>`;
       return nodos.map(n => {
         const estado = calcularEstadoPropio(n);
+        const puedeRevisarConDobleClic = permitirAsignar && estado === 'pendiente_revision';
+        const checkbox = (permitirAsignar && modoSeleccionResumen)
+          ? `<input type="checkbox" class="chk-seleccion-resumen" ${nodosSeleccionadosResumen.has(n.id) ? 'checked' : ''} onclick="toggleSeleccionNodoResumen('${n.id}', event)" ondblclick="event.stopPropagation()" style="margin-right:6px;">`
+          : '';
         return `
-          <li ${permitirAsignar ? `oncontextmenu="mostrarMenuAsignarResumen(event, '${n.id}'); return false;" style="cursor:context-menu;"` : ''}>
-            <span class="flecha f-${estado}">${estado === 'aprobado' ? '✔' : (estado === 'rechazado' ? '✘' : '▶')}</span>
+          <li ${permitirAsignar ? `oncontextmenu="mostrarMenuAsignarResumen(event, '${n.id}'); return false;" style="cursor:context-menu;"` : ''}
+              ${puedeRevisarConDobleClic ? `ondblclick="manejarDobleClicRevisionResumen('${n.id}')" title="Doble clic para aprobar o rechazar"` : ''}>
+            ${checkbox}<span class="flecha f-${estado}">${estado === 'aprobado' ? '✔' : (estado === 'rechazado' ? '✘' : '▶')}</span>
             <div>
               <div><strong>${n.codigo}</strong> ${n.nombre} ${n.trabajador_nombre ? `— 👷 ${n.trabajador_nombre}` : ''}</div>
               <div class="ruta-nodo">${rutaCompleta(n)}${n.comentario_revision ? ' · ' + n.comentario_revision : ''}</div>
@@ -489,6 +509,96 @@
 
     let perfilesCache = [];
     let nodoAsignarResumenActual = null;
+
+    // -------------------- Selección múltiple en el Detalle (gestor) --------------------
+    let modoSeleccionResumen = false;
+    let nodosSeleccionadosResumen = new Set();
+
+    function toggleModoSeleccionResumen() {
+      modoSeleccionResumen = document.getElementById('chk-modo-seleccion-resumen').checked;
+      if (!modoSeleccionResumen) nodosSeleccionadosResumen.clear();
+      pintarVistaGestor();
+    }
+
+    function toggleSeleccionNodoResumen(nodeId, event) {
+      event.stopPropagation();
+      if (nodosSeleccionadosResumen.has(nodeId)) nodosSeleccionadosResumen.delete(nodeId);
+      else nodosSeleccionadosResumen.add(nodeId);
+      pintarVistaGestor();
+    }
+
+    function cancelarSeleccionResumen() {
+      nodosSeleccionadosResumen.clear();
+      pintarVistaGestor();
+    }
+
+    // Aprobar/rechazar de golpe varias tareas seleccionadas -- pensado sobre
+    // todo para revisar juntas varias piezas del mismo tipo (p.ej. todas las
+    // PL1000 pendientes de revisión) sin tener que abrirlas una a una.
+    async function aplicarRevisionMasivaResumen(aprobado) {
+      const ids = [...nodosSeleccionadosResumen];
+      if (ids.length === 0) return;
+
+      let comentario = null;
+      if (!aprobado) {
+        comentario = await pedirTexto(`Motivo del rechazo para las ${ids.length} tareas seleccionadas (obligatorio):`);
+        if (!comentario || !comentario.trim()) return;
+      }
+
+      let hechos = 0;
+      const errores = [];
+      for (const id of ids) {
+        const { error } = await supabaseClient.rpc('revisar_nodo', {
+          p_node_id: id, p_aprobado: aprobado, p_comentario: aprobado ? null : comentario
+        });
+        if (error) errores.push(`${mapaNodoPorId[id]?.codigo || id}: ${traducirError(error.message)}`);
+        else hechos++;
+      }
+
+      nodosSeleccionadosResumen.clear();
+      await recargarDatos();
+
+      if (errores.length > 0) {
+        mostrarAvisoModal(`Hecho ${hechos} de ${ids.length}. Fallaron ${errores.length}:\n` + errores.join('\n'));
+      }
+    }
+    function aprobarSeleccionadasResumen() { return aplicarRevisionMasivaResumen(true); }
+    function rechazarSeleccionadasResumen() { return aplicarRevisionMasivaResumen(false); }
+
+    // Doble clic sobre una tarea "Pendiente de revisión" en el Detalle:
+    // pregunta directamente Aprobado/Rechazado (igual que ya hace Árbol) --
+    // si se aprueba no hace falta comentario, si se rechaza pide el motivo
+    // (el mismo que ya usa el menú contextual de esta pantalla).
+    function elegirAprobadoRechazadoResumen(etiquetaTarea) {
+      return new Promise((resolve) => {
+        document.getElementById('elegir-revision-resumen-titulo').textContent = etiquetaTarea ? `"${etiquetaTarea}" — ¿Aprobar o rechazar?` : '¿Aprobar o rechazar?';
+        document.getElementById('modal-elegir-revision-resumen').style.display = 'flex';
+        const btnAp = document.getElementById('elegir-revision-resumen-aprobado');
+        const btnRe = document.getElementById('elegir-revision-resumen-rechazado');
+        const btnCancel = document.getElementById('elegir-revision-resumen-cancelar');
+        const limpiar = () => {
+          btnAp.onclick = null; btnRe.onclick = null; btnCancel.onclick = null;
+          document.getElementById('modal-elegir-revision-resumen').style.display = 'none';
+        };
+        btnAp.onclick = () => { limpiar(); resolve('aprobado'); };
+        btnRe.onclick = () => { limpiar(); resolve('rechazado'); };
+        btnCancel.onclick = () => { limpiar(); resolve(null); };
+      });
+    }
+
+    async function manejarDobleClicRevisionResumen(nodeId) {
+      if (esInvitado()) { mostrarAvisoModal('Eres un usuario Invitado: solo puedes consultar, no puedes realizar cambios.'); return; }
+      const nodo = mapaNodoPorId[nodeId];
+      const decision = await elegirAprobadoRechazadoResumen(nodo ? `${nodo.codigo} ${nodo.nombre || ''}`.trim() : null);
+      if (!decision) return;
+      if (decision === 'aprobado') {
+        await accionEstadoResumen('revisar_nodo', nodeId, { p_aprobado: true });
+      } else {
+        const comentario = await pedirTexto('Motivo del rechazo (obligatorio):');
+        if (!comentario || !comentario.trim()) return;
+        await accionEstadoResumen('revisar_nodo', nodeId, { p_aprobado: false, p_comentario: comentario });
+      }
+    }
 
     async function cargarPerfilesResumen() {
       const { data } = await supabaseClient.from('profiles').select('*').eq('activo', true);
@@ -887,11 +997,17 @@
 
     function filtrarDetallePorEstado(estado) {
       filtroDetalleEstado = (filtroDetalleEstado === estado) ? null : estado;
+      // Cambiar de estado filtrado invalida cualquier selección anterior --
+      // los ids ya no corresponden (o no todos) a lo que se va a mostrar.
+      nodosSeleccionadosResumen.clear();
+      modoSeleccionResumen = false;
       if (pareceGestor()) pintarVistaGestor(); else pintarVistaUsuario();
     }
 
     function limpiarFiltroDetalle() {
       filtroDetalleEstado = null;
+      nodosSeleccionadosResumen.clear();
+      modoSeleccionResumen = false;
       if (pareceGestor()) pintarVistaGestor(); else pintarVistaUsuario();
     }
 
@@ -1115,6 +1231,18 @@
         ${filtroDetalleEstado ? `
           <div class="card">
             <h2>${tituloDetalle}</h2>
+            <label style="font-size:12px; font-weight:normal; display:inline-flex; align-items:center; gap:4px; margin:-4px 0 6px;">
+              <input type="checkbox" id="chk-modo-seleccion-resumen" ${modoSeleccionResumen ? 'checked' : ''} onchange="toggleModoSeleccionResumen()"> Selección múltiple
+            </label>
+            <p style="font-size:11px; color:#888; margin:0 0 8px;">Doble clic en una tarea "Pendiente de revisión" para aprobarla o rechazarla directamente, sin comentario si se aprueba.</p>
+            ${modoSeleccionResumen && nodosSeleccionadosResumen.size > 0 ? `
+              <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; background:#eef3ff; border-radius:6px; padding:8px 10px; margin-bottom:8px; font-size:12px;">
+                <span>${nodosSeleccionadosResumen.size} tarea(s) seleccionada(s)</span>
+                <button onclick="aprobarSeleccionadasResumen()" style="background:#28a745; padding:4px 10px; font-size:12px;">✔ Aprobar</button>
+                <button onclick="rechazarSeleccionadasResumen()" style="background:#dc3545; padding:4px 10px; font-size:12px;">✘ Rechazar</button>
+                <button class="secundario" style="padding:4px 10px; font-size:12px;" onclick="cancelarSeleccionResumen()">Vaciar selección</button>
+              </div>
+            ` : ''}
             <ul class="lista-nodos" style="max-height:340px; overflow-y:auto;">
               ${renderListaNodos(nodosDetalle, 'No hay tareas en este estado.', true)}
             </ul>
