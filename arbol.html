@@ -393,12 +393,18 @@
           <a class="menu-item" data-solo-gestor href="cargatrabajo.html">👷 <span data-i18n="resumen.cargaTrabajo">Carga de trabajo</span></a>
           <a class="menu-item" href="revision.html">⏳ <span data-i18n="resumen.colaRevision">Cola de revisión</span></a>
           <a class="menu-item" id="menu-link-gantt" href="gantt.html" style="display:none;">🗓️ <span data-i18n="resumen.gantt">Gantt</span></a>
+          <a class="menu-item" href="GantWF.html">📉 Gantt (cascada)</a>
           <a class="menu-item" id="menu-link-hitos" href="hitos.html" style="display:none;">🎯 <span data-i18n="resumen.hitos">Hitos</span></a>
           <a class="menu-item" data-solo-gestor href="kpi.html">📈 <span data-i18n="resumen.kpis">KPIs</span></a>
+          <a class="menu-item" href="lean.html">🍃 Lean</a>
           <a class="menu-item" href="pendientedudas.html">❓ <span data-i18n="resumen.pendienteDudas">Pendiente de dudas</span></a>
+          <a class="menu-item" href="pert.html">🕸️ PERT</a>
           <a class="menu-item" data-solo-gestor href="previsioncarga.html">📅 <span data-i18n="resumen.previsionCarga">Previsión de carga</span></a>
           <a class="menu-item" href="rechazados.html">✘ <span data-i18n="resumen.rechazados">Rechazados</span></a>
           <a class="menu-item" href="resumen.html">📊 <span data-i18n="resumen.resumenGeneral">Resumen general</span></a>
+          <a class="menu-item" href="rutacritica.html">🛤️ Ruta crítica</a>
+          <a class="menu-item" href="Scrum.html">🏃 Scrum</a>
+          <a class="menu-item" href="scrumban.html">🔀 Scrumban</a>
           <a class="menu-item" href="sinasignar.html">🚫 <span data-i18n="resumen.sinAsignar">Sin asignar</span></a>
         </div>
         <a class="menu-item" href="kanban.html">🗂️ <span data-i18n="nav.kanban">Kanban</span></a>
@@ -6522,10 +6528,16 @@
     }
 
     // Igual que la anterior, pero solo con rol USUARIO (TRABAJADOR) — para los
-    // selects que ya se limitaban a ese rol.
-    function opcionesTrabajadorConCarga(nodoActualTrabajadorId) {
+    // selects que ya se limitaban a ese rol. idsBuquesPermitidos (opcional):
+    // si se indica, solo se ofrecen los trabajadores dados de alta en
+    // alguno de esos buques (profiles.buque_id) -- se usa en la asignación
+    // masiva para no poder asignar por error a alguien de otro buque.
+    function opcionesTrabajadorConCarga(nodoActualTrabajadorId, idsBuquesPermitidos) {
       const carga = calcularCargaAbiertaPorUsuario();
-      const trabajadores = perfilesCache.filter(p => p.rol === 'TRABAJADOR');
+      let trabajadores = perfilesCache.filter(p => p.rol === 'TRABAJADOR');
+      if (idsBuquesPermitidos) {
+        trabajadores = trabajadores.filter(p => idsBuquesPermitidos.has(p.buque_id));
+      }
       const minCarga = trabajadores.length ? Math.min(...trabajadores.map(p => carga[p.id] || 0)) : null;
       return trabajadores.map(p => {
         const n = carga[p.id] || 0;
@@ -6944,9 +6956,23 @@
     function abrirModalAsignacionMasiva() {
       document.getElementById('masivo-contador').textContent = `Se asignará a ${nodosSeleccionados.size} tarea(s) seleccionada(s).`;
 
+      // Solo se ofrecen usuarios dados de alta en el/los buque(s) de las
+      // tareas seleccionadas -- así no se puede asignar por error a alguien
+      // de otro buque. Si la selección abarcara más de un buque a la vez
+      // (no pasa en el uso normal, pero por si acaso) se admite cualquiera
+      // de esos buques, en vez de bloquear sin motivo. Los supervisores no
+      // están atados a un buque, así que su lista sigue sin filtrarse
+      // (igual que en el resto de la app).
+      const idsBuques = new Set(
+        [...nodosSeleccionados]
+          .map(id => buqueDeNodo(mapaNodoPorId[id]))
+          .filter(Boolean)
+          .map(b => b.id)
+      );
+
       const revisores = perfilesCache.filter(p => p.rol === 'REVISOR');
 
-      document.getElementById('masivo-trabajador').innerHTML = '<option value="">— Sin asignar —</option>' + opcionesTrabajadorConCarga(null);
+      document.getElementById('masivo-trabajador').innerHTML = '<option value="">— Sin asignar —</option>' + opcionesTrabajadorConCarga(null, idsBuques.size ? idsBuques : null);
       document.getElementById('masivo-revisor').innerHTML = '<option value="">— Sin asignar —</option>' +
         revisores.map(p => `<option value="${p.id}">${p.nombre_completo}</option>`).join('');
 
