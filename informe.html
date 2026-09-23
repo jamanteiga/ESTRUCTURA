@@ -58,6 +58,7 @@
       <button class="secundario" onclick="alternarTema()">🌙/☀️</button>
       <button class="secundario" onclick="location.href='resumen.html'">📊 Resumen</button>
       <button onclick="window.print()">🖨️ Imprimir / Guardar como PDF</button>
+      <button class="secundario" onclick="location.href='resumen.html'">❌ Cerrar</button>
     </div>
   </div>
 
@@ -149,6 +150,7 @@
     let comentariosModeloCache = { GHE: [], NAV: [] };
     let nodosTodos = [];
     let buqueSeleccionadoId = null;
+    let bloqueSeleccionadoId = null;
     let chartCurvaAvanceInforme = null;
 
     function aplicarTema(tema) {
@@ -169,6 +171,60 @@
         actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
       }
       return null;
+    }
+
+    function bloqueDeNodo(nodo) {
+      let actual = nodo;
+      while (actual) {
+        if (actual.tipo === 'BLOQUE') return actual;
+        actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
+      }
+      return null;
+    }
+
+    // -------------------- Horas por nodo / categoría (informe por bloque) --------------------
+    // No existe fichaje real (ver estructura_horas_trabajo_por_usuario.sql):
+    // las horas de una tarea son el tiempo entre que se puso "en proceso"
+    // (trabajo_iniciado_en) y se terminó (trabajo_terminado_en) -- o ahora
+    // mismo, si todavía sigue en proceso.
+    function horasDeNodo(nodo) {
+      if (!nodo.trabajo_iniciado_en) return 0;
+      const inicio = new Date(nodo.trabajo_iniciado_en);
+      const fin = nodo.trabajo_terminado_en ? new Date(nodo.trabajo_terminado_en) : new Date();
+      return Math.max(0, (fin - inicio) / 3600000);
+    }
+    function formatearHoras(horasDecimal) {
+      return formatearMinutos(horasDecimal * 60);
+    }
+
+    // "Nodos principales" en los que se agrupan las horas de un Bloque: SB,
+    // Anidados (desglosado en PL/PERF), PM, PS, UC, SBE, SBL -- y, dentro de
+    // SB, las UAs por separado. Sube desde la tarea hasta encontrar la
+    // primera de estas ramas; si por el camino pasa por PL/PERF (colgando de
+    // Anidados) o por UA (colgando de SB), usa esa etiqueta más concreta.
+    const RAICES_CATEGORIA_BLOQUE = new Set(['SB', 'ANIDADOS', 'PM', 'PS', 'UC', 'SBE', 'SBL']);
+    function categoriaPrincipalDeNodo(nodo) {
+      // Sube desde la tarea hasta el Bloque, mirando primero si por el
+      // camino se pasa por PL/PERF (colgando de Anidados) o por UA
+      // (colgando de SB) -- eso manda sobre el propio tipo de la tarea:
+      // p.ej. una "Previa simple" (PS) que cuelga de SB > UA > GR se cuenta
+      // como "UAs", no como "PS" (que sí aplica a una PS pegada directamente
+      // al Bloque, fuera de cualquier SB).
+      let pasaPorUA = false, pasaPorPL = false, pasaPorPERF = false, raizDirecta = null;
+      let actual = nodo;
+      while (actual) {
+        if (actual.tipo === 'UA') pasaPorUA = true;
+        if (actual.tipo === 'PL') pasaPorPL = true;
+        if (actual.tipo === 'PERF') pasaPorPERF = true;
+        if (!raizDirecta && RAICES_CATEGORIA_BLOQUE.has(actual.tipo)) raizDirecta = actual.tipo;
+        if (actual.tipo === 'BLOQUE' || actual.tipo === 'BUQUE') break;
+        actual = actual.parent_id ? mapaNodoPorId[actual.parent_id] : null;
+      }
+      if (pasaPorUA) return 'UAs';
+      if (pasaPorPL) return 'PL';
+      if (pasaPorPERF) return 'PERF';
+      if (!raizDirecta) return 'Otros';
+      return raizDirecta === 'ANIDADOS' ? 'Anidados' : raizDirecta;
     }
 
     function calcularEstadoPropio(nodo) {
@@ -469,9 +525,173 @@
             </ul>
           `}
         </div>
+
+        <div class="card no-imprimir">
+          <label style="font-size:12px; font-weight:bold;">Bloque:
+            <select id="sel-informe-bloque" onchange="cambiarBloqueInforme(this.value)"></select>
+          </label>
+        </div>
+        <div class="card">
+          <h2>🧱 Informe por bloque</h2>
+          <div id="informe-bloque-contenido"><p style="font-size:12px; color:#888;">Este buque todavía no tiene ningún Bloque creado.</p></div>
+        </div>
+
+        <div class="card">
+          <h2>⏱️ Tiempos por usuario / tarea</h2>
+          <p style="font-size:11px; color:#888; margin:-4px 0 8px;">Todo el buque, no solo el bloque de arriba. Mismo cálculo: tiempo "en proceso" de cada tarea.</p>
+          <div id="informe-tiempos-usuario"></div>
+        </div>
+
+        <div class="card">
+          <h2>🕵️ Tiempos por supervisor (revisión)</h2>
+          <p style="font-size:11px; color:#888; margin:-4px 0 8px;">Tiempo entre que una tarea quedó pendiente de revisión y se aprobó o rechazó. Si una tarea se rehízo tras un rechazo, solo se cuenta su último ciclo de trabajo/revisión — los ciclos anteriores no quedan guardados.</p>
+          <div id="informe-tiempos-supervisor"></div>
+        </div>
       `;
 
       pintarCurvaAvanceInforme(propios);
+      poblarSelectorBloque();
+      pintarInformeBloque();
+      pintarTiemposUsuario(propios);
+      pintarTiemposSupervisor(propios);
+    }
+
+    // -------------------- Informe por bloque --------------------
+
+    function poblarSelectorBloque() {
+      const sel = document.getElementById('sel-informe-bloque');
+      if (!sel) return;
+      const bloques = Object.values(mapaNodoPorId)
+        .filter(n => n.tipo === 'BLOQUE' && buqueDeNodo(n) && buqueDeNodo(n).id === buqueSeleccionadoId)
+        .sort((a, b) => a.codigo.localeCompare(b.codigo, 'es'));
+      if (bloques.length === 0) {
+        sel.innerHTML = '';
+        bloqueSeleccionadoId = null;
+        return;
+      }
+      if (!bloqueSeleccionadoId || !bloques.some(b => b.id === bloqueSeleccionadoId)) {
+        bloqueSeleccionadoId = bloques[0].id;
+      }
+      sel.innerHTML = bloques.map(b => `<option value="${b.id}" ${b.id === bloqueSeleccionadoId ? 'selected' : ''}>${b.codigo} — ${b.nombre}</option>`).join('');
+    }
+
+    function cambiarBloqueInforme(id) {
+      bloqueSeleccionadoId = id;
+      pintarInformeBloque();
+    }
+
+    function pintarInformeBloque() {
+      const contenedor = document.getElementById('informe-bloque-contenido');
+      if (!contenedor) return;
+      if (!bloqueSeleccionadoId) {
+        contenedor.innerHTML = '<p style="font-size:12px; color:#888;">Este buque todavía no tiene ningún Bloque creado.</p>';
+        return;
+      }
+      const bloque = mapaNodoPorId[bloqueSeleccionadoId];
+      const tareasBloque = nodosTodos.filter(n => n.tipo !== 'BLOQUE' && bloqueDeNodo(n) && bloqueDeNodo(n).id === bloqueSeleccionadoId);
+
+      const horasPorCategoria = {};
+      tareasBloque.forEach(n => {
+        const h = horasDeNodo(n);
+        if (h <= 0) return;
+        const cat = categoriaPrincipalDeNodo(n);
+        horasPorCategoria[cat] = (horasPorCategoria[cat] || 0) + h;
+      });
+      const totalBloque = Object.values(horasPorCategoria).reduce((a, b) => a + b, 0);
+      const categorias = Object.keys(horasPorCategoria).sort((a, b) => horasPorCategoria[b] - horasPorCategoria[a]);
+
+      const porUsuario = {};
+      tareasBloque.forEach(n => {
+        const h = horasDeNodo(n);
+        if (h <= 0 || !n.trabajador_nombre) return;
+        if (!porUsuario[n.trabajador_nombre]) porUsuario[n.trabajador_nombre] = { tareas: [], total: 0 };
+        porUsuario[n.trabajador_nombre].tareas.push({ codigo: n.codigo, nombre: n.nombre, horas: h });
+        porUsuario[n.trabajador_nombre].total += h;
+      });
+      const usuarios = Object.keys(porUsuario).sort((a, b) => porUsuario[b].total - porUsuario[a].total);
+
+      contenedor.innerHTML = `
+        <h3 style="font-size:13px; margin:4px 0 2px;">${bloque.codigo} — ${bloque.nombre}</h3>
+
+        <p style="font-size:12.5px; font-weight:bold; margin:10px 0 2px;">1. Horas por nodos principales</p>
+        ${categorias.length === 0 ? '<p style="font-size:12px; color:#888;">Sin horas registradas todavía en este bloque.</p>' : `
+          <table>
+            <thead><tr><th>Nodo principal</th><th>Horas</th></tr></thead>
+            <tbody>
+              ${categorias.map(c => `<tr><td>${c}</td><td>${formatearHoras(horasPorCategoria[c])}</td></tr>`).join('')}
+            </tbody>
+            <tfoot><tr style="font-weight:bold;"><td>1.1 Total del bloque</td><td>${formatearHoras(totalBloque)}</td></tr></tfoot>
+          </table>
+        `}
+
+        <p style="font-size:12.5px; font-weight:bold; margin:14px 0 2px;">2. Horas por usuario y tarea</p>
+        ${usuarios.length === 0 ? '<p style="font-size:12px; color:#888;">Sin horas registradas todavía en este bloque.</p>' : usuarios.map(u => `
+          <table style="margin-bottom:10px;">
+            <thead><tr><th colspan="2">${u} — total: ${formatearHoras(porUsuario[u].total)}</th></tr></thead>
+            <tbody>
+              ${porUsuario[u].tareas.sort((a, b) => b.horas - a.horas).map(t => `<tr><td>${t.codigo} — ${t.nombre}</td><td>${formatearHoras(t.horas)}</td></tr>`).join('')}
+            </tbody>
+          </table>
+        `).join('')}
+      `;
+    }
+
+    // -------------------- Tiempos por usuario/tarea y por supervisor (todo el buque) --------------------
+
+    function pintarTiemposUsuario(propios) {
+      const contenedor = document.getElementById('informe-tiempos-usuario');
+      if (!contenedor) return;
+      const porUsuario = {};
+      propios.forEach(n => {
+        const h = horasDeNodo(n);
+        if (h <= 0 || !n.trabajador_nombre) return;
+        if (!porUsuario[n.trabajador_nombre]) porUsuario[n.trabajador_nombre] = { tareas: [], total: 0 };
+        porUsuario[n.trabajador_nombre].tareas.push({ codigo: n.codigo, nombre: n.nombre, horas: h });
+        porUsuario[n.trabajador_nombre].total += h;
+      });
+      const usuarios = Object.keys(porUsuario).sort((a, b) => porUsuario[b].total - porUsuario[a].total);
+      if (usuarios.length === 0) {
+        contenedor.innerHTML = '<p style="font-size:12px; color:#888;">Sin horas registradas todavía en este buque.</p>';
+        return;
+      }
+      contenedor.innerHTML = usuarios.map(u => `
+        <table style="margin-bottom:10px;">
+          <thead><tr><th colspan="2">${u} — total: ${formatearHoras(porUsuario[u].total)}</th></tr></thead>
+          <tbody>
+            ${porUsuario[u].tareas.sort((a, b) => b.horas - a.horas).map(t => `<tr><td>${t.codigo} — ${t.nombre}</td><td>${formatearHoras(t.horas)}</td></tr>`).join('')}
+          </tbody>
+        </table>
+      `).join('');
+    }
+
+    function pintarTiemposSupervisor(propios) {
+      const contenedor = document.getElementById('informe-tiempos-supervisor');
+      if (!contenedor) return;
+      const revisadas = propios.filter(n => n.trabajo_terminado_en && n.revisado_en && n.revisor_nombre &&
+        (n.revision_estado === 'APROBADO' || n.revision_estado === 'RECHAZADO'));
+      const porSupervisor = {};
+      revisadas.forEach(n => {
+        const horas = Math.max(0, (new Date(n.revisado_en) - new Date(n.trabajo_terminado_en)) / 3600000);
+        if (!porSupervisor[n.revisor_nombre]) porSupervisor[n.revisor_nombre] = { tareas: [], total: 0 };
+        porSupervisor[n.revisor_nombre].tareas.push({ codigo: n.codigo, nombre: n.nombre, horas, resultado: n.revision_estado === 'APROBADO' ? 'Aprobado' : 'Rechazado' });
+        porSupervisor[n.revisor_nombre].total += horas;
+      });
+      const supervisores = Object.keys(porSupervisor).sort((a, b) => porSupervisor[b].tareas.length - porSupervisor[a].tareas.length);
+      if (supervisores.length === 0) {
+        contenedor.innerHTML = '<p style="font-size:12px; color:#888;">Sin revisiones completadas todavía en este buque.</p>';
+        return;
+      }
+      contenedor.innerHTML = supervisores.map(s => {
+        const media = porSupervisor[s].total / porSupervisor[s].tareas.length;
+        return `
+        <table style="margin-bottom:10px;">
+          <thead><tr><th colspan="3">${s} — ${porSupervisor[s].tareas.length} revisadas, media: ${formatearHoras(media)}</th></tr></thead>
+          <tbody>
+            ${porSupervisor[s].tareas.sort((a, b) => b.horas - a.horas).map(t => `<tr><td>${t.codigo} — ${t.nombre}</td><td>${t.resultado}</td><td>${formatearHoras(t.horas)}</td></tr>`).join('')}
+          </tbody>
+        </table>
+      `;
+      }).join('');
     }
 
     function pintarCurvaAvanceInforme(propios) {

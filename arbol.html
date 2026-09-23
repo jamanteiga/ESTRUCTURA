@@ -193,6 +193,12 @@
       display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 16px;
       font-size: 12.5px; color: #333; border-bottom: 1px solid #f0f0f0; cursor: pointer; line-height: 1.3;
     }
+    /* Agrupa icono+etiqueta en un único hijo flex, para que "space-between"
+       solo reparta 2 bloques (etiqueta a la izquierda, flecha a la derecha)
+       en vez de repartir icono/etiqueta/flecha como 3 hijos sueltos -- eso
+       último es lo que hacía que el icono+texto se vieran "descentrados"
+       hacia la derecha en vez de pegados al borde izquierdo. */
+    .menu-item-expandible-label { display: flex; align-items: center; gap: 8px; }
     /* Iconos de bandera de "Idiomas" -- dibujados en SVG en vez de con el
        emoji de bandera de Unicode: en Windows, los emoji de bandera de país
        (y sobre todo Galicia, que no tiene emoji real porque no es un país)
@@ -372,7 +378,7 @@
       <div class="menu-seccion-titulo" data-menu-seccion="navegacion" onclick="toggleSeccionMenu(this)"><span data-i18n="menu.navegacion.titulo">Navegación</span> <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
         <a class="menu-item" href="index.html">🏠 <span data-i18n="nav.inicio">Inicio</span></a>
-        <div class="menu-item-expandible" onclick="toggleSubmenuFlotante(event, this, 'submenu-idiomas')">🌐 <span data-i18n="nav.idiomas">Idiomas</span> <span class="flecha-menu">›</span></div>
+        <div class="menu-item-expandible" onclick="toggleSubmenuFlotante(event, this, 'submenu-idiomas')"><span class="menu-item-expandible-label">🌐 <span data-i18n="nav.idiomas">Idiomas</span></span> <span class="flecha-menu">›</span></div>
         <div class="menu-submenu-contenido" id="submenu-idiomas">
           <span class="menu-item" onclick="cambiarIdioma('pt')"><svg class="bandera-idioma" viewBox="0 0 30 20" aria-hidden="true"><rect width="30" height="20" fill="#009B3A"/><polygon points="15,3 27,10 15,17 3,10" fill="#FEDF00"/><circle cx="15" cy="10" r="5" fill="#002776"/></svg> Brasileño <span class="idioma-check" data-idioma="pt" style="visibility:hidden;">✓</span></span>
           <span class="menu-item" onclick="cambiarIdioma('ko')"><svg class="bandera-idioma" viewBox="0 0 30 20" aria-hidden="true"><rect width="30" height="20" fill="#FFFFFF"/><g transform="translate(15,10) rotate(-90)"><path d="M0,-5 A5,5 0 0 1 0,5 A2.5,2.5 0 0 1 0,0 A2.5,2.5 0 0 1 0,-5 Z" fill="#CD2E3A"/><path d="M0,-5 A5,5 0 0 0 0,5 A2.5,2.5 0 0 0 0,0 A2.5,2.5 0 0 0 0,-5 Z" fill="#0047A0"/></g><g stroke="#000" stroke-width="0.7"><line x1="2.5" y1="2.5" x2="7" y2="2.5"/><line x1="2.5" y1="4" x2="7" y2="4"/><line x1="2.5" y1="5.5" x2="7" y2="5.5"/><line x1="23" y1="14.5" x2="27.5" y2="14.5"/><line x1="23" y1="16" x2="27.5" y2="16"/><line x1="23" y1="17.5" x2="27.5" y2="17.5"/></g></svg> Coreano <span class="idioma-check" data-idioma="ko" style="visibility:hidden;">✓</span></span>
@@ -384,7 +390,7 @@
         <a class="menu-item solo-escritorio" id="menu-link-log-comunicaciones" href="log_comunicaciones.html" style="display:none;">📡 <span data-i18n="nav.comunicaciones">Comunicaciones</span></a>
         <span class="menu-item solo-escritorio" id="menu-item-buque" onclick="esInvitado() ? mostrarAvisoModal('Eres un usuario Invitado: solo puedes consultar, no puedes realizar cambios.') : abrirModalCrear(null, 'BUQUE')" style="display:none;">+ <span data-i18n="nav.anadirBuque">Añadir Buque</span></span>
         <span class="menu-item solo-escritorio" id="menu-item-pegar-buque-raiz" onclick="esInvitado() ? mostrarAvisoModal('Eres un usuario Invitado: solo puedes consultar, no puedes realizar cambios.') : abrirModalPegarRama(null)" style="display:none;">📌 <span data-i18n="nav.pegarBuque">Pegar buque copiado</span></span>
-        <div class="menu-item-expandible" onclick="toggleSubmenuFlotante(event, this, 'submenu-resumen')">📊 <span data-i18n="nav.resumen">Resumen</span> <span class="flecha-menu">›</span></div>
+        <div class="menu-item-expandible" onclick="toggleSubmenuFlotante(event, this, 'submenu-resumen')"><span class="menu-item-expandible-label">📊 <span data-i18n="nav.resumen">Resumen</span></span> <span class="flecha-menu">›</span></div>
         <div class="menu-submenu-contenido" id="submenu-resumen">
           <a class="menu-item" id="menu-item-alertas" href="resumen.html" style="display:none;" title="Tareas retrasadas y usuarios con demasiada carga hoy — detalle en Resumen">⚠️ <span data-i18n="resumen.alertas">Alertas</span><span id="badge-alertas" style="display:none; background:#dc3545; color:#fff; border-radius:10px; padding:1px 7px; font-size:11px; font-weight:bold; margin-left:6px;"></span></a>
           <a class="menu-item" data-solo-gestor href="avancehitos.html">🎯 <span data-i18n="resumen.avanceHitos">Avance vs hitos</span></a>
@@ -394,7 +400,7 @@
           <a class="menu-item" href="revision.html">⏳ <span data-i18n="resumen.colaRevision">Cola de revisión</span></a>
           <a class="menu-item" id="menu-link-gantt" href="gantt.html" style="display:none;">🗓️ <span data-i18n="resumen.gantt">Gantt</span></a>
           <a class="menu-item" href="GantWF.html">📉 Gantt (cascada)</a>
-          <a class="menu-item" id="menu-link-hitos" href="hitos.html" style="display:none;">🎯 <span data-i18n="resumen.hitos">Hitos</span></a>
+          <a class="menu-item" href="kanban.html">🗂️ <span data-i18n="nav.kanban">Kanban</span></a>
           <a class="menu-item" data-solo-gestor href="kpi.html">📈 <span data-i18n="resumen.kpis">KPIs</span></a>
           <a class="menu-item" href="lean.html">🍃 Lean</a>
           <a class="menu-item" href="pendientedudas.html">❓ <span data-i18n="resumen.pendienteDudas">Pendiente de dudas</span></a>
@@ -407,11 +413,11 @@
           <a class="menu-item" href="scrumban.html">🔀 Scrumban</a>
           <a class="menu-item" href="sinasignar.html">🚫 <span data-i18n="resumen.sinAsignar">Sin asignar</span></a>
         </div>
-        <a class="menu-item" href="kanban.html">🗂️ <span data-i18n="nav.kanban">Kanban</span></a>
+        <a class="menu-item" id="menu-link-hitos" href="hitos.html" style="display:none;">🎯 <span data-i18n="resumen.hitos">Hitos</span></a>
         <span class="menu-item" id="menu-item-resumen-comentarios" onclick="abrirResumenComentariosModelo()" style="display:none;">📋 <span data-i18n="nav.comentariosPendientes">Comentarios pendientes de modelo</span><span id="badge-comentarios-pendientes" style="display:none; background:#dc3545; color:#fff; border-radius:10px; padding:1px 7px; font-size:11px; font-weight:bold; margin-left:6px;"></span></span>
         <a class="menu-item solo-escritorio" id="menu-link-usuarios" href="usuarios.html" style="display:none;">👤 <span data-i18n="nav.usuarios">Usuarios</span></a>
         <a class="menu-item solo-escritorio" id="menu-link-admin" href="admin.html" style="display:none;">🛠️ <span data-i18n="nav.panelAdmin">Panel de administración</span></a>
-        <div class="menu-item-expandible solo-escritorio" id="menu-item-backup" onclick="toggleSubmenuFlotante(event, this, 'submenu-backup')" style="display:none;">💾 <span data-i18n="nav.backup">Backup</span> <span class="flecha-menu">›</span></div>
+        <div class="menu-item-expandible solo-escritorio" id="menu-item-backup" onclick="toggleSubmenuFlotante(event, this, 'submenu-backup')" style="display:none;"><span class="menu-item-expandible-label">💾 <span data-i18n="nav.backup">Backup</span></span> <span class="flecha-menu">›</span></div>
         <div class="menu-submenu-contenido solo-escritorio" id="submenu-backup">
           <span class="menu-item">Cargando buques...</span>
         </div>
@@ -436,7 +442,7 @@
 
       <div class="menu-seccion-titulo" data-menu-seccion="bloques" onclick="toggleSeccionMenu(this)"><span data-i18n="menu.bloques.titulo">Bloques</span> <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
-        <div class="menu-item-expandible" onclick="toggleSubmenuFlotante(event, this, 'submenu-bloques')">🧱 <span data-i18n="bloques.bloques">Bloques</span> <span class="flecha-menu">›</span></div>
+        <div class="menu-item-expandible" onclick="toggleSubmenuFlotante(event, this, 'submenu-bloques')"><span class="menu-item-expandible-label">🧱 <span data-i18n="bloques.bloques">Bloques</span></span> <span class="flecha-menu">›</span></div>
         <div class="menu-submenu-contenido" id="submenu-bloques">
           <span class="menu-item" onclick="encogerTodo()">⏫ <span data-i18n="bloques.contraerTodo">Contraer todo</span></span>
           <span class="menu-item" onclick="expandirTodo()">⏬ <span data-i18n="bloques.expandirTodo">Expandir todo</span></span>
@@ -490,7 +496,6 @@
         <label class="menu-item" id="wrap-tiempos" style="display:none;">
           <input type="checkbox" id="chk-tiempos" onchange="toggleTiempos()"> ⏱️ <span data-i18n="herramientas.tiempos">Tiempos</span>
         </label>
-        <a class="menu-item" id="menu-link-importar" href="importar.html" target="_blank" style="display:none;">📥 <span data-i18n="herramientas.importarExcel">Importar Excel</span> (clásico)</a>
         <a class="menu-item" id="menu-link-importar-dna" href="importar_dna.html" target="_blank" style="display:none;">🧬 Importar Excel (ruta DNA)</a>
         <a class="menu-item" id="menu-link-duplicados" href="duplicados.html" target="_blank" style="display:none;">🔍 <span data-i18n="herramientas.comprobarDuplicados">Comprobar duplicados</span></a>
         <span class="menu-item" id="menu-item-exportar-excel" onclick="exportarArbolExcel()" style="display:none;">⬇ <span data-i18n="herramientas.exportarExcel">Exportar árbol a Excel</span></span>
@@ -501,12 +506,9 @@
 
       <div class="menu-seccion-titulo" data-menu-seccion="apariencia" onclick="toggleSeccionMenu(this)"><span data-i18n="menu.apariencia.titulo">Apariencia</span> <span class="flecha-menu">›</span></div>
       <div class="menu-seccion-contenido">
-        <span class="menu-item" id="btn-alternar-tema" onclick="alternarTema()">🌙/☀️ <span data-i18n="apariencia.alternarTema">Alternar tema</span></span>
+        <span class="menu-item" id="btn-alternar-tema" onclick="alternarTema()">🌙/☀️ <span data-i18n="apariencia.alternarTema">Claro/oscuro</span></span>
         <label class="menu-item">
-          <input type="radio" name="modo-menu" value="desplegable" id="radio-desplegable" checked> <span data-i18n="apariencia.desplegable">Desplegable</span>
-        </label>
-        <label class="menu-item">
-          <input type="radio" name="modo-menu" value="fijo" id="radio-fijo"> <span data-i18n="apariencia.fijo">Fijo en la izquierda</span>
+          <input type="checkbox" id="chk-menu-desplegable"> <span data-i18n="apariencia.desplegable">Desplegable</span>
         </label>
       </div>
     </div>
@@ -1477,7 +1479,6 @@
         document.getElementById('wrap-avance').style.display = 'flex';
         document.getElementById('wrap-tiempos').style.display = 'flex';
         document.getElementById('menu-link-gantt').style.display = 'flex';
-        document.getElementById('menu-link-importar').style.display = 'flex';
         document.getElementById('menu-link-importar-dna').style.display = 'flex';
         document.getElementById('menu-link-duplicados').style.display = 'flex';
         document.getElementById('menu-item-exportar-excel').style.display = 'flex';
@@ -1723,11 +1724,10 @@
       // Solo se considera "desplegable" cuando el usuario lo ha elegido así
       // explícitamente alguna vez (menu_fijo === false guardado en su perfil).
       const fijo = miPerfil.menu_fijo !== false;
-      document.getElementById(fijo ? 'radio-fijo' : 'radio-desplegable').checked = true;
+      document.getElementById('chk-menu-desplegable').checked = !fijo;
       aplicarModoMenu(fijo ? 'fijo' : 'desplegable');
 
-      document.getElementById('radio-fijo').addEventListener('change', () => cambiarModoMenu('fijo'));
-      document.getElementById('radio-desplegable').addEventListener('change', () => cambiarModoMenu('desplegable'));
+      document.getElementById('chk-menu-desplegable').addEventListener('change', (e) => cambiarModoMenu(e.target.checked ? 'desplegable' : 'fijo'));
 
       inicializarTema();
       inicializarRedimensionMenu();
@@ -3632,7 +3632,6 @@
             items.push({ label: '🗂️ Generar documentación (Modelo/Plano/Windchill)', tip: 'Elige cuáles de los 3 nodos de seguimiento documental generar dentro de esta pieza.', fn: () => abrirModalGenerarDoc(nodeId) });
           }
           if (miPerfil.rol === 'ADMIN') {
-            items.push({ label: '📥 Importar desde Excel (clásico)', tip: 'Importa un subárbol completo (varios niveles) colgando de este nodo, desde un Excel con columnas Ruta/Tipo/Nombre.', fn: () => window.location.href = 'importar.html?destino=' + encodeURIComponent(nodeId) });
             if (nodo.tipo === 'BUQUE') {
               items.push({ label: '🧬 Importar desde Excel (ruta DNA)', tip: 'Importa un Excel con una sola columna "DNA" (rutas completas tipo SEC261/SB1/UA1/...) colgando de este Buque.', fn: () => window.location.href = 'importar_dna.html?destino=' + encodeURIComponent(nodeId) });
             }
