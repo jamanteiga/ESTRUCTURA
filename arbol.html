@@ -6971,12 +6971,28 @@
 
       const revisores = perfilesCache.filter(p => p.rol === 'REVISOR');
 
-      document.getElementById('masivo-trabajador').innerHTML = '<option value="">— Sin asignar —</option>' + opcionesTrabajadorConCarga(null, idsBuques.size ? idsBuques : null);
+      const opcionesTrab = opcionesTrabajadorConCarga(null, idsBuques.size ? idsBuques : null);
+      document.getElementById('masivo-trabajador').innerHTML = '<option value="">— Sin asignar —</option>' + opcionesTrab;
       document.getElementById('masivo-revisor').innerHTML = '<option value="">— Sin asignar —</option>' +
         revisores.map(p => `<option value="${p.id}">${p.nombre_completo}</option>`).join('');
 
       document.getElementById('masivo-estado-tarea').value = '';
-      document.getElementById('masivo-estado').textContent = '';
+
+      // Si el filtro por buque deja el desplegable de Usuario vacío, no se
+      // queda callado (antes parecía que el desplegable no funcionaba): avisa
+      // de qué Buque(s) son y qué hacer -- lo normal es que a esos usuarios
+      // les falte el Buque asignado en Usuarios (ese campo es opcional al
+      // crear/editar un Trabajador).
+      const avisoEl = document.getElementById('masivo-estado');
+      if (idsBuques.size > 0 && !opcionesTrab) {
+        const nombresBuques = [...idsBuques].map(id => mapaNodoPorId[id]?.codigo || id).join(', ');
+        avisoEl.textContent = `⚠️ No hay ningún Usuario dado de alta en ${nombresBuques} (columna "Buque" en Usuarios) -- por eso no aparece nadie para asignar. Ve a Usuarios y asígnales ese buque, o vuelve aquí después.`;
+        avisoEl.className = 'estado-msg error';
+      } else {
+        avisoEl.textContent = '';
+        avisoEl.className = 'estado-msg';
+      }
+
       document.getElementById('modal-asignar-masivo').style.display = 'flex';
     }
 
