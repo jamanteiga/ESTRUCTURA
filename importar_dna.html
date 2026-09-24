@@ -312,7 +312,7 @@
     // cifra manda sola.
     const FAMILIA_SEGUN_CIFRA = {
       '1': 'PLANCHA_1000', '2': 'PLANCHA_2000', '3': 'PLANCHA_3000',
-      '5': 'PL5000', '8': 'PERF8000',
+      '5': 'PL5000', '8': 'PERF8000', '9': 'PERF9000',
       '4': 'PERFIL_4000', '6': 'PERFIL_6000', '7': 'PERFIL_7000'
     };
 
@@ -321,7 +321,7 @@
       if (/^[0-9]+$/.test(segmento)) {
         const familia = FAMILIA_SEGUN_CIFRA[segmento.charAt(0)];
         if (familia) return { tipo: familia, codigo: segmento };
-        return { tipo: null, codigo: segmento, error: `Es un número ("${segmento}") pero no se reconoce ninguna familia para la cifra inicial "${segmento.charAt(0)}" (solo se reconocen 1,2,3,4,5,6,7,8)` };
+        return { tipo: null, codigo: segmento, error: `Es un número ("${segmento}") pero no se reconoce ninguna familia para la cifra inicial "${segmento.charAt(0)}" (solo se reconocen 1,2,3,4,5,6,7,8,9)` };
       }
       const m = segmento.match(/^([A-Za-zÁÉÍÓÚÑ]+)/);
       const prefijo = m ? m[1].toUpperCase() : '';
@@ -350,7 +350,8 @@
       { tipo: 'PERFIL_4000', codigo: 'PERF4000' },
       { tipo: 'PERFIL_6000', codigo: 'PERF6000' },
       { tipo: 'PERFIL_7000', codigo: 'PERF7000' },
-      { tipo: 'PERF8000', codigo: 'PERF8000' }
+      { tipo: 'PERF8000', codigo: 'PERF8000' },
+      { tipo: 'PERF9000', codigo: 'PERF9000' }
     ];
     const FAMILIA_INFO = {};
     ESQUELETO_FAMILIAS_PL.forEach(f => { FAMILIA_INFO[f.tipo] = { grupoCodigo: 'PL', codigoFamilia: f.codigo }; });

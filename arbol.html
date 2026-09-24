@@ -1203,7 +1203,7 @@
     // código "PL1000") como las piezas numeradas de verdad que cuelgan de él
     // (código "1001"...) — se distinguen por el código: la familia siempre
     // lleva letras delante, la pieza de verdad es solo números.
-    const TIPOS_DOCUMENTABLES = new Set(['PLANCHA_1000', 'PLANCHA_2000', 'PLANCHA_3000', 'PL5000', 'PERFIL_4000', 'PERFIL_6000', 'PERFIL_7000', 'PERF8000']);
+    const TIPOS_DOCUMENTABLES = new Set(['PLANCHA_1000', 'PLANCHA_2000', 'PLANCHA_3000', 'PL5000', 'PERFIL_4000', 'PERFIL_6000', 'PERFIL_7000', 'PERF8000', 'PERF9000']);
     function esPiezaNumerada(codigo) { return /^\d+$/.test(String(codigo || '').trim()); }
 
     const ETIQUETAS_TIPO = {
@@ -1241,6 +1241,7 @@
       PERFIL_6000: 'Perfil 6000',
       PERFIL_7000: 'Perfil 7000',
       PERF8000: 'Perfil 8000 (chapa especial)',
+      PERF9000: 'Perfil 9000',
       DOC_MODELO: 'Modelo',
       DOC_PLANO_CORTE: 'Plano de corte',
       DOC_WINDCHILL: 'Windchill',
@@ -1261,7 +1262,8 @@
       PERFIL_4000: 'PERF',
       PERFIL_6000: 'PERF',
       PERFIL_7000: 'PERF',
-      PERF8000: 'PERF'
+      PERF8000: 'PERF',
+      PERF9000: 'PERF'
     };
     function etiquetaCortaTipo(tipo) { return TIPO_TAG_CORTO[tipo] || tipo; }
 
@@ -4872,13 +4874,14 @@
     // enlace hacia ella (nodes.ubicacion_id), para poder localizarla luego.
     const TIPOS_UBICACION_PIEZAS = new Set(['PS', 'PT', 'PM', 'NL', 'NC', 'NP']);
     const FAMILIAS_PL_PIEZA = ['PLANCHA_1000', 'PLANCHA_2000', 'PLANCHA_3000', 'PL5000'];
-    const FAMILIAS_PERF_PIEZA = ['PERFIL_4000', 'PERFIL_6000', 'PERFIL_7000', 'PERF8000'];
+    const FAMILIAS_PERF_PIEZA = ['PERFIL_4000', 'PERFIL_6000', 'PERFIL_7000', 'PERF8000', 'PERF9000'];
     const FAMILIAS_TODAS_PIEZA = [...FAMILIAS_PL_PIEZA, ...FAMILIAS_PERF_PIEZA];
     // 5xxx es chapa especial (familia Plancha, igual que 1000/2000/3000,
-    // solo que en un rango de numeración aparte); 8xxx es Perfil, no Plancha.
+    // solo que en un rango de numeración aparte); 8xxx y 9xxx son Perfil,
+    // no Plancha.
     const FAMILIA_SEGUN_CIFRA = {
       '1': 'PLANCHA_1000', '2': 'PLANCHA_2000', '3': 'PLANCHA_3000',
-      '5': 'PL5000', '8': 'PERF8000',
+      '5': 'PL5000', '8': 'PERF8000', '9': 'PERF9000',
       '4': 'PERFIL_4000', '6': 'PERFIL_6000', '7': 'PERFIL_7000'
     };
 
@@ -4916,8 +4919,8 @@
 
     // Al escribir el número de la pieza, se autoselecciona la familia que
     // le corresponde (1xxx->PL1000, 2xxx->PL2000, 3xxx->PL3000,
-    // 4xxx->PERF4000, 6xxx->PERF6000, 7xxx->PERF7000) -- se puede cambiar
-    // a mano si hiciera falta.
+    // 4xxx->PERF4000, 6xxx->PERF6000, 7xxx->PERF7000, 9xxx->PERF9000)
+    // -- se puede cambiar a mano si hiciera falta.
     function autoseleccionarFamiliaPorCodigo() {
       const tipo = document.getElementById('modal-nodo-tipo').value;
       if (tipo !== '__PL__' && tipo !== '__PERF__') return;
@@ -4975,7 +4978,7 @@
     const BASE_NUMERO_TIPO = {
       PLANCHA_1000: '1000', PLANCHA_2000: '2000', PLANCHA_3000: '3000',
       PL5000: '5000',
-      PERFIL_4000: '4000', PERFIL_6000: '6000', PERFIL_7000: '7000', PERF8000: '8000'
+      PERFIL_4000: '4000', PERFIL_6000: '6000', PERFIL_7000: '7000', PERF8000: '8000', PERF9000: '9000'
     };
     function actualizarCodigoSegunTipo() {
       const tipo = document.getElementById('modal-nodo-tipo').value;
@@ -5060,7 +5063,8 @@
         { tipo: 'PERFIL_4000', codigo: 'PERF4000' },
         { tipo: 'PERFIL_6000', codigo: 'PERF6000' },
         { tipo: 'PERFIL_7000', codigo: 'PERF7000' },
-        { tipo: 'PERF8000', codigo: 'PERF8000' }
+        { tipo: 'PERF8000', codigo: 'PERF8000' },
+        { tipo: 'PERF9000', codigo: 'PERF9000' }
     ]};
     const RAMA_ANIDADOS = { tipo: 'ANIDADOS', hijos: [ RAMA_PL, RAMA_PERF ] };
 
