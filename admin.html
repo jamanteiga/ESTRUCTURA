@@ -70,6 +70,7 @@
       <button class="secundario" onclick="location.href='arbol.html'">🌳 Árbol</button>
       <button class="secundario" onclick="location.href='usuarios.html'">👤 Usuarios</button>
       <button class="secundario" onclick="location.href='log.html'">🗒️ Registro</button>
+      <button class="secundario" onclick="accionCompactarBdd()">🧹 Compactar BD</button>
       <button class="secundario" onclick="cerrarSesion()">Cerrar sesión</button>
       <button style="background:#dc3545;" onclick="cerrarPagina()">❌ Cerrar</button>
     </div>
@@ -112,6 +113,7 @@
       <h2>🏥 Salud del sistema</h2>
       <p class="subtitulo-card">Última copia de seguridad, tamaño de la base de datos y actividad reciente.</p>
       <div id="salud-contenido"><span class="spinner-carga"></span>Cargando...</div>
+      <div id="compactar-estado" style="margin-top:12px; font-size:13px;"></div>
     </div>
 
     <!-- 3) Permisos de Supervisor por buque -->
@@ -519,6 +521,79 @@
             : '⚠️ No hay ninguna copia de seguridad registrada todavía.'}
         </p>
       `;
+    }
+
+    // -------------------- 2b) Compactar BD (botón "🧹 Compactar BD") --------------------
+
+    let compactarBddEnCurso = false;
+    let compactarBddPollTimer = null;
+
+    async function accionCompactarBdd() {
+      if (compactarBddEnCurso) { mostrarAviso('Ya hay una compactación en marcha -- mira el estado en la tarjeta "Salud del sistema".'); return; }
+
+      const ok = await mostrarConfirmacion(
+        '🧹 Compactar la base de datos\n\n' +
+        'Reescribe físicamente varias tablas grandes para que dejen de ocupar espacio "muerto" (filas ya borradas). No borra ni modifica ningún dato.\n\n' +
+        '⚠️ IMPORTANTE:\n' +
+        '- Cada tabla queda BLOQUEADA por completo mientras se compacta (nadie puede leer ni escribir en ella durante ese rato) -- hazlo solo fuera de horario, sin nadie usando la app.\n' +
+        '- No es instantáneo: tarda unos 10 minutos en total (las tablas se compactan de una en una, no todas a la vez).\n' +
+        '- Necesita tener pg_cron habilitado en Supabase -- si no lo has hecho antes, esto dará un aviso explicándolo.\n\n' +
+        '¿Seguro que nadie está usando la aplicación ahora mismo y quieres continuar?'
+      );
+      if (!ok) return;
+
+      const cont = document.getElementById('compactar-estado');
+      compactarBddEnCurso = true;
+      cont.innerHTML = '<span class="spinner-carga"></span>Programando la compactación...';
+
+      const { data, error } = await supabaseClient.rpc('solicitar_compactado_bdd');
+
+      if (error) {
+        compactarBddEnCurso = false;
+        const m = (error.message || '').toLowerCase();
+        if (m.includes('cron') || m.includes('does not exist') || m.includes('function public.solicitar_compactado_bdd')) {
+          cont.innerHTML = `<p class="error">No se pudo programar: falta ejecutar estructura_compactar_bdd_paso1_extension.sql y estructura_compactar_bdd_paso2_rpc.sql en el SQL Editor de Supabase. Detalle: ${traducirError(error.message)}</p>`;
+        } else {
+          cont.innerHTML = `<p class="error">No se pudo programar la compactación: ${traducirError(error.message)}</p>`;
+        }
+        return;
+      }
+
+      const pasos = data.pasos || [];
+      const jobids = pasos.map(p => p.jobid);
+      cont.innerHTML = `⏳ Compactación programada (referencia ${data.run_id}) -- tardará unos ${data.minutos_estimados} minutos.<br>Tablas: ${pasos.map(p => p.paso).join(', ')}.<br>Puedes seguir usando el resto del panel; esta tarjeta se irá actualizando sola mientras la dejes abierta.`;
+
+      let intentos = 0;
+      const maxIntentos = 40; // ~20 minutos a 30s cada uno, por si algo va más lento de lo previsto
+      if (compactarBddPollTimer) clearInterval(compactarBddPollTimer);
+      compactarBddPollTimer = setInterval(async () => {
+        intentos++;
+        const { data: estado, error: errEstado } = await supabaseClient.rpc('estado_compactado_bdd', { p_jobids: jobids });
+        if (errEstado) return; // se reintenta en el siguiente ciclo
+
+        const historial = estado.historial || [];
+        const terminados = historial.filter(h => h.status === 'succeeded' || h.status === 'failed');
+        const fallidos = terminados.filter(h => h.status === 'failed');
+
+        if (terminados.length < jobids.length && intentos < maxIntentos) {
+          cont.innerHTML = `⏳ Compactando... (${terminados.length}/${jobids.length} tablas hechas, referencia ${data.run_id})`;
+          return;
+        }
+
+        clearInterval(compactarBddPollTimer);
+        compactarBddPollTimer = null;
+        compactarBddEnCurso = false;
+
+        if (terminados.length < jobids.length) {
+          cont.innerHTML = `<p class="aviso">⚠️ No se pudo confirmar que la compactación terminase (referencia ${data.run_id}). Puede que haya ido bien igualmente -- consulta "select * from cron.job_run_details order by start_time desc" en el SQL Editor para comprobarlo.</p>`;
+        } else if (fallidos.length > 0) {
+          const detalle = fallidos.map(h => h.return_message).join(' | ');
+          cont.innerHTML = `<p class="error">⚠️ Compactación terminada con ${fallidos.length} error(es) (referencia ${data.run_id}): ${detalle}</p>`;
+        } else {
+          cont.innerHTML = `<p class="ok">✔️ Compactación completada (referencia ${data.run_id}).</p>`;
+          cargarSaludSistema();
+        }
+      }, 30000);
     }
 
     // -------------------- 5) Panel de intentos fallidos --------------------
